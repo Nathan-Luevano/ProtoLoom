@@ -1,5 +1,6 @@
 import json
 from collections.abc import Mapping
+from math import isnan
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,9 @@ def load_schema(path: Path) -> BenchmarkSchema:
 def render_report(report: AggregateReport, per_target: bool = False) -> str:
     lines = ["metric                     macro      micro      lead"]
     for metric in METRIC_NAMES:
+        if isnan(report.macro[metric]) and isnan(report.micro[metric]):
+            lines.append(f"{metric:25} {'n/a':>9} {'n/a':>9} {'n/a':>12}")
+            continue
         label, value = report.least_flattering(metric)
         lines.append(
             f"{metric:25} {report.macro[metric]:9.2%} "
@@ -78,11 +82,18 @@ def render_report(report: AggregateReport, per_target: bool = False) -> str:
 
 
 def _target_line(report: MetricReport) -> str:
-    values = " ".join(f"{metric}={report.value(metric):.2%}" for metric in METRIC_NAMES)
+    values = " ".join(_target_metric(report, metric) for metric in METRIC_NAMES)
     return (
         f"{report.target}: {values} "
         f"type_fidelity_ceiling={report.type_fidelity_ceiling.value:.2%}"
     )
+
+
+def _target_metric(report: MetricReport, metric: str) -> str:
+    score = report.scores[metric]
+    if metric == "round_trip_rate" and score.denominator == 0:
+        return f"{metric}=n/a"
+    return f"{metric}={score.value:.2%}"
 
 
 def _message(value: object) -> BenchmarkMessage:

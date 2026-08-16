@@ -9,6 +9,12 @@ from protoloom.bench.corpus import (
     load_manifest,
     materialize,
 )
+from protoloom.bench.metrics import (
+    BenchmarkMessage,
+    BenchmarkSchema,
+    aggregate_reports,
+    score_target,
+)
 from protoloom.bench.runner import render_report, run_corpus
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "bench"
@@ -51,3 +57,12 @@ def test_hash_mismatch_removes_bad_download(tmp_path: Path) -> None:
     with pytest.raises(CorpusError, match="SHA-256 mismatch"):
         materialize(manifest, tmp_path / "cache")
     assert not (tmp_path / "cache" / "target" / "truth.json").exists()
+
+
+def test_report_renders_unmeasured_round_trips_as_na() -> None:
+    schema = BenchmarkSchema((BenchmarkMessage("Empty", ()),))
+    report = aggregate_reports([score_target("empty", schema, schema)])
+    rendered = render_report(report, per_target=True)
+
+    assert "round_trip_rate                 n/a       n/a" in rendered
+    assert "round_trip_rate=n/a" in rendered

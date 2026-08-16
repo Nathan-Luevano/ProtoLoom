@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from protoloom.bench.metrics import (
@@ -156,3 +158,11 @@ def test_top_level_enums_are_scored() -> None:
     )
     recovered = BenchmarkSchema((), enums=(BenchmarkEnum("State", (("UNKNOWN", 0),)),))
     assert score_target("enums", truth, recovered).value("enum_recovery") == 0.5
+
+
+def test_unmeasured_round_trips_do_not_inflate_aggregate() -> None:
+    schema = BenchmarkSchema((BenchmarkMessage("Empty", ()),))
+    report = aggregate_reports([score_target("empty", schema, schema)])
+
+    assert math.isnan(report.macro["round_trip_rate"])
+    assert math.isnan(report.micro["round_trip_rate"])
