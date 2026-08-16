@@ -1,0 +1,15 @@
+name: protoloom
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - protobuf
+  - libprotobuf
+  - openjdk=17
+  - binutils
+  - unzip
+  - make
+  - pip
+  - pip:
+      - -e .[dev]
+
