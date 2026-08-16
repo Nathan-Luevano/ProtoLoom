@@ -10,4 +10,5 @@ dist/
 htmlcov/
 .protoc/
 out/
+*.apk
 PROTOLOOM-ROADMAP.md
