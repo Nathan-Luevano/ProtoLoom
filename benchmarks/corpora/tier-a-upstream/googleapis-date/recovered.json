@@ -1,0 +1,36 @@
+{
+  "compiled": true,
+  "enums": [],
+  "messages": [
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "year",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "month",
+          "number": 2,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "day",
+          "number": 3,
+          "proto_type": "int32",
+          "wire_type": 0
+        }
+      ],
+      "name": "google.type.Date"
+    }
+  ],
+  "round_trip": {
+    "passed": 0,
+    "total": 0
+  }
+}
