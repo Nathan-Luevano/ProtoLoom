@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "protoloom"
+version = "0.0.0"
+description = "Recover compilable protobuf schemas from stripped binaries"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Nathan Luevano" }]
+dependencies = [
+  "protobuf>=5.27",
+  "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+  "import-linter>=2.0",
+  "mypy>=1.10",
+  "pytest>=8.2",
+  "pytest-cov>=5.0",
+  "ruff>=0.5",
+]
+
+[project.scripts]
+protoloom = "protoloom.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/protoloom"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-exclude = ["PROTOLOOM-ROADMAP.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["D"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests", "scripts"]
+
+[tool.importlinter]
+root_packages = ["protoloom"]
+
+[[tool.importlinter.contracts]]
+name = "The command line is an outer layer"
+type = "forbidden"
+source_modules = ["protoloom.model"]
+forbidden_modules = ["protoloom.cli"]
+
+[[tool.importlinter.contracts]]
+name = "The model has no project dependencies"
+type = "independence"
+modules = ["protoloom.model"]
+
+[dependency-groups]
+dev = [
+    "grpcio-tools>=1.66",
+]
