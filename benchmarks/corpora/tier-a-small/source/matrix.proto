@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package matrix;
+
+option java_package = "matrix";
+option java_outer_classname = "MatrixProto";
+
+message Nested {
+  string value = 1;
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  MODE_ACTIVE = 1;
+}
+
+message Everything {
+  int32 count = 1;
+  sint64 delta = 2;
+  string display_name = 3;
+  bytes payload = 4;
+  repeated uint32 samples = 5 [packed = true];
+  Nested nested = 6;
+  repeated Nested children = 7;
+  Mode mode = 8;
+  map<string, int32> scores = 9;
+  oneof choice {
+    string note = 10;
+    Nested selected = 11;
+  }
+  optional bool enabled = 12;
+}

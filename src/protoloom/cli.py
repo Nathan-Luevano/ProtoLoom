@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
@@ -105,6 +106,32 @@ def _compiled_descriptors(schema: RecoveredSchema) -> list[FileDescriptorProto]:
     return list(descriptor_set.file)
 
 
+def _combined_lite_descriptors(
+    schemas: list[RecoveredSchema], certain_names: set[str]
+) -> list[FileDescriptorProto]:
+    groups: dict[tuple[str, str], list[RecoveredSchema]] = defaultdict(list)
+    for schema in schemas:
+        if schema.name not in certain_names:
+            groups[(schema.package, schema.syntax)].append(schema)
+    descriptors: list[FileDescriptorProto] = []
+    for index, ((package, syntax), items) in enumerate(sorted(groups.items())):
+        combined = RecoveredSchema(
+            name=f"recovered_{index}.proto",
+            package=package,
+            syntax=syntax,
+            messages=[message for item in items for message in item.messages],
+            enums=[enum for item in items for enum in item.enums],
+            dependencies=list(
+                dict.fromkeys(
+                    dependency for item in items for dependency in item.dependencies
+                )
+            ),
+            evidence=[evidence for item in items for evidence in item.evidence],
+        )
+        descriptors.extend(_compiled_descriptors(combined))
+    return descriptors
+
+
 @app.command()
 def inspect(path: Path) -> None:
     if not path.is_file():
@@ -163,11 +190,18 @@ def extract(
         source = emit_proto(schema)
         if schema.name not in certain_names:
             try:
-                descriptors.extend(_compiled_descriptors(schema))
+                _compiled_descriptors(schema)
             except ValueError as error:
                 typer.echo(f"recovery failed: {error}", err=True)
                 raise typer.Exit(2) from error
         prepared.append((schema, source))
+    try:
+        descriptors.extend(
+            _combined_lite_descriptors(reconciled.schemas, certain_names)
+        )
+    except ValueError as error:
+        typer.echo(f"descriptor-set assembly failed: {error}", err=True)
+        raise typer.Exit(2) from error
     output.mkdir(parents=True, exist_ok=True)
     for schema, source in prepared:
         destination = output / Path(schema.name).name

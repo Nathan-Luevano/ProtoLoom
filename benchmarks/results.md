@@ -33,9 +33,36 @@ gzip-wrapped blobs, but a generated multi-runtime descriptor corpus has not been
 run through the scoreboard. Do not compare the calibration numbers above with
 extractor performance.
 
-Likewise, the javalite field-recall, wire-type, compile-rate, round-trip, and
-bail-out exit thresholds remain unmeasured. The implementation does not claim
-M4's numerical exit criterion until the pinned Android build matrix is run.
+## Pinned javalite matrix
+
+`scripts/run_lite_matrix.sh` compiles the hostile local schema with protoc and
+protobuf-javalite 3.21.12, 4.29.3, and 4.35.1, packages each runtime with D8
+8.3.37, and also runs default and aggressive R8 legs for 4.35.1. Every archive
+is SHA-256 pinned. The same generated payload exercises scalars, packed values,
+nested messages, repeated messages, a map, an enum, a oneof, and proto3
+optional presence.
+
+All five legs produced the same measured result:
+
+| Metric | Result | Count |
+|---|---:|---:|
+| Field recall | 100.00% | 13 / 13 |
+| Field precision | 100.00% | 13 / 13 |
+| Wire-type accuracy | 100.00% | 13 / 13 |
+| Type fidelity | 61.54% | 8 / 13 |
+| Name recovery | 84.62% | 11 / 13 |
+| Label accuracy | 100.00% | 13 / 13 |
+| Structural fidelity | 50.00% | 1 / 2 |
+| Enum recovery | 0.00% | 0 / 2 values |
+| Compile rate | 100.00% | 1 / 1 target |
+| Round-trip rate | 100.00% | 1 / 1 payload |
+| Bail-out rate | 0.00% | 0 calls |
+
+The aggressive R8 leg inlines and renames `newMessageInfo`; recovery succeeds
+by recognizing the validated `RawMessageInfo` constructor shape. Message class
+names are obfuscated, while this configuration leaves the field-name strings
+intact. The low type-fidelity score is expected: enum fields become `int32`,
+maps become repeated `bytes`, and message references lose exact qualification.
 
 ## Tier B real-app run — 2026-08-16
 
