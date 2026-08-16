@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "apps": [
+    {
+      "id": "signal-android-8-22-2",
+      "license": "AGPL-3.0-only",
+      "source_commit": "e3a7a9c8764bf5961bbbb54f5d72d1056dd3974e",
+      "schema_tree_url": "https://github.com/signalapp/Signal-Android/tree/e3a7a9c8764bf5961bbbb54f5d72d1056dd3974e",
+      "schema_paths": ["lib/libsignal-service/src/main/protowire/SignalService.proto", "lib/libsignal-service/src/main/protowire/StorageService.proto"],
+      "artifact": {
+        "url": "https://github.com/signalapp/Signal-Android/releases/download/v8.22.2/Signal-Android-github-prod-universal-release-8.22.2.apk",
+        "sha256": "6389b88b482640a3e03b4e1c13a278431326fd66a96dab76a446727b883b30f3",
+        "size": 119897011
+      }
+    },
+    {
+      "id": "molly-8-19-2-4",
+      "license": "AGPL-3.0-only",
+      "source_commit": "0e202dda90785771ff8c87526eaaf30c655f54f3",
+      "schema_tree_url": "https://github.com/mollyim/mollyim-android/tree/0e202dda90785771ff8c87526eaaf30c655f54f3",
+      "schema_paths": ["lib/libsignal-service/src/main/protowire/SignalService.proto", "lib/libsignal-service/src/main/protowire/StorageService.proto"],
+      "artifact": {
+        "url": "https://github.com/mollyim/mollyim-android/releases/download/v8.19.2-4/Molly-v8.19.2-4.apk",
+        "sha256": "f1c6fd929f9047809a7a9bb4e663d1ec1ec4d9f33d9794799c8e2f8e1663ec11",
+        "size": 96755948
+      }
+    },
+    {
+      "id": "mullvad-android-2026-8",
+      "license": "GPL-3.0-only",
+      "source_commit": "4dd3b1e684a33d09a02c26799b62c174ddffad88",
+      "schema_tree_url": "https://github.com/mullvad/mullvadvpn-app/tree/4dd3b1e684a33d09a02c26799b62c174ddffad88",
+      "schema_paths": ["android/lib/repository/src/main/proto/user_prefs.proto", "mullvad-management-interface/proto/management_interface.proto"],
+      "artifact": {
+        "url": "https://github.com/mullvad/mullvadvpn-app/releases/download/android/2026.8/MullvadVPN-2026.8.apk",
+        "sha256": "40b6d740ede6d806bc8849f831b53929e658db6f4325c773d064c601c31e4081",
+        "size": 37972635
+      }
+    }
+  ]
+}
