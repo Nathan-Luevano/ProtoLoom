@@ -115,11 +115,7 @@ def extract_lite(dex: DexFile) -> LiteExtraction:
         index
         for index, method in enumerate(dex.methods)
         if dex.method_name(method) == "newMessageInfo"
-        and dex.types[method.class_index].endswith("/GeneratedMessageLite;")
     }
-    if not targets:
-        return LiteExtraction((), ())
-
     for method, code in dex.iter_code_items():
         found, failed = _scan_method(dex, method, code, targets)
         findings.extend(found)
@@ -215,12 +211,20 @@ def _scan_method(
                     if missing is not None:
                         array.values[missing] = stored_value
                         array.heuristic = True
-        elif opcode in {0x71, 0x77}:
+        elif opcode in {0x70, 0x71, 0x76, 0x77}:
             target = units[1]
-            if target not in targets:
-                pending_result = None
-                continue
             argument_registers = _invoke_registers(instruction)
+            is_named_target = target in targets
+            is_inlined_constructor = (
+                dex.method_name(dex.methods[target]) == "<init>"
+                and len(argument_registers) == 4
+                and _register_is_info_string(registers, argument_registers[2])
+            )
+            if not is_named_target and not is_inlined_constructor:
+                pending_result = LiteObject("call_result", target)
+                continue
+            if is_inlined_constructor:
+                argument_registers = argument_registers[1:]
             finding, reason = _resolve_call(
                 dex, method, code, instruction, argument_registers, registers
             )
@@ -284,6 +288,17 @@ def _resolve_call(
     )
 
 
+def _register_is_info_string(registers: dict[int, Any], register: int) -> bool:
+    value = registers.get(register)
+    if not isinstance(value, LiteObject) or value.kind != "string":
+        return False
+    try:
+        decode_info_string(str(value.value))
+    except InfoStringError:
+        return False
+    return True
+
+
 def _pool_object(kind: str, index: int, values: tuple[str, ...]) -> LiteObject:
     if index >= len(values):
         return LiteObject(f"invalid_{kind}", index)
@@ -306,7 +321,7 @@ def _move_object(registers: dict[int, Any], instruction: _Instruction) -> None:
 
 def _invoke_registers(instruction: _Instruction) -> tuple[int, ...]:
     units = instruction.units
-    if instruction.opcode in {0x25, 0x77}:
+    if instruction.opcode in {0x25, 0x76, 0x77}:
         count = units[0] >> 8
         return tuple(range(units[2], units[2] + count))
     count = units[0] >> 12

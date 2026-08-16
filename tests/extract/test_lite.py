@@ -92,6 +92,27 @@ def test_extracts_info_string_and_ordered_objects() -> None:
     )
 
 
+def test_subclass_owned_new_message_info_reference_is_supported() -> None:
+    dex = FakeDex(
+        complete_instructions(), ("owner", "newMessageInfo", info_string(), "name_")
+    )
+    dex.types = ("Lmatrix/Thing;", "[Ljava/lang/Object;", "LNested;")
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+
+
+def test_inlined_raw_message_info_constructor_is_detected() -> None:
+    base = complete_instructions()
+    instructions = (*base[:-4], 0x4070, 0, 0x1205, 0x0E)
+    dex = FakeDex(instructions, ("<init>", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+
+
 def test_records_incomplete_array_as_a_bailout() -> None:
     instructions = complete_instructions()
     second_aput = instructions.index(0x034D, instructions.index(0x034D) + 1)
@@ -173,6 +194,18 @@ def test_unknown_array_size_expands_from_aput_indexes() -> None:
     assert len(result.findings) == 1
     assert len(result.findings[0].objects) == 2
     assert result.findings[0].heuristic
+
+
+def test_object_result_from_helper_call_can_fill_array() -> None:
+    base = list(complete_instructions())
+    class_at = base.index(0x031C)
+    base[class_at : class_at + 2] = (0x71, 0, 0, 0x030C)
+    dex = FakeDex(tuple(base), ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert result.findings[0].objects[1].kind == "call_result"
 
 
 def test_fill_array_data_keeps_instruction_alignment() -> None:

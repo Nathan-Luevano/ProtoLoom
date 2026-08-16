@@ -40,9 +40,6 @@ def _field_objects(
             if cursor < len(objects) and objects[cursor].kind == "class":
                 class_name = _class_name(str(objects[cursor].value))
                 cursor += 1
-                if name is None:
-                    raw_class = str(objects[cursor - 1].value).removesuffix(";")
-                    name = raw_class.rsplit("$", 1)[-1]
         elif kind.proto_type == "enum" and cursor < len(objects):
             if objects[cursor].kind in {"class", "static_field"}:
                 cursor += 1
@@ -79,8 +76,16 @@ def decode_lite_finding(
     ):
         kind = field_type(item.type_id)
         type_name = kind.proto_type
+        guessed_type = False
         if type_name in {"message", "group"}:
-            type_name = auxiliary_class or f"RecoveredField{item.number}"
+            if auxiliary_class is not None:
+                type_name = auxiliary_class
+            elif normalized_name is not None:
+                type_name = "".join(part.title() for part in normalized_name.split("_"))
+                guessed_type = True
+            else:
+                type_name = f"RecoveredField{item.number}"
+                guessed_type = True
         elif type_name == "enum":
             type_name = "int32"
         elif type_name == "map":
@@ -95,7 +100,7 @@ def decode_lite_finding(
             name = normalized_name
         if speculative_name:
             confidence = Confidence.SPECULATIVE
-        elif finding.heuristic:
+        elif finding.heuristic or guessed_type:
             confidence = Confidence.MEDIUM
         else:
             confidence = Confidence.HIGH

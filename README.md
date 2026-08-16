@@ -14,10 +14,12 @@ report, and a self-contained HTML dashboard. The core path is deterministic and
 does not use an LLM or require a decompiler.
 
 This is alpha software. Path 1 has exact-descriptor unit coverage. The lite
-decoder is pinned to protobuf v33.6 upstream source and has format/dataflow unit
-coverage, but the roadmap's javalite accuracy thresholds have not yet been
-measured on the full Android compilation matrix. The published benchmark table
-is therefore a harness calibration, not an extractor accuracy claim.
+decoder is pinned to protobuf v33.6 upstream source. A hash-pinned matrix across
+protobuf-javalite 3.21.12, 4.29.3, and 4.35.1 plus default/aggressive R8 records
+100% field recall, wire-type accuracy, compile rate, and byte-identical
+round-trip rate on the local hostile schema. Real Mullvad ground truth records
+90.91% field recall and 100% wire-type accuracy. The lower structural, enum,
+and exact-type results are published rather than hidden.
 
 ## Quick start
 

@@ -31,10 +31,21 @@ at the pinned size, verifies SHA-256, and atomically installs a match. It refuse
 to overwrite a mismatch. These controls make the input reproducible; they do
 not make an APK safe to execute.
 
-## The table is deliberately not here yet
+## The first measured cliff
 
-No extraction run has produced a defensible R8-cliff number in this milestone,
-so this draft does not invent one. The final table will separate:
+The pinned local matrix now has a defensible first result. Protobuf-javalite
+4.35.1 compiled through both default and aggressive R8 8.3.37 recovered all 13
+fields with 100% wire-type accuracy, 100% compile rate, a byte-identical payload
+round trip, and zero bail-outs. Aggressive R8 inlined and renamed
+`newMessageInfo`; constructor-shape recovery still found the metadata.
+
+The damage appeared somewhere subtler: message class names were obfuscated,
+while field-name strings survived this configuration. Exact type fidelity was
+61.54%, name recovery was 84.62%, structural fidelity was 50%, and enum-value
+recovery was zero. Those numbers separate a successful wire schema from a
+faithful source reconstruction.
+
+The expanded real-app table will continue to separate:
 
 - call-site coverage;
 - dataflow bailout rate and reason;

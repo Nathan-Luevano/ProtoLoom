@@ -105,7 +105,8 @@ def _truth_messages(
         )
     ]
     for nested in raw.nested_type:
-        messages.extend(_truth_messages(nested, name, name))
+        if not nested.options.map_entry:
+            messages.extend(_truth_messages(nested, name, name))
     return messages
 
 
