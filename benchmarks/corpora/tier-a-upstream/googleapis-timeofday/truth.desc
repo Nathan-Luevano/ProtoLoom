@@ -1,0 +1,9 @@
+
+Š
+google/type/timeofday.protogoogle.type"k
+	TimeOfDay
+hours (Rhours
+minutes (Rminutes
+seconds (Rseconds
+nanos (RnanosBi
+com.google.typeBTimeOfDayProtoPZ>google.golang.org/genproto/googleapis/type/timeofday;timeofday¢GTPbproto3

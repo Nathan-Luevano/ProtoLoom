@@ -1,0 +1,29 @@
+{
+  "compiled": true,
+  "enums": [],
+  "messages": [
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "latitude",
+          "number": 1,
+          "proto_type": "double",
+          "wire_type": 1
+        },
+        {
+          "label": "optional",
+          "name": "longitude",
+          "number": 2,
+          "proto_type": "double",
+          "wire_type": 1
+        }
+      ],
+      "name": "google.type.LatLng"
+    }
+  ],
+  "round_trip": {
+    "passed": 0,
+    "total": 0
+  }
+}

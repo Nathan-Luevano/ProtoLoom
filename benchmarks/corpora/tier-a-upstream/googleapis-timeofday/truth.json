@@ -1,0 +1,43 @@
+{
+  "compiled": true,
+  "enums": [],
+  "messages": [
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "hours",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "minutes",
+          "number": 2,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "seconds",
+          "number": 3,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "nanos",
+          "number": 4,
+          "proto_type": "int32",
+          "wire_type": 0
+        }
+      ],
+      "name": "google.type.TimeOfDay"
+    }
+  ],
+  "round_trip": {
+    "passed": 0,
+    "total": 0
+  }
+}

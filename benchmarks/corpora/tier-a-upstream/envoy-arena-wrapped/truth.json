@@ -1,0 +1,41 @@
+{
+  "compiled": true,
+  "enums": [],
+  "messages": [
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "stringval",
+          "number": 1,
+          "proto_type": "string",
+          "wire_type": 2
+        }
+      ],
+      "name": "test.SubMessage"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "name",
+          "number": 1,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "sub",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "test.TestMessage"
+    }
+  ],
+  "round_trip": {
+    "passed": 0,
+    "total": 0
+  }
+}

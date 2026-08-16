@@ -1,0 +1,1236 @@
+{
+  "compiled": true,
+  "enums": [
+    {
+      "name": "proto3_unittest.ForeignEnum",
+      "values": [
+        [
+          "FOREIGN_ZERO",
+          0
+        ],
+        [
+          "FOREIGN_FOO",
+          4
+        ],
+        [
+          "FOREIGN_BAR",
+          5
+        ],
+        [
+          "FOREIGN_BAZ",
+          6
+        ],
+        [
+          "FOREIGN_LARGE",
+          123456
+        ]
+      ]
+    },
+    {
+      "name": "proto3_unittest.TestAllTypes.NestedEnum",
+      "values": [
+        [
+          "ZERO",
+          0
+        ],
+        [
+          "FOO",
+          1
+        ],
+        [
+          "BAR",
+          2
+        ],
+        [
+          "BAZ",
+          3
+        ],
+        [
+          "NEG",
+          -1
+        ]
+      ]
+    },
+    {
+      "name": "proto3_unittest.TestOneof2.NestedEnum",
+      "values": [
+        [
+          "UNKNOWN",
+          0
+        ],
+        [
+          "FOO",
+          1
+        ],
+        [
+          "BAR",
+          2
+        ],
+        [
+          "BAZ",
+          3
+        ]
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "optional_int32",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "optional_int64",
+          "number": 2,
+          "proto_type": "int64",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "optional_uint32",
+          "number": 3,
+          "proto_type": "uint32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "optional_uint64",
+          "number": 4,
+          "proto_type": "uint64",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "optional_sint32",
+          "number": 5,
+          "proto_type": "sint32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "optional_sint64",
+          "number": 6,
+          "proto_type": "sint64",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "optional_fixed32",
+          "number": 7,
+          "proto_type": "fixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "optional",
+          "name": "optional_fixed64",
+          "number": 8,
+          "proto_type": "fixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "optional",
+          "name": "optional_sfixed32",
+          "number": 9,
+          "proto_type": "sfixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "optional",
+          "name": "optional_sfixed64",
+          "number": 10,
+          "proto_type": "sfixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "optional",
+          "name": "optional_float",
+          "number": 11,
+          "proto_type": "float",
+          "wire_type": 5
+        },
+        {
+          "label": "optional",
+          "name": "optional_double",
+          "number": 12,
+          "proto_type": "double",
+          "wire_type": 1
+        },
+        {
+          "label": "optional",
+          "name": "optional_bool",
+          "number": 13,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "optional_string",
+          "number": 14,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "optional_bytes",
+          "number": 15,
+          "proto_type": "bytes",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "optional_nested_message",
+          "number": 18,
+          "oneof": "_optional_nested_message",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "optional_foreign_message",
+          "number": 19,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "optional_import_message",
+          "number": 20,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "optional_nested_enum",
+          "number": 21,
+          "proto_type": "enum",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "optional_foreign_enum",
+          "number": 22,
+          "proto_type": "enum",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "optional_string_piece",
+          "number": 24,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "optional_cord",
+          "number": 25,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "optional_public_import_message",
+          "number": 26,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "optional_lazy_message",
+          "number": 27,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "optional_unverified_lazy_message",
+          "number": 28,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "optional_lazy_import_message",
+          "number": 115,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_int32",
+          "number": 31,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_int64",
+          "number": 32,
+          "proto_type": "int64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_uint32",
+          "number": 33,
+          "proto_type": "uint32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_uint64",
+          "number": 34,
+          "proto_type": "uint64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sint32",
+          "number": 35,
+          "proto_type": "sint32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sint64",
+          "number": 36,
+          "proto_type": "sint64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_fixed32",
+          "number": 37,
+          "proto_type": "fixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_fixed64",
+          "number": 38,
+          "proto_type": "fixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sfixed32",
+          "number": 39,
+          "proto_type": "sfixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sfixed64",
+          "number": 40,
+          "proto_type": "sfixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_float",
+          "number": 41,
+          "proto_type": "float",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_double",
+          "number": 42,
+          "proto_type": "double",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_bool",
+          "number": 43,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_string",
+          "number": 44,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_bytes",
+          "number": 45,
+          "proto_type": "bytes",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_nested_message",
+          "number": 48,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_foreign_message",
+          "number": 49,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_import_message",
+          "number": 50,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_nested_enum",
+          "number": 51,
+          "proto_type": "enum",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_foreign_enum",
+          "number": 52,
+          "proto_type": "enum",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_string_piece",
+          "number": 54,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_cord",
+          "number": 55,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_lazy_message",
+          "number": 57,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "oneof_uint32",
+          "number": 111,
+          "oneof": "oneof_field",
+          "proto_type": "uint32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "oneof_nested_message",
+          "number": 112,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "oneof_string",
+          "number": 113,
+          "oneof": "oneof_field",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "oneof_bytes",
+          "number": 114,
+          "oneof": "oneof_field",
+          "proto_type": "bytes",
+          "wire_type": 2
+        }
+      ],
+      "name": "proto3_unittest.TestAllTypes"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "bb",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        }
+      ],
+      "name": "proto3_unittest.TestAllTypes.NestedMessage"
+    },
+    {
+      "fields": [
+        {
+          "label": "repeated",
+          "name": "packed_int32",
+          "number": 90,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "packed_int64",
+          "number": 91,
+          "proto_type": "int64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "packed_uint32",
+          "number": 92,
+          "proto_type": "uint32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "packed_uint64",
+          "number": 93,
+          "proto_type": "uint64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "packed_sint32",
+          "number": 94,
+          "proto_type": "sint32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "packed_sint64",
+          "number": 95,
+          "proto_type": "sint64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "packed_fixed32",
+          "number": 96,
+          "proto_type": "fixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "packed_fixed64",
+          "number": 97,
+          "proto_type": "fixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "packed_sfixed32",
+          "number": 98,
+          "proto_type": "sfixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "packed_sfixed64",
+          "number": 99,
+          "proto_type": "sfixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "packed_float",
+          "number": 100,
+          "proto_type": "float",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "packed_double",
+          "number": 101,
+          "proto_type": "double",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "packed_bool",
+          "number": 102,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "packed_enum",
+          "number": 103,
+          "proto_type": "enum",
+          "wire_type": 0
+        }
+      ],
+      "name": "proto3_unittest.TestPackedTypes"
+    },
+    {
+      "fields": [
+        {
+          "label": "repeated",
+          "name": "repeated_int32",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_int64",
+          "number": 2,
+          "proto_type": "int64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_uint32",
+          "number": 3,
+          "proto_type": "uint32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_uint64",
+          "number": 4,
+          "proto_type": "uint64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sint32",
+          "number": 5,
+          "proto_type": "sint32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sint64",
+          "number": 6,
+          "proto_type": "sint64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_fixed32",
+          "number": 7,
+          "proto_type": "fixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_fixed64",
+          "number": 8,
+          "proto_type": "fixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sfixed32",
+          "number": 9,
+          "proto_type": "sfixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sfixed64",
+          "number": 10,
+          "proto_type": "sfixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_float",
+          "number": 11,
+          "proto_type": "float",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_double",
+          "number": 12,
+          "proto_type": "double",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_bool",
+          "number": 13,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_nested_enum",
+          "number": 14,
+          "proto_type": "enum",
+          "wire_type": 0
+        }
+      ],
+      "name": "proto3_unittest.TestUnpackedTypes"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "child",
+          "number": 1,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "payload",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "proto3_unittest.NestedTestAllTypes"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "c",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        }
+      ],
+      "name": "proto3_unittest.ForeignMessage"
+    },
+    {
+      "fields": [],
+      "name": "proto3_unittest.TestEmptyMessage"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "dummy",
+          "number": 536870911,
+          "proto_type": "bool",
+          "wire_type": 0
+        }
+      ],
+      "name": "proto3_unittest.TestMessageWithDummy"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "foo_enum",
+          "number": 6,
+          "oneof": "foo",
+          "proto_type": "enum",
+          "wire_type": 0
+        }
+      ],
+      "name": "proto3_unittest.TestOneof2"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "b1",
+          "number": 1,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b2",
+          "number": 2,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b3",
+          "number": 3,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b4",
+          "number": 4,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b5",
+          "number": 5,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b6",
+          "number": 6,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b7",
+          "number": 7,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b8",
+          "number": 8,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b9",
+          "number": 9,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b10",
+          "number": 10,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b11",
+          "number": 11,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b12",
+          "number": 12,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b13",
+          "number": 13,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b14",
+          "number": 14,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b15",
+          "number": 15,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b16",
+          "number": 16,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b17",
+          "number": 17,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b18",
+          "number": 18,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b19",
+          "number": 19,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b20",
+          "number": 20,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b21",
+          "number": 21,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b22",
+          "number": 22,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b23",
+          "number": 23,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b24",
+          "number": 24,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b25",
+          "number": 25,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b26",
+          "number": 26,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b27",
+          "number": 27,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b28",
+          "number": 28,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b29",
+          "number": 29,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b30",
+          "number": 30,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b31",
+          "number": 31,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b32",
+          "number": 32,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b33",
+          "number": 33,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b34",
+          "number": 34,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b35",
+          "number": 35,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b36",
+          "number": 36,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b37",
+          "number": 37,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b38",
+          "number": 38,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b39",
+          "number": 39,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b40",
+          "number": 40,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b41",
+          "number": 41,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b42",
+          "number": 42,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b43",
+          "number": 43,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b44",
+          "number": 44,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b45",
+          "number": 45,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b46",
+          "number": 46,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b47",
+          "number": 47,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b48",
+          "number": 48,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b49",
+          "number": 49,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b50",
+          "number": 50,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b51",
+          "number": 51,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b52",
+          "number": 52,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b53",
+          "number": 53,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b54",
+          "number": 54,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b55",
+          "number": 55,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b56",
+          "number": 56,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b57",
+          "number": 57,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b58",
+          "number": 58,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b59",
+          "number": 59,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b60",
+          "number": 60,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b61",
+          "number": 61,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b62",
+          "number": 62,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b63",
+          "number": 63,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b64",
+          "number": 64,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b65",
+          "number": 65,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b66",
+          "number": 66,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b67",
+          "number": 67,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b68",
+          "number": 68,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "b69",
+          "number": 69,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "child",
+          "number": 100,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "proto3_unittest.TestHasbits"
+    }
+  ],
+  "round_trip": {
+    "passed": 0,
+    "total": 0
+  }
+}
