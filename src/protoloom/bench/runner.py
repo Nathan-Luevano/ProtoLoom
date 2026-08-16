@@ -56,6 +56,20 @@ def render_report(report: AggregateReport, per_target: bool = False) -> str:
             f"{metric:25} {report.macro[metric]:9.2%} "
             f"{report.micro[metric]:9.2%} {label} {value:.2%}"
         )
+    ceiling_lead = min(
+        report.type_fidelity_ceiling_macro, report.type_fidelity_ceiling_micro
+    )
+    ceiling_label = (
+        "macro"
+        if report.type_fidelity_ceiling_macro <= report.type_fidelity_ceiling_micro
+        else "micro"
+    )
+    lines.append(
+        f"{'type_fidelity_ceiling':25} "
+        f"{report.type_fidelity_ceiling_macro:9.2%} "
+        f"{report.type_fidelity_ceiling_micro:9.2%} "
+        f"{ceiling_label} {ceiling_lead:.2%}"
+    )
     if per_target:
         lines.extend(("", "per target"))
         for target in report.targets:
@@ -65,7 +79,10 @@ def render_report(report: AggregateReport, per_target: bool = False) -> str:
 
 def _target_line(report: MetricReport) -> str:
     values = " ".join(f"{metric}={report.value(metric):.2%}" for metric in METRIC_NAMES)
-    return f"{report.target}: {values}"
+    return (
+        f"{report.target}: {values} "
+        f"type_fidelity_ceiling={report.type_fidelity_ceiling.value:.2%}"
+    )
 
 
 def _message(value: object) -> BenchmarkMessage:
