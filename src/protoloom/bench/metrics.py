@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
+from math import nan
 from statistics import fmean
 from types import MappingProxyType
 from typing import Final
@@ -153,15 +154,23 @@ def score_target(
 def aggregate_reports(reports: list[MetricReport]) -> AggregateReport:
     if not reports:
         raise ValueError("at least one target report is required")
-    macro = {
-        metric: fmean(report.value(metric) for report in reports)
-        for metric in METRIC_NAMES
-    }
+    macro = {}
+    for metric in METRIC_NAMES:
+        measured = [
+            report.value(metric)
+            for report in reports
+            if metric != "round_trip_rate" or report.scores[metric].denominator > 0
+        ]
+        macro[metric] = fmean(measured) if measured else nan
     micro = {}
     for metric in METRIC_NAMES:
         numerator = sum(report.scores[metric].numerator for report in reports)
         denominator = sum(report.scores[metric].denominator for report in reports)
-        micro[metric] = Score(numerator, denominator).value
+        micro[metric] = (
+            nan
+            if metric == "round_trip_rate" and denominator == 0
+            else Score(numerator, denominator).value
+        )
     ceiling_numerator = sum(
         report.type_fidelity_ceiling.numerator for report in reports
     )
