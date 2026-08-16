@@ -27,6 +27,7 @@ and exact-type results are published rather than hidden.
 uv tool install .
 protoloom inspect app.apk
 protoloom extract app.apk --output out
+protoloom extract app.apk --jadx --output out
 protoloom demo
 protoloom bench --corpus tier-a-small --per-target
 protoloom doctor
@@ -35,6 +36,11 @@ protoloom doctor
 The `extract` command scans APK/AAB DEX and native members as well as raw DEX,
 ELF, Mach-O, PE, Go, and generic binary inputs. Unsupported lite bytecode is a
 visible bail-out, never a silently guessed schema.
+
+`--jadx` is an explicit Android-only fallback for retaining decompiled Java
+context under `out/jadx`. It is never used unless requested, runs without a
+shell, has a 120-second default timeout, and fails visibly when jadx is missing
+or unsuccessful. Change the bound with `--jadx-timeout`.
 
 ## Validation
 
@@ -48,11 +54,33 @@ The suite enforces Ruff formatting and linting, strict mypy, zero docstrings,
 layer boundaries, and the test suite. `protoloom demo` performs a complete
 recovery and emits operational artifacts without downloading a corpus.
 
-Real-app APKs are not redistributed. The Tier B manifest pins official Signal,
-Molly, and Mullvad release artifacts and matching immutable source revisions;
-`scripts/fetch_real_apps.py` verifies HTTPS, byte size, and SHA-256 before an
-atomic install. Captured traffic can be checked with the descriptor-driven
-round-trip validator.
+Real-app APKs are not redistributed. The Tier B manifest pins eight official
+release artifacts across seven independent schema families with matching
+immutable source revisions. `scripts/fetch_real_apps.py` verifies HTTPS, byte
+size, and SHA-256 before an atomic install. Captured traffic can be checked with
+the descriptor-driven round-trip validator; the published Tier C denominator
+remains zero until a genuine capture is available.
+
+## Honest floor and pbtk comparison
+
+On the pinned, unobfuscated Mullvad APK, pbtk 1.1.2 currently recovers a more
+faithful schema than ProtoLoom. This is the floor users should plan around, not
+a hidden caveat:
+
+| Metric | ProtoLoom | pbtk 1.1.2 |
+|---|---:|---:|
+| Field recall | 90.91% | 100.00% |
+| Wire-type accuracy | 100.00% | 100.00% |
+| Type fidelity | 50.37% | 100.00% |
+| Name recovery | 90.74% | 100.00% |
+| Structural fidelity | 16.36% | 100.00% |
+| Enum recovery | 0.00% | 100.00% |
+| Compile rate | 100.00% | 100.00% |
+
+ProtoLoom's advantage is a bounded direct parser with explicit confidence and
+no decompiler in its normal path, not better fidelity on every target. The full
+comparison, methodology, precision and label measurements are in
+`benchmarks/results.md`; `scripts/compare_pbtk.sh` reproduces the differential.
 
 ## Architecture
 
