@@ -3,6 +3,7 @@ import os
 import tempfile
 from collections import defaultdict
 from dataclasses import asdict
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Annotated
 
@@ -35,6 +36,12 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(package_version("protoloom"))
+        raise typer.Exit
 
 
 def _scan_blob(data: bytes, source: str) -> list[DescriptorFinding]:
@@ -296,7 +303,17 @@ def _corpus_path(value: str) -> Path:
 
 
 @app.callback()
-def main() -> None:
+def main(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show the installed version and exit.",
+        ),
+    ] = False,
+) -> None:
     pass
 
 

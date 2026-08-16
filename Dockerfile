@@ -14,7 +14,7 @@ RUN apt-get update \
 
 FROM python:3.11-slim-bookworm
 
-ARG VERSION=0.0.0
+ARG VERSION=0.1.0
 LABEL org.opencontainers.image.title="PROTOLOOM" \
       org.opencontainers.image.description="Recover protobuf schemas from stripped binaries" \
       org.opencontainers.image.version="${VERSION}" \
