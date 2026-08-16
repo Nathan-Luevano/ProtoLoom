@@ -109,6 +109,27 @@ def test_macro_and_micro_are_both_reported() -> None:
     assert aggregate.macro["field_recall"] == 0.5
     assert aggregate.micro["field_recall"] == 0.9
     assert aggregate.least_flattering("field_recall") == ("macro", 0.5)
+    assert aggregate.type_fidelity_ceiling_macro == 1
+    assert aggregate.type_fidelity_ceiling_micro == 1
+
+
+def test_standard_type_ceiling_is_published_by_target() -> None:
+    truth = BenchmarkSchema(
+        (
+            BenchmarkMessage(
+                "numbers",
+                (
+                    field(1, "a", "int32", 0),
+                    field(2, "b", "sint32", 0),
+                    field(3, "c", "uint32", 0),
+                    field(4, "d", "int32", 0),
+                    field(5, "name"),
+                ),
+            ),
+        )
+    )
+    report = score_target("numbers", truth, truth)
+    assert report.type_fidelity_ceiling.value == pytest.approx(3 / 5)
 
 
 def test_type_ceiling_uses_best_possible_ambiguous_choice() -> None:

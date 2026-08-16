@@ -40,7 +40,7 @@ def app(sha256: str = "0" * 64, size: int = 3) -> dict[str, object]:
 
 def test_repository_manifest_is_valid() -> None:
     apps = load_manifest(Path("benchmarks/corpus/tier-b-real-apps.json"))
-    assert len(apps) == 3
+    assert len(apps) == 8
 
 
 @pytest.mark.parametrize(

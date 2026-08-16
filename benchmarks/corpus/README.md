@@ -1,16 +1,21 @@
 # Real-app corpus
 
 `tier-b-real-apps.json` contains metadata only. APKs are fetched from official
-GitHub Releases and must never be added to this repository.
+project releases or F-Droid and must never be added to this repository.
 
-The three initial entries were checked on 2026-08-16 against the GitHub release
-API. Their `sha256` values are the asset digests published by GitHub, and their
-source commits are the immutable trees resolved from the corresponding release
-tags:
+All eight entries were downloaded and byte-verified on 2026-08-16. Their
+`sha256` and `size` values describe the downloaded release assets, and their
+source commits are immutable schema trees resolved from release tags or an
+application-pinned schema dependency:
 
 - Signal Android `v8.22.2`
 - Molly `v8.19.2-4`
 - Mullvad Android `2026.8`
+- Bitwarden Authenticator `v2026.7.1-bwa`
+- Meshtastic Android `v2.8.1-internal.3`
+- Flipper Android `1.8.1.1890`
+- Gadgetbridge `0.93.0` from F-Droid
+- Smartspacer `1.11.2`
 
 Run the fetcher with a destination outside the checkout:
 
@@ -20,7 +25,12 @@ uv run python scripts/fetch_real_apps.py \
   --app signal-android-8-22-2
 ```
 
-The manifest selects a small set of public schemas for initial comparisons. A
-source tree containing a schema does not by itself prove that the matching
-message was packaged into the APK; extraction runs must establish that and keep
-negative results.
+The manifest selects a small set of public schemas for initial comparisons.
+Signal and Molly intentionally remain a fork pair and count as one independent
+schema family. The other six entries use independent schema sources, giving
+seven independent families across eight shipping artifacts. A source tree
+containing a schema does not by itself prove that the matching message was
+packaged into the APK; extraction runs establish that and retain negative
+results. Flipper is the current negative control: its selected schemas are in
+the pinned source tree, but the direct lite extractor found no recoverable
+evidence in the release APK.

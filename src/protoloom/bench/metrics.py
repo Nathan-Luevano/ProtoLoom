@@ -17,6 +17,11 @@ METRIC_NAMES: Final = (
     "round_trip_rate",
 )
 
+TYPE_FIDELITY_AMBIGUITIES: Final = (
+    frozenset({"int32", "sint32", "uint32"}),
+    frozenset({"int64", "sint64", "uint64"}),
+)
+
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkField:
@@ -65,6 +70,7 @@ class Score:
 class MetricReport:
     target: str
     scores: Mapping[str, Score]
+    type_fidelity_ceiling: Score
 
     def value(self, metric: str) -> float:
         return self.scores[metric].value
@@ -75,6 +81,8 @@ class AggregateReport:
     macro: Mapping[str, float]
     micro: Mapping[str, float]
     targets: tuple[MetricReport, ...]
+    type_fidelity_ceiling_macro: float
+    type_fidelity_ceiling_micro: float
 
     def least_flattering(self, metric: str) -> tuple[str, float]:
         macro = self.macro[metric]
@@ -138,7 +146,8 @@ def score_target(
             metric: Score(0, max(score.denominator, 1))
             for metric, score in scores.items()
         }
-    return MetricReport(target, MappingProxyType(scores))
+    ceiling = type_fidelity_ceiling(truth, TYPE_FIDELITY_AMBIGUITIES)
+    return MetricReport(target, MappingProxyType(scores), ceiling)
 
 
 def aggregate_reports(reports: list[MetricReport]) -> AggregateReport:
@@ -153,8 +162,18 @@ def aggregate_reports(reports: list[MetricReport]) -> AggregateReport:
         numerator = sum(report.scores[metric].numerator for report in reports)
         denominator = sum(report.scores[metric].denominator for report in reports)
         micro[metric] = Score(numerator, denominator).value
+    ceiling_numerator = sum(
+        report.type_fidelity_ceiling.numerator for report in reports
+    )
+    ceiling_denominator = sum(
+        report.type_fidelity_ceiling.denominator for report in reports
+    )
     return AggregateReport(
-        MappingProxyType(macro), MappingProxyType(micro), tuple(reports)
+        MappingProxyType(macro),
+        MappingProxyType(micro),
+        tuple(reports),
+        fmean(report.type_fidelity_ceiling.value for report in reports),
+        Score(ceiling_numerator, ceiling_denominator).value,
     )
 
 

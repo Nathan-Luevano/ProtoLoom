@@ -24,6 +24,7 @@ def test_local_corpus_runs_end_to_end(tmp_path: Path) -> None:
     assert report.micro["round_trip_rate"] == 0.5
     assert "local-descriptor:" in output
     assert "macro" in output and "micro" in output and "lead" in output
+    assert "type_fidelity_ceiling" in output
 
 
 def test_compilation_matrix_driver_visits_every_variant() -> None:

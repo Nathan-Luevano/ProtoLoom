@@ -12,11 +12,13 @@ from google.protobuf.descriptor_pb2 import (
 
 from protoloom.bench.metrics import (
     METRIC_NAMES,
+    TYPE_FIDELITY_AMBIGUITIES,
     BenchmarkEnum,
     BenchmarkField,
     BenchmarkMessage,
     BenchmarkSchema,
     score_target,
+    type_fidelity_ceiling,
 )
 
 _WIRE_TYPES = {
@@ -126,13 +128,17 @@ def load_truth(path: Path, file_name: str) -> BenchmarkSchema:
     )
 
 
-def _recovered_message(raw: dict[str, Any], package: str) -> BenchmarkMessage:
+def _recovered_message(
+    raw: dict[str, Any], package: str, enum_names: set[str]
+) -> BenchmarkMessage:
     fields = tuple(
         BenchmarkField(
             field["number"],
             field["name"],
             field["type_name"],
-            _SCALAR_WIRES.get(field["type_name"], 2),
+            0
+            if field["type_name"] in enum_names
+            else _SCALAR_WIRES.get(field["type_name"], 2),
             field["label"],
             field["oneof"],
         )
@@ -162,12 +168,21 @@ def load_recovered(path: Path, package: str) -> BenchmarkSchema:
         )
     document = json.loads(path.read_text(encoding="utf-8"))
     schemas = [item for item in document["schemas"] if item["package"] == package]
+    enums = tuple(
+        BenchmarkEnum(
+            enum["name"],
+            tuple((value["name"], value["number"]) for value in enum["values"]),
+        )
+        for schema in schemas
+        for enum in schema["enums"]
+    )
+    enum_names = {enum.name for enum in enums}
     messages = tuple(
-        _recovered_message(message, schema["package"])
+        _recovered_message(message, schema["package"], enum_names)
         for schema in schemas
         for message in schema["messages"]
     )
-    return BenchmarkSchema(messages, compiled=True)
+    return BenchmarkSchema(messages, enums=enums, compiled=True)
 
 
 def main() -> None:
@@ -191,6 +206,11 @@ def main() -> None:
             )
         else:
             print(f"{metric}: n/a (0/0)")
+    ceiling = type_fidelity_ceiling(truth, TYPE_FIDELITY_AMBIGUITIES)
+    print(
+        "type_fidelity_ceiling: "
+        f"{ceiling.value:.2%} ({ceiling.numerator}/{ceiling.denominator})"
+    )
 
 
 if __name__ == "__main__":
