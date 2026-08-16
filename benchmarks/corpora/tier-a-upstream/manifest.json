@@ -14,12 +14,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "protobuf-unittest-proto3/recovered.json",
-        "sha256": "e5c86cceaff74f512c2ffd985836f61c399c3efc51503a435f9a123dc13643fe"
+        "sha256": "ae01394b006ef5ca3ccbf957b9f3acfc8814717008e89b53cc8db7e19bec0cb3"
       },
       "truth": {
         "name": "truth.json",
         "path": "protobuf-unittest-proto3/truth.json",
-        "sha256": "e5c86cceaff74f512c2ffd985836f61c399c3efc51503a435f9a123dc13643fe"
+        "sha256": "ae01394b006ef5ca3ccbf957b9f3acfc8814717008e89b53cc8db7e19bec0cb3"
       }
     },
     {
@@ -27,12 +27,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "protobuf-well-known-unittest/recovered.json",
-        "sha256": "749f8a7feb439aca53be56e64b99444ebcf9b7a96f041eb47f57b43a4ee57ea7"
+        "sha256": "064354ba93f71d21aafd6f01488d1c59db3ff870023149cea6caf0f62848b7fb"
       },
       "truth": {
         "name": "truth.json",
         "path": "protobuf-well-known-unittest/truth.json",
-        "sha256": "749f8a7feb439aca53be56e64b99444ebcf9b7a96f041eb47f57b43a4ee57ea7"
+        "sha256": "064354ba93f71d21aafd6f01488d1c59db3ff870023149cea6caf0f62848b7fb"
       }
     },
     {
@@ -40,12 +40,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "protobuf-test-messages-proto3/recovered.json",
-        "sha256": "ea02b9e0f50606d992a630cd42454d8abaf09e1534ee0f421cc2655c4d1a8814"
+        "sha256": "557a5ecc32da151cc2b0a92fc215320f37e7c88d7e33b83e61de6a71ab845798"
       },
       "truth": {
         "name": "truth.json",
         "path": "protobuf-test-messages-proto3/truth.json",
-        "sha256": "ea02b9e0f50606d992a630cd42454d8abaf09e1534ee0f421cc2655c4d1a8814"
+        "sha256": "557a5ecc32da151cc2b0a92fc215320f37e7c88d7e33b83e61de6a71ab845798"
       }
     },
     {
@@ -53,12 +53,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "protobuf-conformance/recovered.json",
-        "sha256": "51ee8bfa5a354d4c58eaa8791157d8c02b484a1d83ac7b6eb67eba272ab9952b"
+        "sha256": "71845b2fbe895e6a93fb150c9d5f1ca01b5f37af5cb76ee8764bf3f9f9cb9f31"
       },
       "truth": {
         "name": "truth.json",
         "path": "protobuf-conformance/truth.json",
-        "sha256": "51ee8bfa5a354d4c58eaa8791157d8c02b484a1d83ac7b6eb67eba272ab9952b"
+        "sha256": "71845b2fbe895e6a93fb150c9d5f1ca01b5f37af5cb76ee8764bf3f9f9cb9f31"
       }
     },
     {
@@ -66,12 +66,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "googleapis-date/recovered.json",
-        "sha256": "2fd2b044f5eed8d768704ce3867df81ae552896429c54b77e873c6992b2a9e4c"
+        "sha256": "71b0d84f9c3370a87b793be45bb100a956c6a6cdd3b0ce4d1efe6fe354680305"
       },
       "truth": {
         "name": "truth.json",
         "path": "googleapis-date/truth.json",
-        "sha256": "2fd2b044f5eed8d768704ce3867df81ae552896429c54b77e873c6992b2a9e4c"
+        "sha256": "71b0d84f9c3370a87b793be45bb100a956c6a6cdd3b0ce4d1efe6fe354680305"
       }
     },
     {
@@ -79,12 +79,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "googleapis-money/recovered.json",
-        "sha256": "315b988a83de0a1b38973bf13250fdc3d52fa171b03e5eb72562cfa6779a0d53"
+        "sha256": "e6610ead704570b932971907fa4d3c3c82a3988ca45f56fef629e9d57de5389d"
       },
       "truth": {
         "name": "truth.json",
         "path": "googleapis-money/truth.json",
-        "sha256": "315b988a83de0a1b38973bf13250fdc3d52fa171b03e5eb72562cfa6779a0d53"
+        "sha256": "e6610ead704570b932971907fa4d3c3c82a3988ca45f56fef629e9d57de5389d"
       }
     },
     {
@@ -92,12 +92,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "googleapis-latlng/recovered.json",
-        "sha256": "41ac4a17e05970b8e986c0625dea5f8f18c60afe400e454b376b144b12df8cd1"
+        "sha256": "0093893266eec6408cee9fe187f63db30908a838ebaec15fddddd6e047c87abf"
       },
       "truth": {
         "name": "truth.json",
         "path": "googleapis-latlng/truth.json",
-        "sha256": "41ac4a17e05970b8e986c0625dea5f8f18c60afe400e454b376b144b12df8cd1"
+        "sha256": "0093893266eec6408cee9fe187f63db30908a838ebaec15fddddd6e047c87abf"
       }
     },
     {
@@ -105,12 +105,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "googleapis-timeofday/recovered.json",
-        "sha256": "d0a7daad61d3e356d60d4f7ebbe44ab269063bb102e512176c67c6b7a495e05a"
+        "sha256": "9811c3854857ebce731acde418041279a3d46f6554362a34de7908e06ae7cfa3"
       },
       "truth": {
         "name": "truth.json",
         "path": "googleapis-timeofday/truth.json",
-        "sha256": "d0a7daad61d3e356d60d4f7ebbe44ab269063bb102e512176c67c6b7a495e05a"
+        "sha256": "9811c3854857ebce731acde418041279a3d46f6554362a34de7908e06ae7cfa3"
       }
     },
     {
@@ -118,12 +118,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "googleapis-month/recovered.json",
-        "sha256": "9c59c15d1e64c8f4a69b9a4f7b73b26a7c73dcabfb7487fae0d3ddb4fa3ed157"
+        "sha256": "6795e76460cf2481066b9fc904ae723579061182185bd3db2b76d9464cb1836a"
       },
       "truth": {
         "name": "truth.json",
         "path": "googleapis-month/truth.json",
-        "sha256": "9c59c15d1e64c8f4a69b9a4f7b73b26a7c73dcabfb7487fae0d3ddb4fa3ed157"
+        "sha256": "6795e76460cf2481066b9fc904ae723579061182185bd3db2b76d9464cb1836a"
       }
     },
     {
@@ -131,12 +131,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "grpc-health/recovered.json",
-        "sha256": "e0fc9b9ffafe542314e90a102d2cb9830332de87b5789c7ecf203e1fe97bba71"
+        "sha256": "345cc41569734b035f41e55691fa437eb1f9fe767496628b3c74faeb99137c13"
       },
       "truth": {
         "name": "truth.json",
         "path": "grpc-health/truth.json",
-        "sha256": "e0fc9b9ffafe542314e90a102d2cb9830332de87b5789c7ecf203e1fe97bba71"
+        "sha256": "345cc41569734b035f41e55691fa437eb1f9fe767496628b3c74faeb99137c13"
       }
     },
     {
@@ -144,12 +144,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "envoy-helloworld/recovered.json",
-        "sha256": "52ca5b665cbbb89df29420c65f98eaa546981203add46e06a03b0e2d16c3a785"
+        "sha256": "8679439d89ff17699bd2b16379901697fc4365320db7e7bc44e5659658898026"
       },
       "truth": {
         "name": "truth.json",
         "path": "envoy-helloworld/truth.json",
-        "sha256": "52ca5b665cbbb89df29420c65f98eaa546981203add46e06a03b0e2d16c3a785"
+        "sha256": "8679439d89ff17699bd2b16379901697fc4365320db7e7bc44e5659658898026"
       }
     },
     {
@@ -157,12 +157,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "envoy-extraction/recovered.json",
-        "sha256": "d0ec79536a37ec5c1a9cc77fdc8b36c4a82cb8bf57429f2e408228fecba444f2"
+        "sha256": "92655096cce0c7b8f5cbf0108a9d5a19cbdc48ef4c0e889de856c26403a69765"
       },
       "truth": {
         "name": "truth.json",
         "path": "envoy-extraction/truth.json",
-        "sha256": "d0ec79536a37ec5c1a9cc77fdc8b36c4a82cb8bf57429f2e408228fecba444f2"
+        "sha256": "92655096cce0c7b8f5cbf0108a9d5a19cbdc48ef4c0e889de856c26403a69765"
       }
     },
     {
@@ -170,12 +170,12 @@
       "recovered": {
         "name": "recovered.json",
         "path": "envoy-arena-wrapped/recovered.json",
-        "sha256": "64f496219eae38dc63e83e06f340bcd9c94cee8ff0e117337c0a86306e89edf9"
+        "sha256": "21b7f5d6cf64c72f2adc81cfc5c2f32e695aaf194a7b6415ce553d92aca77ed0"
       },
       "truth": {
         "name": "truth.json",
         "path": "envoy-arena-wrapped/truth.json",
-        "sha256": "64f496219eae38dc63e83e06f340bcd9c94cee8ff0e117337c0a86306e89edf9"
+        "sha256": "21b7f5d6cf64c72f2adc81cfc5c2f32e695aaf194a7b6415ce553d92aca77ed0"
       }
     }
   ]

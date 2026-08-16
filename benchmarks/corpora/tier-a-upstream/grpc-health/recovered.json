@@ -87,5 +87,6 @@
   "round_trip": {
     "passed": 0,
     "total": 0
-  }
+  },
+  "type_fidelity_ambiguities": []
 }
