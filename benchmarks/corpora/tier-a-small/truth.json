@@ -1,0 +1,14 @@
+{
+  "compiled": true,
+  "round_trip": {"passed": 1, "total": 1},
+  "messages": [
+    {
+      "name": "protoloom.calibration.Record",
+      "fields": [
+        {"number": 1, "name": "id", "proto_type": "int32", "wire_type": 0},
+        {"number": 2, "name": "payload", "proto_type": "bytes", "wire_type": 2}
+      ]
+    }
+  ]
+}
+

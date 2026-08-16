@@ -1,0 +1,22 @@
+{
+  "name": "tier-a-small",
+  "matrix": {
+    "runtime": ["descriptor-calibration"],
+    "optimization": ["none"]
+  },
+  "targets": [
+    {
+      "name": "local-path1-calibration",
+      "truth": {
+        "name": "truth.json",
+        "path": "truth.json",
+        "sha256": "1ecfa103fdccd82f2e10d083ae471f5373a7c5b6859d07b63ea65523fbec7369"
+      },
+      "recovered": {
+        "name": "recovered.json",
+        "path": "recovered.json",
+        "sha256": "54470aefd6d3626bb4c9a8816ee442fd57e4c9ec274a784a8783023990e97f90"
+      }
+    }
+  ]
+}
