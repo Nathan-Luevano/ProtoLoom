@@ -134,6 +134,18 @@ def test_standard_type_ceiling_is_published_by_target() -> None:
     assert report.type_fidelity_ceiling.value == pytest.approx(3 / 5)
 
 
+def test_exact_descriptor_evidence_has_an_exact_type_ceiling() -> None:
+    truth = BenchmarkSchema(
+        (BenchmarkMessage("numbers", (field(1, "value", "sint32", 0),)),),
+        type_fidelity_ambiguities=(),
+    )
+    report = score_target("descriptor", truth, truth)
+
+    assert report.value("type_fidelity") == 1
+    assert report.type_fidelity_ceiling.value == 1
+    assert report.value("type_fidelity") <= report.type_fidelity_ceiling.value
+
+
 def test_type_ceiling_uses_best_possible_ambiguous_choice() -> None:
     truth = BenchmarkSchema(
         (
