@@ -5,8 +5,16 @@ from protoloom.container.dex import DexFile
 from protoloom.decode.fieldtype import field_type
 from protoloom.decode.infostring import decode_info_string
 from protoloom.decode.names import java_to_proto_name, names_are_obfuscated
-from protoloom.extract.lite import LiteFinding
-from protoloom.model import Confidence, Evidence, Field, Message, RecoveredSchema
+from protoloom.extract.lite import LiteFinding, recover_enum_evidence
+from protoloom.model import (
+    Confidence,
+    EnumType,
+    EnumValue,
+    Evidence,
+    Field,
+    Message,
+    RecoveredSchema,
+)
 
 
 def _class_name(descriptor: str) -> str:
@@ -17,9 +25,7 @@ def _class_name(descriptor: str) -> str:
     return "_".join(parts) or "RecoveredMessage"
 
 
-def _field_objects(
-    finding: LiteFinding,
-) -> tuple[list[str | None], list[str | None]]:
+def _field_objects(finding: LiteFinding) -> tuple[list[str | None], list[str | None]]:
     info = decode_info_string(finding.info_string)
     cursor = info.header.oneof_count * 2 + info.header.hasbits_count
     names: list[str | None] = []
@@ -41,7 +47,7 @@ def _field_objects(
                 class_name = _class_name(str(objects[cursor].value))
                 cursor += 1
         elif kind.proto_type == "enum" and cursor < len(objects):
-            if objects[cursor].kind in {"class", "static_field"}:
+            if objects[cursor].kind in {"class", "static_field", "call_result"}:
                 cursor += 1
         elif kind.proto_type == "map" and cursor < len(objects):
             cursor += 1
@@ -71,6 +77,7 @@ def decode_lite_finding(
         "protobuf-lite newMessageInfo",
     )
     fields: list[Field] = []
+    recovered_enums: dict[str, EnumType] = {}
     for item, java_name, normalized_name, auxiliary_class in zip(
         info.fields, java_names, normalized_names, auxiliary_classes, strict=True
     ):
@@ -87,7 +94,21 @@ def decode_lite_finding(
                 type_name = f"RecoveredField{item.number}"
                 guessed_type = True
         elif type_name == "enum":
-            type_name = "int32"
+            enum_evidence = (
+                recover_enum_evidence(dex, descriptor, java_name)
+                if java_name is not None
+                else None
+            )
+            if enum_evidence is None:
+                type_name = "int32"
+            else:
+                type_name = _class_name(enum_evidence.descriptor)
+                recovered_enums[type_name] = EnumType(
+                    type_name,
+                    [EnumValue(name, number) for name, number in enum_evidence.values],
+                    Confidence.HIGH,
+                    [evidence],
+                )
         elif type_name == "map":
             type_name = "bytes"
         speculative_name = (
@@ -132,5 +153,6 @@ def decode_lite_finding(
         package=package.replace("/", "."),
         syntax="proto2" if info.header.is_proto2 else "proto3",
         messages=[message],
+        enums=list(recovered_enums.values()),
         evidence=[evidence],
     )
