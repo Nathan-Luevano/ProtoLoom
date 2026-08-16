@@ -3,6 +3,7 @@ import os
 import tempfile
 from collections import defaultdict
 from dataclasses import asdict
+from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Annotated
@@ -10,6 +11,7 @@ from typing import Annotated
 import typer
 from google.protobuf.descriptor_pb2 import FileDescriptorProto, FileDescriptorSet
 
+from protoloom import __version__
 from protoloom.bench.corpus import CorpusError, load_manifest
 from protoloom.bench.runner import render_report, run_corpus
 from protoloom.container.apk import AndroidArchive
@@ -40,7 +42,11 @@ app = typer.Typer(
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(package_version("protoloom"))
+        try:
+            installed_version = package_version("protoloom")
+        except PackageNotFoundError:
+            installed_version = __version__
+        typer.echo(installed_version)
         raise typer.Exit
 
 

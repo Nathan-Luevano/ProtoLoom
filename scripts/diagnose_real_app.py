@@ -144,6 +144,22 @@ def _recovered_message(raw: dict[str, Any], package: str) -> BenchmarkMessage:
 
 
 def load_recovered(path: Path, package: str) -> BenchmarkSchema:
+    if path.suffix == ".desc":
+        descriptor_set = FileDescriptorSet()
+        descriptor_set.ParseFromString(path.read_bytes())
+        descriptor_messages: list[BenchmarkMessage] = []
+        descriptor_enums: list[BenchmarkEnum] = []
+        for descriptor in descriptor_set.file:
+            if descriptor.package != package:
+                continue
+            for message in descriptor.message_type:
+                descriptor_messages.extend(_truth_messages(message, descriptor.package))
+            descriptor_enums.extend(_enum(item) for item in descriptor.enum_type)
+        return BenchmarkSchema(
+            tuple(descriptor_messages),
+            enums=tuple(descriptor_enums),
+            compiled=True,
+        )
     document = json.loads(path.read_text(encoding="utf-8"))
     schemas = [item for item in document["schemas"] if item["package"] == package]
     messages = tuple(
