@@ -40,6 +40,12 @@ def test_gzip_scan_recovers_go_blob() -> None:
     assert findings[0].descriptor.SerializeToString() == expected
 
 
+def test_gzip_scan_ignores_false_magic_and_limits_inflation() -> None:
+    assert scan_gzip_descriptors(b"prefix\x1f\x8bnot-gzip") == []
+    compressed = gzip.compress(b"x" * 1024)
+    assert scan_gzip_descriptors(compressed, max_inflated_size=100) == []
+
+
 def test_descriptor_conversion_and_emission() -> None:
     schema = decode_file_descriptor(_descriptor(), "fixture", "0x6")
     emitted = emit_proto(schema)
@@ -61,4 +67,17 @@ def test_proto3_optional_emits_without_synthetic_oneof() -> None:
     emitted = emit_proto(decode_file_descriptor(descriptor, "fixture", "0"))
     assert "optional string nickname = 2;" in emitted
     assert "oneof _nickname" not in emitted
+    assert compile_proto(emitted).success
+
+
+def test_proto2_oneof_fields_have_no_label() -> None:
+    descriptor = _descriptor()
+    descriptor.syntax = "proto2"
+    message = descriptor.message_type[0]
+    message.oneof_decl.add(name="choice")
+    field = message.field[0]
+    field.oneof_index = 0
+    emitted = emit_proto(decode_file_descriptor(descriptor, "fixture", "0"))
+    assert "oneof choice" in emitted
+    assert "optional string text" not in emitted
     assert compile_proto(emitted).success
