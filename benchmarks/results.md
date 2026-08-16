@@ -27,6 +27,12 @@ both inputs.
 
 ## Extractor baselines
 
-No Path 1 corpus result has been recorded yet. The benchmark runner is ready,
-but CLI integration and a generated descriptor corpus remain integration work.
-Do not compare the calibration numbers above with an extractor.
+No Path 1 corpus result has been recorded yet. CLI integration is complete and
+the descriptor tests assert byte-identical recovery from noisy raw and
+gzip-wrapped blobs, but a generated multi-runtime descriptor corpus has not been
+run through the scoreboard. Do not compare the calibration numbers above with
+extractor performance.
+
+Likewise, the javalite field-recall, wire-type, compile-rate, round-trip, and
+bail-out exit thresholds remain unmeasured. The implementation does not claim
+M4's numerical exit criterion until the pinned Android build matrix is run.
