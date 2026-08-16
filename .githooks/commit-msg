@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if grep -qiE '^(co-authored-by|generated (with|by)):' "$1"; then
+  echo "blocked: commit message carries a foreign attribution trailer"
+  exit 1
+fi
+
+if grep -i '^signed-off-by:' "$1" | grep -qiv 'Nathan Luevano'; then
+  echo "blocked: commit message carries a foreign attribution trailer"
+  exit 1
+fi
+

@@ -1,0 +1,13 @@
+* text=auto eol=lf
+
+*.dex     binary
+*.apk     binary
+*.aab     binary
+*.so      binary
+*.desc    binary
+*.pb      binary
+*.bin     binary
+*.jar     binary
+*.class   binary
+tests/fixtures/** binary
+
