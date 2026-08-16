@@ -29,6 +29,12 @@ class LiteBailout:
 
 
 @dataclass(frozen=True, slots=True)
+class LiteEnumEvidence:
+    descriptor: str
+    values: tuple[tuple[str, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class LiteExtraction:
     findings: tuple[LiteFinding, ...]
     bailouts: tuple[LiteBailout, ...]
@@ -108,7 +114,7 @@ _THREE_UNIT = {
 _BRANCHES = {0x28, 0x29, 0x2A, *range(0x32, 0x3E), 0x2B, 0x2C}
 
 
-def extract_lite(dex: DexFile) -> LiteExtraction:
+def extract_lite(dex: DexFile, *, allow_heuristic: bool = False) -> LiteExtraction:
     findings: list[LiteFinding] = []
     bailouts: list[LiteBailout] = []
     targets = {
@@ -116,11 +122,153 @@ def extract_lite(dex: DexFile) -> LiteExtraction:
         for index, method in enumerate(dex.methods)
         if dex.method_name(method) == "newMessageInfo"
     }
+    targets.update(_raw_info_wrappers(dex))
     for method, code in dex.iter_code_items():
-        found, failed = _scan_method(dex, method, code, targets)
+        found, failed = _scan_method(dex, method, code, targets, allow_heuristic)
         findings.extend(found)
         bailouts.extend(failed)
     return LiteExtraction(tuple(findings), tuple(bailouts))
+
+
+def _raw_info_wrappers(dex: DexFile) -> set[int]:
+    wrappers: set[int] = set()
+    for method, code in dex.iter_code_items():
+        instructions = _instructions(code.instructions)
+        if len(instructions) != 3 or [item.opcode for item in instructions] != [
+            0x22,
+            0x70,
+            0x11,
+        ]:
+            continue
+        invocation = instructions[1]
+        arguments = _invoke_registers(invocation)
+        incoming = code.registers_size - code.ins_size
+        target_index = invocation.units[1]
+        if target_index >= len(dex.methods):
+            continue
+        constructor = dex.methods[target_index]
+        if constructor.class_index >= len(dex.types):
+            continue
+        constructor_type = dex.types[constructor.class_index]
+        parameters = (
+            dex.method_parameter_types(constructor)
+            if hasattr(dex, "method_parameter_types")
+            else ()
+        )
+        raw_info_shape = len(parameters) == 3 and parameters[1:] == (
+            "Ljava/lang/String;",
+            "[Ljava/lang/Object;",
+        )
+        if (
+            code.ins_size == 3
+            and len(arguments) == 4
+            and arguments[1:] == tuple(range(incoming, incoming + 3))
+            and (constructor_type.endswith("/RawMessageInfo;") or raw_info_shape)
+            and dex.method_name(constructor) == "<init>"
+        ):
+            wrappers.add(method.method_index)
+    return wrappers
+
+
+def recover_enum_evidence(
+    dex: DexFile, owner_descriptor: str, java_field_name: str
+) -> LiteEnumEvidence | None:
+    owner_indexes = {
+        index
+        for index, descriptor in enumerate(dex.types)
+        if descriptor == owner_descriptor
+    }
+    base_name = java_field_name.rstrip("_")
+    getter = f"get{base_name[:1].upper()}{base_name[1:]}"
+    return_types = {
+        dex.method_return_type(method)
+        for method in dex.methods
+        if method.class_index in owner_indexes and dex.method_name(method) == getter
+    }
+    if len(return_types) != 1:
+        return None
+    descriptor = return_types.pop()
+    class_name = descriptor.removeprefix("L").removesuffix(";").rsplit("/", 1)[-1]
+    if class_name.count("$") != 1:
+        return None
+    values = _enum_values(dex, descriptor)
+    if not values or values[0][1] != 0:
+        return None
+    return LiteEnumEvidence(descriptor, values)
+
+
+def _enum_values(dex: DexFile, descriptor: str) -> tuple[tuple[str, int], ...]:
+    type_indexes = {
+        index for index, value in enumerate(dex.types) if value == descriptor
+    }
+    recovered: dict[str, int] = {}
+    for method, code in dex.iter_code_items():
+        raw_method = dex.methods[method.method_index]
+        if (
+            raw_method.class_index not in type_indexes
+            or dex.method_name(raw_method) != "<clinit>"
+        ):
+            continue
+        registers: dict[int, Any] = {}
+        for instruction in _instructions(code.instructions):
+            opcode = instruction.opcode
+            units = instruction.units
+            if opcode == 0x12:
+                destination = (units[0] >> 8) & 0xF
+                value = (units[0] >> 12) & 0xF
+                registers[destination] = value - 16 if value & 8 else value
+            elif opcode in {0x13, 0x15}:
+                destination = units[0] >> 8
+                value = units[1]
+                if value & 0x8000:
+                    value -= 0x10000
+                registers[destination] = value << (16 if opcode == 0x15 else 0)
+            elif opcode == 0x14:
+                destination = units[0] >> 8
+                value = units[1] | units[2] << 16
+                registers[destination] = (
+                    value - 0x100000000 if value & 0x80000000 else value
+                )
+            elif opcode in {0x1A, 0x1B}:
+                destination = units[0] >> 8
+                index = units[1] if opcode == 0x1A else units[1] | units[2] << 16
+                if index < len(dex.strings):
+                    registers[destination] = dex.strings[index]
+            elif opcode == 0x22:
+                destination = (units[0] >> 8) & 0xF
+                if units[1] < len(dex.types):
+                    registers[destination] = ("instance", dex.types[units[1]])
+            elif opcode == 0x70 and units[1] < len(dex.methods):
+                arguments = _invoke_registers(instruction)
+                if len(arguments) != 4:
+                    continue
+                instance, name, _, number = (
+                    registers.get(register) for register in arguments
+                )
+                constructor = dex.methods[units[1]]
+                if (
+                    instance == ("instance", descriptor)
+                    and isinstance(name, str)
+                    and isinstance(number, int)
+                    and dex.method_name(constructor) == "<init>"
+                    and dex.types[constructor.class_index] == descriptor
+                    and dex.method_parameter_types(constructor)
+                    == ("Ljava/lang/String;", "I", "I")
+                ):
+                    registers[arguments[0]] = ("enum", descriptor, name, number)
+            elif opcode == 0x69 and units[1] < len(dex.fields):
+                item = dex.fields[units[1]]
+                enum_instance = registers.get(units[0] >> 8)
+                name = dex.field_name(item)
+                if (
+                    item.class_index in type_indexes
+                    and isinstance(enum_instance, tuple)
+                    and len(enum_instance) == 4
+                    and enum_instance == ("enum", descriptor, name, enum_instance[3])
+                    and name != "UNRECOGNIZED"
+                ):
+                    recovered[name] = int(enum_instance[3])
+    return tuple(recovered.items())
 
 
 def _scan_method(
@@ -128,6 +276,7 @@ def _scan_method(
     method: EncodedMethod,
     code: CodeItem,
     targets: set[int],
+    allow_heuristic: bool,
 ) -> tuple[list[LiteFinding], list[LiteBailout]]:
     registers: dict[int, Any] = {}
     pending_result: Any = None
@@ -213,6 +362,16 @@ def _scan_method(
                         array.heuristic = True
         elif opcode in {0x70, 0x71, 0x76, 0x77}:
             target = units[1]
+            if target >= len(dex.methods):
+                bailouts.append(
+                    LiteBailout(
+                        method.method_index,
+                        instruction.offset,
+                        f"invoke references invalid method index {target}",
+                    )
+                )
+                pending_result = None
+                continue
             argument_registers = _invoke_registers(instruction)
             is_named_target = target in targets
             is_inlined_constructor = (
@@ -226,10 +385,24 @@ def _scan_method(
             if is_inlined_constructor:
                 argument_registers = argument_registers[1:]
             finding, reason = _resolve_call(
-                dex, method, code, instruction, argument_registers, registers
+                dex,
+                method,
+                code,
+                instruction,
+                argument_registers,
+                registers,
+                allow_heuristic,
             )
             if finding is not None:
                 findings.append(finding)
+                if finding.heuristic:
+                    bailouts.append(
+                        LiteBailout(
+                            method.method_index,
+                            instruction.offset,
+                            "schema emitted with opt-in unresolved-order heuristics",
+                        )
+                    )
             else:
                 bailouts.append(
                     LiteBailout(method.method_index, instruction.offset, reason)
@@ -245,6 +418,7 @@ def _resolve_call(
     instruction: _Instruction,
     arguments: tuple[int, ...],
     registers: dict[int, Any],
+    allow_heuristic: bool,
 ) -> tuple[LiteFinding | None, str]:
     if len(arguments) != 3:
         return None, f"newMessageInfo has {len(arguments)} registers, expected 3"
@@ -275,6 +449,8 @@ def _resolve_call(
     if missing:
         return None, f"objects array has unresolved indexes: {missing}"
     objects = tuple(array.values[index] for index in range(size))
+    if array.heuristic and not allow_heuristic:
+        return None, "objects array requires unresolved-order heuristics"
     return (
         LiteFinding(
             method.method_index,

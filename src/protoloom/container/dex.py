@@ -19,6 +19,10 @@ class DexHeader:
     string_ids_offset: int
     type_ids_size: int
     type_ids_offset: int
+    proto_ids_size: int
+    proto_ids_offset: int
+    field_ids_size: int
+    field_ids_offset: int
     method_ids_size: int
     method_ids_offset: int
     class_defs_size: int
@@ -32,6 +36,19 @@ class DexMethod:
     class_index: int
     prototype_index: int
     name_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class DexField:
+    class_index: int
+    type_index: int
+    name_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class DexPrototype:
+    return_type_index: int
+    parameter_type_indexes: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +91,8 @@ class DexFile:
         self.type_ids = self._uint_table(
             self.header.type_ids_offset, self.header.type_ids_size
         )
+        self.prototypes = self._parse_prototypes()
+        self.fields = self._parse_fields()
         self.methods = self._parse_methods()
         self.classes = self._parse_classes()
 
@@ -149,6 +168,30 @@ class DexFile:
         )
         return self.strings[item.name_index]
 
+    def method_return_type(self, method: DexMethod | EncodedMethod) -> str:
+        item = (
+            self.methods[method.method_index]
+            if isinstance(method, EncodedMethod)
+            else method
+        )
+        return self.types[self.prototypes[item.prototype_index].return_type_index]
+
+    def method_parameter_types(
+        self, method: DexMethod | EncodedMethod
+    ) -> tuple[str, ...]:
+        item = (
+            self.methods[method.method_index]
+            if isinstance(method, EncodedMethod)
+            else method
+        )
+        return tuple(
+            self.types[index]
+            for index in self.prototypes[item.prototype_index].parameter_type_indexes
+        )
+
+    def field_name(self, item: DexField) -> str:
+        return self.strings[item.name_index]
+
     def _parse_header(self) -> DexHeader:
         if (
             len(self._data) < 112
@@ -178,6 +221,10 @@ class DexFile:
             int(values[7]),
             int(values[8]),
             int(values[9]),
+            int(values[10]),
+            int(values[11]),
+            int(values[12]),
+            int(values[13]),
             int(values[14]),
             int(values[15]),
             int(values[16]),
@@ -212,11 +259,48 @@ class DexFile:
             class_index, prototype_index, name_index = self._unpack(
                 "<HHI", self.header.method_ids_offset + index * 8
             )
-            if class_index >= len(self.type_ids) or name_index >= len(self.strings):
+            if (
+                class_index >= len(self.type_ids)
+                or prototype_index >= len(self.prototypes)
+                or name_index >= len(self.strings)
+            ):
                 raise DexError("method identifier is out of range")
             result.append(
                 DexMethod(int(class_index), int(prototype_index), int(name_index))
             )
+        return tuple(result)
+
+    def _parse_prototypes(self) -> tuple[DexPrototype, ...]:
+        result: list[DexPrototype] = []
+        for index in range(self.header.proto_ids_size):
+            _, return_type_index, parameters_offset = self._unpack(
+                "<III", self.header.proto_ids_offset + index * 12
+            )
+            if return_type_index >= len(self.type_ids):
+                raise DexError("prototype return type is out of range")
+            parameters: tuple[int, ...] = ()
+            if parameters_offset:
+                (count,) = self._unpack("<I", int(parameters_offset))
+                raw = self._unpack(f"<{int(count)}H", int(parameters_offset) + 4)
+                if any(item >= len(self.type_ids) for item in raw):
+                    raise DexError("prototype parameter type is out of range")
+                parameters = tuple(int(item) for item in raw)
+            result.append(DexPrototype(int(return_type_index), parameters))
+        return tuple(result)
+
+    def _parse_fields(self) -> tuple[DexField, ...]:
+        result: list[DexField] = []
+        for index in range(self.header.field_ids_size):
+            class_index, type_index, name_index = self._unpack(
+                "<HHI", self.header.field_ids_offset + index * 8
+            )
+            if (
+                class_index >= len(self.type_ids)
+                or type_index >= len(self.type_ids)
+                or name_index >= len(self.strings)
+            ):
+                raise DexError("field identifier is out of range")
+            result.append(DexField(int(class_index), int(type_index), int(name_index)))
         return tuple(result)
 
     def _parse_classes(self) -> tuple[DexClass, ...]:

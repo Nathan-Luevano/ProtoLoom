@@ -28,8 +28,9 @@ from protoloom.emit.proto import emit_proto
 from protoloom.emit.report import emit_report
 from protoloom.extract.descriptor import DescriptorFinding, scan_descriptors
 from protoloom.extract.gozip import scan_gzip_descriptors
+from protoloom.extract.jadx import JadxError, decompile_with_jadx
 from protoloom.extract.lite import extract_lite
-from protoloom.model import RecoveredSchema
+from protoloom.model import EnumType, RecoveredSchema
 from protoloom.reconcile import reconcile
 from protoloom.validate.compile import compile_proto
 
@@ -95,12 +96,14 @@ def _dex_inputs(path: Path) -> list[tuple[str, bytes]]:
     return [(entry.name, data) for entry, data in archive.iter_dex()]
 
 
-def _find_lite(path: Path) -> tuple[list[RecoveredSchema], list[str]]:
+def _find_lite(
+    path: Path, *, allow_heuristic: bool = False
+) -> tuple[list[RecoveredSchema], list[str]]:
     schemas: list[RecoveredSchema] = []
     bailouts: list[str] = []
     for source, data in _dex_inputs(path):
         dex = DexFile(data)
-        extraction = extract_lite(dex)
+        extraction = extract_lite(dex, allow_heuristic=allow_heuristic)
         for finding in extraction.findings:
             try:
                 schemas.append(decode_lite_finding(dex, finding, source))
@@ -130,12 +133,25 @@ def _combined_lite_descriptors(
             groups[(schema.package, schema.syntax)].append(schema)
     descriptors: list[FileDescriptorProto] = []
     for index, ((package, syntax), items) in enumerate(sorted(groups.items())):
+        enums_by_name: dict[str, EnumType] = {}
+        conflicting_enums: set[str] = set()
+        for item in items:
+            for enum in item.enums:
+                current = enums_by_name.get(enum.name)
+                if current is None:
+                    enums_by_name[enum.name] = enum
+                elif current.values != enum.values:
+                    conflicting_enums.add(enum.name)
         combined = RecoveredSchema(
             name=f"recovered_{index}.proto",
             package=package,
             syntax=syntax,
             messages=[message for item in items for message in item.messages],
-            enums=[enum for item in items for enum in item.enums],
+            enums=[
+                enum
+                for name, enum in enums_by_name.items()
+                if name not in conflicting_enums
+            ],
             dependencies=list(
                 dict.fromkeys(
                     dependency for item in items for dependency in item.dependencies
@@ -180,11 +196,49 @@ def inspect(path: Path) -> None:
 def extract(
     path: Path,
     output: Annotated[Path, typer.Option("--output", "-o")] = Path("out"),
+    allow_heuristic_lite: Annotated[
+        bool,
+        typer.Option(
+            "--allow-heuristic-lite",
+            help="Emit lite schemas when object-array order needs a guess.",
+        ),
+    ] = False,
+    jadx: Annotated[
+        bool,
+        typer.Option(
+            "--jadx", help="Keep jadx decompiled context beside recovery output."
+        ),
+    ] = False,
+    jadx_timeout: Annotated[
+        float,
+        typer.Option(
+            "--jadx-timeout", min=0.1, help="Maximum jadx runtime in seconds."
+        ),
+    ] = 120.0,
 ) -> None:
     if not path.is_file():
         raise typer.BadParameter(f"file does not exist: {path}")
     findings = _find(path)
-    lite_schemas, bailouts = _find_lite(path)
+    lite_schemas, bailouts = _find_lite(path, allow_heuristic=allow_heuristic_lite)
+    if jadx:
+        if detect(path).kind not in {
+            ContainerKind.APK,
+            ContainerKind.AAB,
+            ContainerKind.DEX,
+        }:
+            raise typer.BadParameter("--jadx only supports APK, AAB, and DEX inputs")
+        try:
+            result = decompile_with_jadx(
+                path, output / "jadx", timeout_seconds=jadx_timeout
+            )
+        except (JadxError, OSError) as error:
+            typer.echo(f"jadx fallback failed: {error}", err=True)
+            raise typer.Exit(2) from error
+        typer.echo(
+            f"jadx fallback: retained {result.source_files} Java sources "
+            f"and indexed {result.candidate_sites} protobuf metadata sites "
+            f"-> {result.output}"
+        )
     if not findings and not lite_schemas:
         typer.echo("no recoverable schema evidence found", err=True)
         for reason in bailouts:
