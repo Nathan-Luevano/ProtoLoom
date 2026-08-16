@@ -7,9 +7,11 @@ dependencies:
   - libprotobuf
   - openjdk=17
   - binutils
+  - cxx-compiler
+  - go=1.24
+  - pkg-config
   - unzip
   - make
   - pip
   - pip:
       - -e .[dev]
-

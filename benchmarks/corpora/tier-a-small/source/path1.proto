@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package path1;
+
+message Record {
+  uint64 id = 1;
+  string label = 2;
+  repeated sint32 samples = 3;
+}
