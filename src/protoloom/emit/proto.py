@@ -84,7 +84,9 @@ def _enum(item: EnumType, indent: str) -> list[str]:
 
 def _field(item: Field, syntax: str, indent: str) -> str:
     label = item.label
-    if syntax == "proto3" and label == "optional":
+    if item.oneof is not None and not item.proto3_optional:
+        label = ""
+    elif syntax == "proto3" and label == "optional":
         label = "optional" if item.proto3_optional else ""
     prefix = f"{label} " if label else ""
     options: list[str] = []

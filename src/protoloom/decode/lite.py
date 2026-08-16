@@ -1,16 +1,56 @@
+from collections import Counter
 from pathlib import PurePosixPath
 
 from protoloom.container.dex import DexFile
 from protoloom.decode.fieldtype import field_type
 from protoloom.decode.infostring import decode_info_string
-from protoloom.decode.names import recover_names, unpack_field_names
+from protoloom.decode.names import java_to_proto_name, names_are_obfuscated
 from protoloom.extract.lite import LiteFinding
 from protoloom.model import Confidence, Evidence, Field, Message, RecoveredSchema
 
 
 def _class_name(descriptor: str) -> str:
     normalized = descriptor.removeprefix("L").removesuffix(";")
-    return PurePosixPath(normalized).name.replace("$", "_") or "RecoveredMessage"
+    parts = PurePosixPath(normalized).name.split("$")
+    if len(parts) > 1:
+        parts = parts[1:]
+    return "_".join(parts) or "RecoveredMessage"
+
+
+def _field_objects(
+    finding: LiteFinding,
+) -> tuple[list[str | None], list[str | None]]:
+    info = decode_info_string(finding.info_string)
+    cursor = info.header.oneof_count * 2 + info.header.hasbits_count
+    names: list[str | None] = []
+    classes: list[str | None] = []
+    objects = finding.objects
+    for field in info.fields:
+        kind = field_type(field.type_id)
+        name: str | None = None
+        class_name: str | None = None
+        if (
+            field.oneof_index is None
+            and cursor < len(objects)
+            and objects[cursor].kind == "string"
+        ):
+            name = str(objects[cursor].value)
+            cursor += 1
+        if kind.proto_type in {"message", "group"}:
+            if cursor < len(objects) and objects[cursor].kind == "class":
+                class_name = _class_name(str(objects[cursor].value))
+                cursor += 1
+                if name is None:
+                    raw_class = str(objects[cursor - 1].value).removesuffix(";")
+                    name = raw_class.rsplit("$", 1)[-1]
+        elif kind.proto_type == "enum" and cursor < len(objects):
+            if objects[cursor].kind in {"class", "static_field"}:
+                cursor += 1
+        elif kind.proto_type == "map" and cursor < len(objects):
+            cursor += 1
+        names.append(name)
+        classes.append(class_name)
+    return names, classes
 
 
 def decode_lite_finding(
@@ -19,39 +59,49 @@ def decode_lite_finding(
     info = decode_info_string(finding.info_string)
     method = dex.methods[finding.containing_method]
     descriptor = dex.types[method.class_index]
-    raw_objects = tuple(item.value for item in finding.objects)
-    java_names = unpack_field_names(raw_objects, info.header.field_count)
-    names = recover_names(java_names, tuple(field.number for field in info.fields))
+    java_names, auxiliary_classes = _field_objects(finding)
+    visible_names = [name for name in java_names if name is not None]
+    obfuscated = names_are_obfuscated(visible_names)
+    normalized_names = [
+        java_to_proto_name(name) if name is not None else None for name in java_names
+    ]
+    duplicate_names = {
+        name for name, count in Counter(normalized_names).items() if name and count > 1
+    }
     evidence = Evidence(
         source,
         f"code_item@0x{finding.code_offset:x}+{finding.instruction_offset * 2}",
         "protobuf-lite newMessageInfo",
     )
     fields: list[Field] = []
-    auxiliary_classes = [
-        str(item.value).removeprefix("L").removesuffix(";").replace("/", ".")
-        for item in finding.objects
-        if item.kind == "class"
-    ]
-    auxiliary_index = 0
-    obfuscated = any(item.obfuscated for item in names)
-    for item, recovered in zip(info.fields, names, strict=True):
+    for item, java_name, normalized_name, auxiliary_class in zip(
+        info.fields, java_names, normalized_names, auxiliary_classes, strict=True
+    ):
         kind = field_type(item.type_id)
         type_name = kind.proto_type
         if type_name in {"message", "group"}:
-            if auxiliary_index < len(auxiliary_classes):
-                type_name = auxiliary_classes[auxiliary_index].rsplit(".", 1)[-1]
-                auxiliary_index += 1
-            else:
-                type_name = f"RecoveredField{item.number}"
+            type_name = auxiliary_class or f"RecoveredField{item.number}"
         elif type_name == "enum":
             type_name = "int32"
         elif type_name == "map":
             type_name = "bytes"
-        confidence = Confidence.SPECULATIVE if obfuscated else Confidence.HIGH
+        speculative_name = (
+            obfuscated or java_name is None or normalized_name in duplicate_names
+        )
+        if speculative_name:
+            name = f"field_{item.number}"
+        else:
+            assert normalized_name is not None
+            name = normalized_name
+        if speculative_name:
+            confidence = Confidence.SPECULATIVE
+        elif finding.heuristic:
+            confidence = Confidence.MEDIUM
+        else:
+            confidence = Confidence.HIGH
         fields.append(
             Field(
-                name=recovered.proto_name,
+                name=name,
                 number=item.number,
                 type_name=type_name,
                 label="required" if item.required else kind.label,
@@ -68,7 +118,7 @@ def decode_lite_finding(
     message = Message(
         name=_class_name(descriptor),
         fields=fields,
-        confidence=Confidence.HIGH,
+        confidence=Confidence.MEDIUM if finding.heuristic else Confidence.HIGH,
         evidence=[evidence],
     )
     package = descriptor.removeprefix("L").removesuffix(";").rsplit("/", 1)[0]

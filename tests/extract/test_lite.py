@@ -132,6 +132,85 @@ def test_non_target_invokes_do_not_become_findings() -> None:
     assert result.bailouts == ()
 
 
+def test_switch_constants_survive_branches_and_unrelated_calls() -> None:
+    base = list(complete_instructions())
+    base[base.index(0x0412)] = 0
+    instructions = (
+        *const_number(4, 0),
+        0x28,
+        0x71,
+        0,
+        0,
+        *base,
+    )
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+
+
+def test_unresolved_array_index_uses_visible_order_at_lower_confidence() -> None:
+    base = list(complete_instructions())
+    index_constant = base.index(0x0412)
+    base[index_constant : index_constant + 1] = const_string(4, 3)
+    dex = FakeDex(tuple(base), ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert result.findings[0].heuristic
+
+
+def test_unknown_array_size_expands_from_aput_indexes() -> None:
+    base = list(complete_instructions())
+    size_constant = base.index(0x2012)
+    base[size_constant : size_constant + 1] = (0x001C, 2)
+    dex = FakeDex(tuple(base), ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert len(result.findings[0].objects) == 2
+    assert result.findings[0].heuristic
+
+
+def test_fill_array_data_keeps_instruction_alignment() -> None:
+    base = complete_instructions()
+    instructions = (*base[:-4], 0x26, 0, 0, *base[-4:])
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+
+
+def test_filled_new_array_and_move_result_are_tracked() -> None:
+    replacement = (
+        *const_string(2, 2),
+        *const_string(3, 3),
+        0x041C,
+        2,
+        0x2024,
+        1,
+        0x43,
+        0x010C,
+        0x62,
+        7,
+        *invoke(1, (0, 2, 1)),
+        0x0E,
+    )
+    dex = FakeDex(replacement, ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert result.findings[0].objects == (
+        LiteObject("string", "name_"),
+        LiteObject("class", "LNested;"),
+    )
+
+
 def test_invoke_range_and_object_moves_are_supported() -> None:
     instructions = complete_instructions()
     instructions = (
@@ -166,4 +245,22 @@ def test_empty_message_accepts_a_null_objects_array() -> None:
     result = extract_lite(dex)  # type: ignore[arg-type]
 
     assert result.findings[0].objects == ()
+    assert result.bailout_count == 0
+
+
+def test_empty_message_ignores_stale_objects_register() -> None:
+    empty_info = encode_int(0) + encode_int(0)
+    instructions = (
+        *const_string(2, 2),
+        0x1C | 1 << 8,
+        2,
+        0x62,
+        7,
+        *invoke(1, (0, 2, 1)),
+    )
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", empty_info))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
     assert result.bailout_count == 0

@@ -68,7 +68,7 @@ micromamba create -y -p ./.venv -f environment.yml
 micromamba run -p ./.venv make check
 ```
 
-For a faster Python-only setup, run `uv sync --extra dev` followed by
+For a faster Python-only setup, run `uv sync --extra dev --group dev` followed by
 `uv run make check`; it uses the same dependency declaration.
 
 Release tags build wheel/sdist packages, PyInstaller binaries for Linux x86-64,

@@ -145,8 +145,9 @@ def extract(
     lite_schemas, bailouts = _find_lite(path)
     if not findings and not lite_schemas:
         typer.echo("no recoverable schema evidence found", err=True)
+        for reason in bailouts:
+            typer.echo(f"bail-out: {reason}", err=True)
         raise typer.Exit(2)
-    output.mkdir(parents=True, exist_ok=True)
     schemas: list[RecoveredSchema] = []
     for finding in findings:
         schema = decode_file_descriptor(
@@ -157,14 +158,25 @@ def extract(
     reconciled = reconcile(schemas)
     descriptors = [finding.descriptor for finding in findings]
     certain_names = {finding.descriptor.name for finding in findings}
+    prepared: list[tuple[RecoveredSchema, str]] = []
     for schema in reconciled.schemas:
-        destination = output / Path(schema.name).name
         source = emit_proto(schema)
+        if schema.name not in certain_names:
+            try:
+                descriptors.extend(_compiled_descriptors(schema))
+            except ValueError as error:
+                typer.echo(f"recovery failed: {error}", err=True)
+                raise typer.Exit(2) from error
+        prepared.append((schema, source))
+    output.mkdir(parents=True, exist_ok=True)
+    for schema, source in prepared:
+        destination = output / Path(schema.name).name
         destination.write_text(source, encoding="utf-8")
         typer.echo(f"recovered {schema.name} -> {destination}")
-        if schema.name not in certain_names:
-            descriptors.extend(_compiled_descriptors(schema))
-    (output / f"{path.stem}.desc").write_bytes(emit_descriptor_set(descriptors))
+    descriptors_by_name = {item.name: item for item in descriptors}
+    (output / f"{path.stem}.desc").write_bytes(
+        emit_descriptor_set(list(descriptors_by_name.values()))
+    )
     conflicts = [asdict(conflict) for conflict in reconciled.conflicts]
     (output / "recovery.json").write_text(
         emit_json(reconciled.schemas, conflicts), encoding="utf-8"
