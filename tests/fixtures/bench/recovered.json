@@ -1,0 +1,25 @@
+{
+  "compiled": true,
+  "round_trip": {"passed": 1, "total": 2},
+  "messages": [
+    {
+      "name": "demo.Record",
+      "fields": [
+        {"number": 1, "name": "field_1", "proto_type": "uint32", "wire_type": 0},
+        {"number": 2, "name": "title", "proto_type": "string", "wire_type": 2},
+        {"number": 3, "name": "email", "proto_type": "bytes", "wire_type": 2, "oneof": "choice"},
+        {"number": 4, "name": "phone", "proto_type": "string", "wire_type": 2, "oneof": "choice"},
+        {"number": 9, "name": "extra", "proto_type": "fixed32", "wire_type": 5}
+      ],
+      "enums": [{"name": "State", "values": [["UNKNOWN", 0]]}]
+    },
+    {
+      "name": "demo.Record.Child",
+      "parent": "demo.Record",
+      "fields": [
+        {"number": 1, "name": "value", "proto_type": "bytes", "wire_type": 2}
+      ]
+    }
+  ]
+}
+

@@ -1,0 +1,23 @@
+{
+  "name": "tier-a-small",
+  "matrix": {
+    "runtime": ["cpp", "go"],
+    "optimization": ["O0", "O2"]
+  },
+  "targets": [
+    {
+      "name": "local-descriptor",
+      "truth": {
+        "name": "truth.json",
+        "path": "truth.json",
+        "sha256": "c06b252f38067b3dcef2a72a5cb1568cdaaf8930f6ab0262b5cf455d17bcec75"
+      },
+      "recovered": {
+        "name": "recovered.json",
+        "path": "recovered.json",
+        "sha256": "71ba0c9a5cbcbda869084f76f13b24d506cd1540f778bbd8a758c76b0c4bc1a8"
+      }
+    }
+  ]
+}
+
