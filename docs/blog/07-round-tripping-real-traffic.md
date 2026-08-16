@@ -1,4 +1,4 @@
-# Round-tripping real traffic
+# A protocol for validating captured traffic
 
 A recovered schema can compile and still be wrong. `int32`, `uint32`, and
 `sint32` are all integers in source, but they do not encode every value the same
@@ -24,8 +24,10 @@ live device. That matters on WSL and air-gapped analysis systems where running
 an emulator beside the tool is inconvenient or impossible.
 
 The local calibration benchmark already includes a deliberate failed round
-trip to prove the metric moves. Real-traffic percentages are still pending and
-will not be backfilled from synthetic results. The published table will name
+trip to prove the metric moves, and the pinned matrix has one synthetic 1/1
+byte-identical round trip. Neither result is real captured traffic. Tier C is
+currently unmeasured at 0 payloads and will not be backfilled from synthetic
+results. The eventual table will name
 the source and sample count for each target, retain failed payloads where
 licensing permits, and distinguish deterministic serialization issues from
 schema mismatches.
