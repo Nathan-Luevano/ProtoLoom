@@ -331,9 +331,11 @@ def recover_map_evidence(dex: DexFile, field_index: int) -> LiteMapEvidence | No
                 pending = None
             if ready_to_store is not None and instruction.opcode != 0x69:
                 ready_to_store = None
+            destination = _written_register(instruction)
+            if destination is not None:
+                registers.pop(destination, None)
             if instruction.opcode == 0x62 and units[1] < len(dex.fields):
-                destination = units[0] >> 8
-                registers[destination] = ("field", units[1])
+                registers[units[0] >> 8] = ("field", units[1])
             elif instruction.opcode == 0x71:
                 pending = None
                 if units[1] >= len(dex.methods):
@@ -385,6 +387,30 @@ def recover_map_evidence(dex: DexFile, field_index: int) -> LiteMapEvidence | No
                 ):
                     return ready_to_store[1]
                 ready_to_store = None
+    return None
+
+
+def _written_register(instruction: _Instruction) -> int | None:
+    opcode = instruction.opcode
+    if opcode in {0x01, 0x04, 0x07, 0x12, 0x21} or 0x7B <= opcode <= 0x8F:
+        return (instruction.units[0] >> 8) & 0xF
+    if 0xB0 <= opcode <= 0xCF or 0xD0 <= opcode <= 0xD7:
+        return (instruction.units[0] >> 8) & 0xF
+    if (
+        0x02 <= opcode <= 0x03
+        or 0x05 <= opcode <= 0x06
+        or 0x08 <= opcode <= 0x0D
+        or 0x13 <= opcode <= 0x1C
+        or 0x1F <= opcode <= 0x20
+        or 0x22 <= opcode <= 0x23
+        or 0x2D <= opcode <= 0x31
+        or 0x44 <= opcode <= 0x4A
+        or 0x52 <= opcode <= 0x58
+        or 0x60 <= opcode <= 0x66
+        or 0x90 <= opcode <= 0xAF
+        or 0xD8 <= opcode <= 0xE2
+    ):
+        return instruction.units[0] >> 8
     return None
 
 
