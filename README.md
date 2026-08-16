@@ -88,6 +88,9 @@ comparison, methodology, precision and label measurements are in
 structure, extractors return evidence, decoders build the model, reconciliation
 chooses field-level winners while retaining conflicts, and emitters know nothing
 about DEX or native formats. Import-linter enforces the boundary in CI.
+The roadmap's proposed `bench/build.py` is intentionally folded into
+`bench/corpus.py`, where compilation jobs and corpus manifests share one real
+implementation instead of a compatibility re-export.
 
 ## Development
 
