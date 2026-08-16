@@ -65,4 +65,5 @@ modules = ["protoloom.model"]
 [dependency-groups]
 dev = [
     "grpcio-tools>=1.66",
+    "types-protobuf>=5.27",
 ]
