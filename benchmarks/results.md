@@ -52,7 +52,11 @@ is SHA-256 pinned. The same generated payload exercises scalars, packed values,
 nested messages, repeated messages, a map, an enum, a oneof, and proto3
 optional presence.
 
-All five legs produced the same measured result:
+All five legs produced the same non-enum schema-quality metrics. Enum recovery
+differs by optimizer leg, as shown separately below. Bail-outs differ because
+the D8 archives include the complete javalite runtime, and every unresolved or
+opt-in heuristic call is now counted instead of disappearing behind a
+medium-confidence finding:
 
 | Metric | Result | Count |
 |---|---:|---:|
@@ -63,31 +67,106 @@ All five legs produced the same measured result:
 | Name recovery | 84.62% | 11 / 13 |
 | Label accuracy | 100.00% | 13 / 13 |
 | Structural fidelity | 50.00% | 1 / 2 |
-| Enum recovery | 0.00% | 0 / 2 values |
 | Compile rate | 100.00% | 1 / 1 target |
 | Round-trip rate | 100.00% | 1 / 1 payload |
-| Bail-out rate | 0.00% | 0 calls |
+| Type-fidelity ceiling | 92.31% | 12 / 13 fields |
+| Counted uncertainty | see below | every unresolved or heuristic call |
+
+| Leg | Counted calls | Enum recovery |
+|---|---:|---:|
+| javalite 3.21.12 + D8 | 27 | 100.00% (2 / 2) |
+| javalite 4.29.3 + D8 | 61 | 100.00% (2 / 2) |
+| javalite 4.35.1 + D8 | 61 | 100.00% (2 / 2) |
+| javalite 4.35.1 + default R8 | 2 | 100.00% (2 / 2) |
+| javalite 4.35.1 + aggressive R8 | 2 | 0.00% (0 / 2) |
+
+Heuristic lite recovery is disabled by default. The matrix opts in with
+`--allow-heuristic-lite` to measure the recoverable floor, and the report still
+counts each emitted heuristic call. Without the flag those calls bail out and
+emit no guessed schema.
 
 The aggressive R8 leg inlines and renames `newMessageInfo`; recovery succeeds
 by recognizing the validated `RawMessageInfo` constructor shape. Message class
 names are obfuscated, while this configuration leaves the field-name strings
-intact. The low type-fidelity score is expected: enum fields become `int32`,
-maps become repeated `bytes`, and message references lose exact qualification.
+intact. Default and aggressive R8 therefore have the same 84.62% field-name
+score: this matrix did not demonstrate a field-name cliff. The result measures
+call-shape and class-name damage, not loss of metadata field-name strings.
+Unobfuscated getter return types now identify the enum class, and its static
+initializer proves both value names and numbers through constructor arguments
+and matching static-field stores. That moves enum recovery from 0/2 to 2/2 on
+all D8 legs and default R8. Aggressive R8 renames the getter and removes that
+field-to-enum association, so it honestly remains 0/2. Map key/value types and
+original nesting are not invented when evidence is absent; structural fidelity
+remains 1/2 on this fixture.
+The ceiling applies the roadmap's declared ambiguity between the
+`int32`/`sint32`/`uint32` and `int64`/`sint64`/`uint64` families. The 30.77-point
+gap below it is implementation loss, chiefly enum, map, and message-reference
+reconstruction; it is not presented as an information limit.
 
 ## Tier B real-app run — 2026-08-16
 
-The three hash-pinned APKs in `benchmarks/corpus/tier-b-real-apps.json` were
-downloaded and verified, then processed directly without jadx. All recovered
-files compiled while the command assembled the final descriptor sets.
+The eight hash-pinned APKs in `benchmarks/corpus/tier-b-real-apps.json` were
+downloaded, verified, and rerun directly without jadx under the current strict
+default. Signal and Molly remain a deliberate fork pair and count as one schema
+family, giving seven independent families across eight shipping artifacts.
 
-| App | Resolved calls | Output schemas | Bail-outs | Heuristic calls |
-|---|---:|---:|---:|---:|
-| Molly 8.19.2-4 | 3 | 3 | 0 | 0 |
-| Mullvad 2026.8 | 129 | 128 | 0 | 0 |
-| Signal 8.22.2 | 168 | 167 | 0 | 166 |
+| App | Output schemas | Bail-outs | Strict-default result |
+|---|---:|---:|---|
+| Signal 8.22.2 | 9 | 404 | unresolved-order guesses refused |
+| Molly 8.19.2-4 | 3 | 206 | partial recovery |
+| Mullvad 2026.8 | 128 | 8 | recovered with explicit uncertainty |
+| Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
+| Meshtastic 2.8.1-internal.3 | 52 | 1 | recovered; separately pinned schema repository |
+| Flipper 1.8.1.1890 | 0 | 6 | no recoverable evidence |
+| Gadgetbridge 0.93.0 | 20 | 671 | partial recovery |
+| Smartspacer 1.11.2 | 70 | 2 | recovered with explicit uncertainty |
 
-Signal's visible-order array fallback is recorded at medium confidence. Its
-zero bail-out count therefore does not imply high-confidence recovery.
+An opt-in rerun increases Signal output from 9 to 183 schemas while still
+reporting 404 other bail-outs. That run is evidence of the recoverable floor,
+not strict behavior; the table above is the current default and refuses the
+visible-order guesses.
+
+These are coverage smoke results, not accuracy figures. Ground-truth scoring
+requires matching recovered messages to each selected source schema and is not
+silently inferred from unrelated dependency protos found in an APK.
+
+### Expanded-app ground-truth diffs
+
+The exact source commits from the manifest were checked out separately and the
+selected files were compiled with protoc 29.3, including their transitive
+imports. Scores below include only the selected upstream schema packages;
+protobufs from AndroidX, Tink, Google Play services, and other APK dependencies
+are excluded. The final column validates the ground-truth corpus inputs, not
+ProtoLoom's recovered-output compile rate; targets with no matched recovery have
+no recovery compile denominator.
+
+| App and selected truth | Field recall | Precision | Wire accuracy | Type fidelity | Names | Structure | Enums | Truth source compile |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Bitwarden Authenticator, `google_authenticator.proto` | 100% (12/12) | 100% (12/12) | 100% (12/12) | 75% (9/12) | 100% (12/12) | 0% (0/1) | 0% (0/5) | 100% (1/1) |
+| Meshtastic, three selected files | 0% (0/483) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/132) | 0% (0/449) | 100% (3/3) |
+| Flipper, three selected schema groups | 0% (0/36) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/2) | 0% (0/20) | 100% (3/3) |
+| Gadgetbridge, three selected files | 0% (0/115) | n/a (0 matched) | n/a | n/a | n/a | 0% (0/16) | 0% (0/27) | 100% (3/3) |
+| Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 48.65% (18/37) | 97.30% (36/37) | 0% (0/7) | 0% (0/27) | 100% (1/1) |
+
+Bitwarden's first manifest entry mistakenly paired the Authenticator schema
+with the Password Manager APK. The manifest now pins the matching Authenticator
+release; this is why its current strict run has 104 output files rather than the
+unrelated Password Manager run's 37.
+
+Meshtastic's pinned Android dependency identifies its schema library as
+Wire-generated Kotlin multiplatform models. Those selected messages therefore
+do not expose the Java-lite `newMessageInfo` path that ProtoLoom v0.1 targets;
+the 52 recovered files belong to unrelated lite dependencies. Flipper likewise
+contains none of the selected messages as recoverable lite metadata or embedded
+descriptors, making its zero a measured unsupported-runtime result rather than
+a missing comparison.
+
+Gadgetbridge's 20 outputs include generated empty Garmin messages, but none of
+the 115 selected truth fields matched; its field-bearing calls are among the 671
+strict bail-outs. Smartspacer and Bitwarden are valid positive diffs. Both show
+perfect wire accuracy on matched fields while preserving the already-reported
+enum and nesting gaps. None of these apps has a qualifying captured payload, so
+their round-trip denominator remains zero.
 
 As a separate container-layer oracle, all 35,762 strings in Mullvad's primary
 DEX matched androguard 4.x in order and value. Reproduce that check with
@@ -108,11 +187,37 @@ The comparison covers 112 truth messages and 297 truth fields:
 | Enum recovery | 0.00% | 0 / 106 |
 | Compile rate | 100.00% | 1 / 1 target |
 | Round-trip rate | not measured | 0 payloads |
+| Type-fidelity ceiling | 99.66% | 296 / 297 fields |
 
 Reproduce the comparison with `scripts/diagnose_real_app.py` after compiling
 the pinned source proto to a descriptor set. The low structural and enum scores
-are real limits: the current lite model flattens nested Java classes and emits
-enum fields as `int32` because verifier objects do not retain enum values.
+are current implementation losses: the lite model flattens nested Java classes
+and emits enum fields as `int32` because it does not yet resolve verifier
+objects into enum definitions.
+
+The published ceiling is intentionally unflattering. Only one of Mullvad's 297
+fields is capped by the roadmap's scalar-varint ambiguity model, so the
+49.29-point gap between measured type fidelity and the 99.66% ceiling is mostly
+recoverable implementation loss, not an information-theoretic excuse. Name and
+structural ceilings are not assigned a made-up corpus-wide number: both depend
+on whether each target's optimizer retains field strings, class references,
+oneof metadata, and enclosing-class identity. Their measured scores remain the
+honest numbers until the evidence model records those per-field observability
+facts.
+
+## Tier C capture status
+
+Tier C remains unmeasured: 0 real payloads have been validated. The pinned
+Mullvad and Signal trees were audited for binary payload, protobuf fixture, and
+management-interface test captures. Neither contains a redistributable captured
+protobuf payload tied to the selected release and schema. Source-level
+constructors and synthetic test messages do not qualify as captured traffic and
+were not relabeled as such.
+
+Completing this tier requires an emulator/device capture or an upstream release
+of a real, redistributable capture with framing metadata. The existing Tier A
+1/1 byte-identical round trip stays separate and does not fill the Tier C
+denominator.
 
 ## pbtk differential
 

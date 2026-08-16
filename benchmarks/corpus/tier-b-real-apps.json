@@ -36,6 +36,66 @@
         "sha256": "40b6d740ede6d806bc8849f831b53929e658db6f4325c773d064c601c31e4081",
         "size": 37972635
       }
+    },
+    {
+      "id": "bitwarden-authenticator-2026-7-1",
+      "license": "GPL-3.0-only",
+      "source_commit": "abb9ddedcca453d07c2b5f27599774590b556aa1",
+      "schema_tree_url": "https://github.com/bitwarden/android/tree/abb9ddedcca453d07c2b5f27599774590b556aa1",
+      "schema_paths": ["authenticator/src/main/proto/google_authenticator.proto"],
+      "artifact": {
+        "url": "https://github.com/bitwarden/android/releases/download/v2026.7.1-bwa/com.bitwarden.authenticator.apk",
+        "sha256": "ec05d08843cac10b5bc0f59b25723def1498c07988bb51ecee88990686c6180d",
+        "size": 88794642
+      }
+    },
+    {
+      "id": "meshtastic-android-2-8-1-internal-3",
+      "license": "GPL-3.0-only",
+      "source_commit": "f3c374d773bf969d3294f2ead1993337c2e07bba",
+      "schema_tree_url": "https://github.com/meshtastic/protobufs/tree/f3c374d773bf969d3294f2ead1993337c2e07bba",
+      "schema_paths": ["meshtastic/config.proto", "meshtastic/mesh.proto", "meshtastic/telemetry.proto"],
+      "artifact": {
+        "url": "https://github.com/meshtastic/Meshtastic-Android/releases/download/v2.8.1-internal.3/androidApp-fdroid-universal-release.apk",
+        "sha256": "bd3d1d93e6a062cb1f7714fbbe5f8c9e2c7d5d4e252742c199b7b0f13a7f6156",
+        "size": 20589868
+      }
+    },
+    {
+      "id": "flipper-android-1-8-1-1890",
+      "license": "MIT",
+      "source_commit": "a399cabd975ba8460ae21b0466289c4cb8a7d66d",
+      "schema_tree_url": "https://github.com/flipperdevices/Flipper-Android-App/tree/a399cabd975ba8460ae21b0466289c4cb8a7d66d",
+      "schema_paths": ["components/core/preference/src/commonMain/proto/settings.proto", "components/wearable/emulate/common/src/main/proto/main.proto", "components/wearable/sync/common/src/main/proto/wear_data.proto"],
+      "artifact": {
+        "url": "https://github.com/flipperdevices/Flipper-Android-App/releases/download/1.8.1.1890/flipper-zero-nogms-1.8.1.1890.apk",
+        "sha256": "191998594cb110c37c4b2524f26a4a0e292f6860e86b7ccb751dc4e112dd86e1",
+        "size": 10881595
+      }
+    },
+    {
+      "id": "gadgetbridge-0-93-0",
+      "license": "AGPL-3.0-only",
+      "source_commit": "a09e037374d0013ffc31978fc1d1ada2943280e4",
+      "schema_tree_url": "https://codeberg.org/Freeyourgadget/Gadgetbridge/src/commit/a09e037374d0013ffc31978fc1d1ada2943280e4",
+      "schema_paths": ["app/src/main/proto/garmin/gdi_core.proto", "app/src/main/proto/garmin/gdi_device_status.proto", "app/src/main/proto/huami.proto"],
+      "artifact": {
+        "url": "https://f-droid.org/repo/nodomain.freeyourgadget.gadgetbridge_252.apk",
+        "sha256": "86ee3996df118d211b714ae50bd4cb752b73d23e1f7b083cf254f4eb96baaade",
+        "size": 22702297
+      }
+    },
+    {
+      "id": "smartspacer-1-11-2",
+      "license": "GPL-3.0-only",
+      "source_commit": "179f9d982ded9ed98ee6818fcdccfc483b7e851f",
+      "schema_tree_url": "https://github.com/KieronQuinn/Smartspacer/tree/179f9d982ded9ed98ee6818fcdccfc483b7e851f",
+      "schema_paths": ["proto/src/main/proto/com/google/geo/sidekick/smartspace.proto"],
+      "artifact": {
+        "url": "https://github.com/KieronQuinn/Smartspacer/releases/download/1.11.2/Smartspacer-v1.11.2.apk",
+        "sha256": "f5c8edc3fc0c84f0870fdacf7625cf7327183bb59c99ca9046b6daa663979d2d",
+        "size": 21124054
+      }
     }
   ]
 }
