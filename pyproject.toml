@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "hypothesis>=6.112",
   "import-linter>=2.0",
   "mypy>=1.10",
   "pytest>=8.2",
@@ -95,5 +96,6 @@ forbidden_modules = ["protoloom.container", "protoloom.extract", "protoloom.deco
 [dependency-groups]
 dev = [
     "grpcio-tools>=1.66",
+    "hypothesis>=6.112",
     "types-protobuf>=5.27",
 ]
