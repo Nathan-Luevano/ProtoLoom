@@ -89,6 +89,10 @@ files compiled while the command assembled the final descriptor sets.
 Signal's visible-order array fallback is recorded at medium confidence. Its
 zero bail-out count therefore does not imply high-confidence recovery.
 
+As a separate container-layer oracle, all 35,762 strings in Mullvad's primary
+DEX matched androguard 4.x in order and value. Reproduce that check with
+`uv run --with androguard python scripts/check_dex_oracle.py <apk>`.
+
 Mullvad's pinned `management_interface.proto` provides matching ground truth.
 The comparison covers 112 truth messages and 297 truth fields:
 
