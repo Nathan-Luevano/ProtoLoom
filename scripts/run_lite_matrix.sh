@@ -3,7 +3,11 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/protoloom-lite.XXXXXX")
-trap 'rm -rf "$work"' EXIT HUP INT TERM
+if [ "${KEEP_WORK:-0}" = 1 ]; then
+  printf 'work directory: %s\n' "$work"
+else
+  trap 'rm -rf "$work"' EXIT HUP INT TERM
+fi
 
 r8_version=8.3.37
 r8_sha=59753e70a74f918389cc87f1b7d66b5c0862932559167425708ded159e3de439
@@ -25,23 +29,36 @@ curl --fail --location --retry 3 \
 printf '%s  %s\n' "$r8_sha" "$work/tools/r8.jar" | sha256sum --check --strict
 
 source_proto="$root/benchmarks/corpora/tier-a-small/source/matrix.proto"
+protoc_cache="$root/.protoc"
+mkdir -p "$protoc_cache"
 cd "$root"
 printf '%s\n' "$matrix" | while IFS='|' read -r protoc_version protoc_sha protobuf_version protobuf_sha; do
   version_root="$work/$protobuf_version"
   mkdir -p "$version_root/generated" "$version_root/classes" \
-    "$version_root/dex" "$version_root/out" "$version_root/protoc"
-  curl --fail --location --retry 3 \
-    "https://github.com/protocolbuffers/protobuf/releases/download/v$protoc_version/protoc-$protoc_version-linux-x86_64.zip" \
-    -o "$version_root/protoc.zip"
+    "$version_root/dex" "$version_root/out"
+  cached_protoc="$protoc_cache/$protoc_version"
+  cached_archive="$cached_protoc/protoc.zip"
+  if [ ! -f "$cached_archive" ]; then
+    mkdir -p "$cached_protoc"
+    download="$cached_archive.part"
+    curl --fail --location --retry 3 \
+      "https://github.com/protocolbuffers/protobuf/releases/download/v$protoc_version/protoc-$protoc_version-linux-x86_64.zip" \
+      -o "$download"
+    printf '%s  %s\n' "$protoc_sha" "$download" \
+      | sha256sum --check --strict
+    mv "$download" "$cached_archive"
+  fi
+  printf '%s  %s\n' "$protoc_sha" "$cached_archive" \
+    | sha256sum --check --strict
+  if [ ! -x "$cached_protoc/bin/protoc" ]; then
+    unzip -q "$cached_archive" -d "$cached_protoc"
+  fi
   curl --fail --location --retry 3 \
     "https://repo1.maven.org/maven2/com/google/protobuf/protobuf-javalite/$protobuf_version/protobuf-javalite-$protobuf_version.jar" \
     -o "$version_root/protobuf-javalite.jar"
-  printf '%s  %s\n' "$protoc_sha" "$version_root/protoc.zip" \
-    | sha256sum --check --strict
   printf '%s  %s\n' "$protobuf_sha" "$version_root/protobuf-javalite.jar" \
     | sha256sum --check --strict
-  unzip -q "$version_root/protoc.zip" -d "$version_root/protoc"
-  "$version_root/protoc/bin/protoc" -I "$(dirname "$source_proto")" \
+  "$cached_protoc/bin/protoc" -I "$(dirname "$source_proto")" \
     --java_out="lite:$version_root/generated" \
     --descriptor_set_out="$version_root/truth.desc" \
     "$source_proto"
@@ -51,6 +68,7 @@ printf '%s\n' "$matrix" | while IFS='|' read -r protoc_version protoc_sha protob
     --min-api 21 --output "$version_root/dex" \
     "$version_root/classes"/matrix/*.class "$version_root/protobuf-javalite.jar"
   uv run protoloom extract "$version_root/dex/classes.dex" \
+    --allow-heuristic-lite \
     --output "$version_root/out"
   uv run python scripts/diagnose_real_app.py \
     --truth "$version_root/truth.desc" \
@@ -74,7 +92,8 @@ for mode in default aggressive; do
     --pg-conf "$root/benchmarks/corpora/tier-a-small/source/r8-$mode.pro" \
     --pg-map-output "$r8_root/mapping.txt" \
     "$latest/classes"/matrix/*.class "$latest/protobuf-javalite.jar"
-  uv run protoloom extract "$r8_root/dex/classes.dex" --output "$r8_root/out"
+  uv run protoloom extract "$r8_root/dex/classes.dex" \
+    --allow-heuristic-lite --output "$r8_root/out"
   package=matrix
   [ "$mode" = aggressive ] && package=r
   uv run python scripts/diagnose_real_app.py \
