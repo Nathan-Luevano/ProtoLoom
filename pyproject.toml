@@ -62,6 +62,36 @@ name = "The model has no project dependencies"
 type = "independence"
 modules = ["protoloom.model"]
 
+[[tool.importlinter.contracts]]
+name = "Containers do not depend on recovery layers"
+type = "forbidden"
+source_modules = ["protoloom.container"]
+forbidden_modules = ["protoloom.extract", "protoloom.decode", "protoloom.emit", "protoloom.reconcile", "protoloom.validate", "protoloom.bench", "protoloom.cli"]
+
+[[tool.importlinter.contracts]]
+name = "Extractors do not depend on output or orchestration layers"
+type = "forbidden"
+source_modules = ["protoloom.extract"]
+forbidden_modules = ["protoloom.emit", "protoloom.reconcile", "protoloom.validate", "protoloom.bench", "protoloom.cli"]
+
+[[tool.importlinter.contracts]]
+name = "Decoders do not depend on output or orchestration layers"
+type = "forbidden"
+source_modules = ["protoloom.decode"]
+forbidden_modules = ["protoloom.emit", "protoloom.reconcile", "protoloom.validate", "protoloom.bench", "protoloom.cli"]
+
+[[tool.importlinter.contracts]]
+name = "Emitters depend only on the model"
+type = "forbidden"
+source_modules = ["protoloom.emit"]
+forbidden_modules = ["protoloom.container", "protoloom.extract", "protoloom.decode", "protoloom.reconcile", "protoloom.validate", "protoloom.bench", "protoloom.cli"]
+
+[[tool.importlinter.contracts]]
+name = "Reconciliation depends only on the model"
+type = "forbidden"
+source_modules = ["protoloom.reconcile"]
+forbidden_modules = ["protoloom.container", "protoloom.extract", "protoloom.decode", "protoloom.emit", "protoloom.validate", "protoloom.bench", "protoloom.cli"]
+
 [dependency-groups]
 dev = [
     "grpcio-tools>=1.66",
