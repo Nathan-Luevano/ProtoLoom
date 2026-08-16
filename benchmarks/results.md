@@ -113,3 +113,29 @@ Reproduce the comparison with `scripts/diagnose_real_app.py` after compiling
 the pinned source proto to a descriptor set. The low structural and enum scores
 are real limits: the current lite model flattens nested Java classes and emits
 enum fields as `int32` because verifier objects do not retain enum values.
+
+## pbtk differential
+
+pbtk 1.1.2 was run against the same pinned Mullvad APK using its standalone
+`pbtk-jar-extract` command. It recovered and emitted 25 proto files in 8.7
+seconds. Its three Mullvad application schemas compiled with protoc 29.3. On
+the matching `management_interface.proto` ground truth, pbtk recovered all 112
+messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
+
+| Metric | ProtoLoom | pbtk 1.1.2 |
+|---|---:|---:|
+| Field recall | 90.91% | 100.00% |
+| Field precision | 90.91% | 100.00% |
+| Wire-type accuracy | 100.00% | 100.00% |
+| Type fidelity | 50.37% | 100.00% |
+| Name recovery | 90.74% | 100.00% |
+| Label accuracy | 100.00% | 100.00% |
+| Structural fidelity | 16.36% | 100.00% |
+| Enum recovery | 0.00% | 100.00% |
+| Compile rate | 100.00% | 100.00% |
+
+This is the less flattering result and the important one: ProtoLoom is already
+useful as a small direct parser with explicit uncertainty, but it does not yet
+match pbtk's schema fidelity on this unobfuscated real app. The pinned adapter
+is `scripts/pbtk_1_1_2_adapter.sh`; `scripts/compare_pbtk.sh` records isolated
+tool logs and statuses for a directory of artifacts.
