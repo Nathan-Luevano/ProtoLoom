@@ -1,3 +1,4 @@
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 
 from pytest import MonkeyPatch
@@ -10,6 +11,18 @@ FIXTURE = Path("tests/fixtures/bench/manifest.json")
 
 
 def test_version_matches_release() -> None:
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == "0.1.0"
+
+
+def test_version_works_without_distribution_metadata(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    def missing_metadata(_: str) -> str:
+        raise PackageNotFoundError
+
+    monkeypatch.setattr("protoloom.cli.package_version", missing_metadata)
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
     assert result.output.strip() == "0.1.0"

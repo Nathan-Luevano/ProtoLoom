@@ -8,6 +8,8 @@ from protoloom.model import (
     RecoveredSchema,
 )
 
+__version__ = "0.1.0"
+
 __all__ = [
     "Confidence",
     "EnumType",
@@ -16,4 +18,5 @@ __all__ = [
     "Field",
     "Message",
     "RecoveredSchema",
+    "__version__",
 ]
