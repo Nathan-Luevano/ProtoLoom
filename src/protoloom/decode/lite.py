@@ -5,7 +5,11 @@ from protoloom.container.dex import DexFile
 from protoloom.decode.fieldtype import field_type
 from protoloom.decode.infostring import decode_info_string
 from protoloom.decode.names import java_to_proto_name, names_are_obfuscated
-from protoloom.extract.lite import LiteFinding, recover_enum_evidence
+from protoloom.extract.lite import (
+    LiteFinding,
+    recover_enum_evidence,
+    recover_map_evidence,
+)
 from protoloom.model import (
     Confidence,
     EnumType,
@@ -25,16 +29,20 @@ def _class_name(descriptor: str) -> str:
     return "_".join(parts) or "RecoveredMessage"
 
 
-def _field_objects(finding: LiteFinding) -> tuple[list[str | None], list[str | None]]:
+def _field_objects(
+    finding: LiteFinding,
+) -> tuple[list[str | None], list[str | None], list[int | None]]:
     info = decode_info_string(finding.info_string)
     cursor = info.header.oneof_count * 2 + info.header.hasbits_count
     names: list[str | None] = []
     classes: list[str | None] = []
+    map_fields: list[int | None] = []
     objects = finding.objects
     for field in info.fields:
         kind = field_type(field.type_id)
         name: str | None = None
         class_name: str | None = None
+        map_field: int | None = None
         if (
             field.oneof_index is None
             and cursor < len(objects)
@@ -50,10 +58,13 @@ def _field_objects(finding: LiteFinding) -> tuple[list[str | None], list[str | N
             if objects[cursor].kind in {"class", "static_field", "call_result"}:
                 cursor += 1
         elif kind.proto_type == "map" and cursor < len(objects):
+            if objects[cursor].kind == "static_field":
+                map_field = int(objects[cursor].value)
             cursor += 1
         names.append(name)
         classes.append(class_name)
-    return names, classes
+        map_fields.append(map_field)
+    return names, classes, map_fields
 
 
 def decode_lite_finding(
@@ -62,7 +73,7 @@ def decode_lite_finding(
     info = decode_info_string(finding.info_string)
     method = dex.methods[finding.containing_method]
     descriptor = dex.types[method.class_index]
-    java_names, auxiliary_classes = _field_objects(finding)
+    java_names, auxiliary_classes, map_fields = _field_objects(finding)
     visible_names = [name for name in java_names if name is not None]
     obfuscated = names_are_obfuscated(visible_names)
     normalized_names = [
@@ -78,12 +89,18 @@ def decode_lite_finding(
     )
     fields: list[Field] = []
     recovered_enums: dict[str, EnumType] = {}
-    for item, java_name, normalized_name, auxiliary_class in zip(
-        info.fields, java_names, normalized_names, auxiliary_classes, strict=True
+    for item, java_name, normalized_name, auxiliary_class, map_field in zip(
+        info.fields,
+        java_names,
+        normalized_names,
+        auxiliary_classes,
+        map_fields,
+        strict=True,
     ):
         kind = field_type(item.type_id)
         type_name = kind.proto_type
         guessed_type = False
+        map_evidence = None
         if type_name in {"message", "group"}:
             if auxiliary_class is not None:
                 type_name = auxiliary_class
@@ -110,7 +127,14 @@ def decode_lite_finding(
                     [evidence],
                 )
         elif type_name == "map":
-            type_name = "bytes"
+            map_evidence = (
+                recover_map_evidence(dex, map_field) if map_field is not None else None
+            )
+            type_name = (
+                f"map<{map_evidence.key_type}, {map_evidence.value_type}>"
+                if map_evidence is not None
+                else "bytes"
+            )
         speculative_name = (
             obfuscated or java_name is None or normalized_name in duplicate_names
         )

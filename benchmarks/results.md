@@ -52,8 +52,8 @@ is SHA-256 pinned. The same generated payload exercises scalars, packed values,
 nested messages, repeated messages, a map, an enum, a oneof, and proto3
 optional presence.
 
-All five legs produced the same non-enum schema-quality metrics. Enum recovery
-differs by optimizer leg, as shown separately below. Bail-outs differ because
+All five legs share the metrics in the first table. Optimizer-sensitive type
+and enum fidelity are shown per leg in the second table. Bail-outs differ because
 the D8 archives include the complete javalite runtime, and every unresolved or
 opt-in heuristic call is now counted instead of disappearing behind a
 medium-confidence finding:
@@ -63,7 +63,6 @@ medium-confidence finding:
 | Field recall | 100.00% | 13 / 13 |
 | Field precision | 100.00% | 13 / 13 |
 | Wire-type accuracy | 100.00% | 13 / 13 |
-| Type fidelity | 61.54% | 8 / 13 |
 | Name recovery | 84.62% | 11 / 13 |
 | Label accuracy | 100.00% | 13 / 13 |
 | Structural fidelity | 50.00% | 1 / 2 |
@@ -72,13 +71,13 @@ medium-confidence finding:
 | Type-fidelity ceiling | 92.31% | 12 / 13 fields |
 | Counted uncertainty | see below | every unresolved or heuristic call |
 
-| Leg | Counted calls | Enum recovery |
-|---|---:|---:|
-| javalite 3.21.12 + D8 | 27 | 100.00% (2 / 2) |
-| javalite 4.29.3 + D8 | 61 | 100.00% (2 / 2) |
-| javalite 4.35.1 + D8 | 61 | 100.00% (2 / 2) |
-| javalite 4.35.1 + default R8 | 2 | 100.00% (2 / 2) |
-| javalite 4.35.1 + aggressive R8 | 2 | 0.00% (0 / 2) |
+| Leg | Counted calls | Type fidelity | Enum recovery |
+|---|---:|---:|---:|
+| javalite 3.21.12 + D8 | 27 | 69.23% (9 / 13) | 100.00% (2 / 2) |
+| javalite 4.29.3 + D8 | 61 | 69.23% (9 / 13) | 100.00% (2 / 2) |
+| javalite 4.35.1 + D8 | 61 | 69.23% (9 / 13) | 100.00% (2 / 2) |
+| javalite 4.35.1 + default R8 | 2 | 61.54% (8 / 13) | 100.00% (2 / 2) |
+| javalite 4.35.1 + aggressive R8 | 2 | 61.54% (8 / 13) | 0.00% (0 / 2) |
 
 Heuristic lite recovery is disabled by default. The matrix opts in with
 `--allow-heuristic-lite` to measure the recoverable floor, and the report still
@@ -95,13 +94,17 @@ Unobfuscated getter return types now identify the enum class, and its static
 initializer proves both value names and numbers through constructor arguments
 and matching static-field stores. That moves enum recovery from 0/2 to 2/2 on
 all D8 legs and default R8. Aggressive R8 renames the getter and removes that
-field-to-enum association, so it honestly remains 0/2. Map key/value types and
-original nesting are not invented when evidence is absent; structural fidelity
-remains 1/2 on this fixture.
+field-to-enum association, so it honestly remains 0/2. D8 also retains the
+`MapEntryLite.newDefaultInstance` call and exact `WireFormat.FieldType` static
+fields, recovering `map<string, int32>` and moving type fidelity from 8/13 to
+9/13. Both R8 modes reshape that initializer beyond this exact proof, so they
+remain 8/13. Original nesting is not invented when evidence is absent;
+structural fidelity remains 1/2 on this fixture.
 The ceiling applies the roadmap's declared ambiguity between the
-`int32`/`sint32`/`uint32` and `int64`/`sint64`/`uint64` families. The 30.77-point
-gap below it is implementation loss, chiefly enum, map, and message-reference
-reconstruction; it is not presented as an information limit.
+`int32`/`sint32`/`uint32` and `int64`/`sint64`/`uint64` families. The remaining
+23.08-point D8 gap and 30.77-point R8 gap are implementation loss, chiefly
+message-reference and optimizer-sensitive map reconstruction; neither is
+presented as an information limit.
 
 ## Tier B real-app run — 2026-08-16
 

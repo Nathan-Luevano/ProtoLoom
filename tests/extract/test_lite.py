@@ -3,6 +3,7 @@ from protoloom.extract.lite import (
     LiteObject,
     extract_lite,
     recover_enum_evidence,
+    recover_map_evidence,
 )
 
 
@@ -359,7 +360,7 @@ class EnumFakeDex:
             "Lmatrix/MatrixProto$Everything;",
             "Lmatrix/MatrixProto$Mode;",
         )
-        self.strings = (
+        self.strings: tuple[str, ...] = (
             "getMode",
             "<init>",
             "<clinit>",
@@ -482,6 +483,152 @@ def test_enum_registers_do_not_leak_between_clinit_candidates() -> None:
     )
 
     assert evidence is None
+
+
+class MapFakeDex:
+    def __init__(self) -> None:
+        self.types = (
+            "Lmatrix/MatrixProto$Everything$ScoresDefaultEntryHolder;",
+            "Lcom/google/protobuf/MapEntryLite;",
+            "Lcom/google/protobuf/WireFormat$FieldType;",
+        )
+        self.strings: tuple[str, ...] = (
+            "<clinit>",
+            "newDefaultInstance",
+            "STRING",
+            "INT32",
+            "defaultEntry",
+            "noop",
+        )
+        self.methods = (
+            DexMethod(0, 0, 0),
+            DexMethod(1, 0, 1),
+            DexMethod(0, 0, 5),
+        )
+        self.fields = (
+            DexField(2, 2, 2),
+            DexField(2, 2, 3),
+            DexField(0, 1, 4),
+        )
+        code = CodeItem(
+            300,
+            3,
+            0,
+            4,
+            0,
+            0,
+            (
+                0x0062,
+                0,
+                0x0162,
+                1,
+                0x4071,
+                1,
+                0x2120,
+                0x020C,
+                0x0269,
+                2,
+                0x0E,
+            ),
+        )
+        self._items = ((EncodedMethod(0, 0, 300), code),)
+
+    def method_name(self, method: DexMethod) -> str:
+        return self.strings[method.name_index]
+
+    def method_parameter_types(self, method: DexMethod) -> tuple[str, ...]:
+        if self.method_name(method) == "newDefaultInstance":
+            return (
+                "Lcom/google/protobuf/WireFormat$FieldType;",
+                "Ljava/lang/Object;",
+                "Lcom/google/protobuf/WireFormat$FieldType;",
+                "Ljava/lang/Object;",
+            )
+        return ()
+
+    def method_return_type(self, method: DexMethod) -> str:
+        return "Lcom/google/protobuf/MapEntryLite;"
+
+    def field_name(self, field: DexField) -> str:
+        return self.strings[field.name_index]
+
+    def iter_code_items(self) -> tuple[tuple[EncodedMethod, CodeItem], ...]:
+        return self._items
+
+
+def test_map_types_require_default_entry_constructor_and_field_store() -> None:
+    evidence = recover_map_evidence(MapFakeDex(), 2)  # type: ignore[arg-type]
+
+    assert evidence is not None
+    assert evidence.key_type == "string"
+    assert evidence.value_type == "int32"
+
+
+def test_map_recovery_rejects_hostile_field_index() -> None:
+    assert recover_map_evidence(MapFakeDex(), 99) is None  # type: ignore[arg-type]
+    assert recover_map_evidence(MapFakeDex(), -1) is None  # type: ignore[arg-type]
+
+
+def test_unrelated_invoke_clears_pending_map_result() -> None:
+    dex = MapFakeDex()
+    method, code = dex._items[0]
+    instructions = (*code.instructions[:7], 0x0071, 2, 0, *code.instructions[7:])
+    dex._items = (
+        (
+            method,
+            CodeItem(300, 3, 0, 4, 0, 0, instructions),
+        ),
+    )
+
+    assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
+
+
+def test_intervening_instruction_clears_pending_map_result() -> None:
+    dex = MapFakeDex()
+    method, code = dex._items[0]
+    instructions = (*code.instructions[:7], 0x0012, *code.instructions[7:])
+    dex._items = ((method, CodeItem(300, 3, 0, 4, 0, 0, instructions)),)
+
+    assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
+
+
+def test_register_write_clears_stale_map_result() -> None:
+    dex = MapFakeDex()
+    method, code = dex._items[0]
+    instructions = (
+        *code.instructions[:8],
+        0x0262,
+        0,
+        *code.instructions[8:],
+    )
+    dex._items = ((method, CodeItem(300, 3, 0, 4, 0, 0, instructions)),)
+
+    assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
+
+
+def test_const_write_clears_stale_map_result() -> None:
+    dex = MapFakeDex()
+    method, code = dex._items[0]
+    instructions = (*code.instructions[:8], 0x0212, *code.instructions[8:])
+    dex._items = ((method, CodeItem(300, 3, 0, 4, 0, 0, instructions)),)
+
+    assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
+
+
+def test_map_field_type_must_match_constructor_signature() -> None:
+    dex = MapFakeDex()
+    dex.fields = (DexField(2, 1, 2), *dex.fields[1:])
+
+    assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
+
+
+def test_map_recovery_rejects_illegal_scalar_key_types() -> None:
+    for name in ("FLOAT", "BYTES"):
+        dex = MapFakeDex()
+        dex.strings = (*dex.strings, name)
+        dex.fields = (DexField(2, 2, len(dex.strings) - 1), *dex.fields[1:])
+
+        assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
 
 
 def test_unrelated_constructor_wrapper_is_not_a_target() -> None:

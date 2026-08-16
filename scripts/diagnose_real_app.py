@@ -80,9 +80,7 @@ def _truth_messages(
     name = f"{prefix}.{raw.name}" if prefix else raw.name
     fields = []
     for field in raw.field:
-        type_name = (
-            field.type_name.lstrip(".") if field.type_name else _TYPE_NAMES[field.type]
-        )
+        type_name = _truth_field_type(raw, field)
         oneof = (
             raw.oneof_decl[field.oneof_index].name
             if field.HasField("oneof_index")
@@ -110,6 +108,25 @@ def _truth_messages(
         if not nested.options.map_entry:
             messages.extend(_truth_messages(nested, name, name))
     return messages
+
+
+def _truth_field_type(raw: DescriptorProto, field: FieldDescriptorProto) -> str:
+    if field.type_name:
+        target = field.type_name.rsplit(".", 1)[-1]
+        entry = next(
+            (
+                item
+                for item in raw.nested_type
+                if item.name == target and item.options.map_entry
+            ),
+            None,
+        )
+        if entry is not None and len(entry.field) == 2:
+            key = _truth_field_type(entry, entry.field[0])
+            value = _truth_field_type(entry, entry.field[1])
+            return f"map<{key}, {value}>"
+        return field.type_name.lstrip(".")
+    return _TYPE_NAMES[field.type]
 
 
 def load_truth(path: Path, file_name: str) -> BenchmarkSchema:
