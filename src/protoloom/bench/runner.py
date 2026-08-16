@@ -7,6 +7,7 @@ from typing import Any
 from protoloom.bench.corpus import CorpusManifest, materialize
 from protoloom.bench.metrics import (
     METRIC_NAMES,
+    TYPE_FIDELITY_AMBIGUITIES,
     AggregateReport,
     BenchmarkEnum,
     BenchmarkField,
@@ -44,9 +45,32 @@ def load_schema(path: Path) -> BenchmarkSchema:
     total = int(round_trip.get("total", 0))
     if passed < 0 or total < 0 or passed > total:
         raise ValueError("round-trip counts are invalid")
+    ambiguities = _ambiguities(raw.get("type_fidelity_ambiguities"))
     return BenchmarkSchema(
-        messages, bool(raw.get("compiled", True)), passed, total, enums
+        messages, bool(raw.get("compiled", True)), passed, total, enums, ambiguities
     )
+
+
+def _ambiguities(value: object) -> tuple[frozenset[str], ...]:
+    if value is None:
+        return TYPE_FIDELITY_AMBIGUITIES
+    if not isinstance(value, list):
+        raise ValueError("type_fidelity_ambiguities must be an array")
+    groups = []
+    seen: set[str] = set()
+    for group in value:
+        if (
+            not isinstance(group, list)
+            or not group
+            or not all(isinstance(item, str) for item in group)
+        ):
+            raise ValueError("type fidelity ambiguity groups must be string arrays")
+        members = frozenset(group)
+        if len(members) != len(group) or seen.intersection(members):
+            raise ValueError("type fidelity ambiguity groups must not overlap")
+        groups.append(members)
+        seen.update(members)
+    return tuple(groups)
 
 
 def render_report(report: AggregateReport, per_target: bool = False) -> str:

@@ -15,7 +15,7 @@ from protoloom.bench.metrics import (
     aggregate_reports,
     score_target,
 )
-from protoloom.bench.runner import render_report, run_corpus
+from protoloom.bench.runner import load_schema, render_report, run_corpus
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "bench"
 
@@ -66,3 +66,43 @@ def test_report_renders_unmeasured_round_trips_as_na() -> None:
 
     assert "round_trip_rate                 n/a       n/a" in rendered
     assert "round_trip_rate=n/a" in rendered
+
+
+def test_schema_loads_explicit_exact_type_evidence(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(
+        '{"messages": [], "type_fidelity_ambiguities": []}', encoding="utf-8"
+    )
+
+    assert load_schema(path).type_fidelity_ambiguities == ()
+
+
+def test_schema_rejects_invalid_type_ambiguities(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(
+        '{"messages": [], "type_fidelity_ambiguities": ["int32"]}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="ambiguity groups"):
+        load_schema(path)
+
+
+@pytest.mark.parametrize(
+    "ambiguities",
+    [
+        '[["int32", "int32"]]',
+        '[["int32", "uint32"], ["uint32", "sint32"]]',
+    ],
+)
+def test_schema_rejects_overlapping_type_ambiguities(
+    tmp_path: Path, ambiguities: str
+) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(
+        f'{{"messages": [], "type_fidelity_ambiguities": {ambiguities}}}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must not overlap"):
+        load_schema(path)

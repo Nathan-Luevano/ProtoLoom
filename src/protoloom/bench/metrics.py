@@ -55,6 +55,7 @@ class BenchmarkSchema:
     round_trip_passed: int = 0
     round_trip_total: int = 0
     enums: tuple[BenchmarkEnum, ...] = ()
+    type_fidelity_ambiguities: tuple[frozenset[str], ...] = TYPE_FIDELITY_AMBIGUITIES
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,7 +148,7 @@ def score_target(
             metric: Score(0, max(score.denominator, 1))
             for metric, score in scores.items()
         }
-    ceiling = type_fidelity_ceiling(truth, TYPE_FIDELITY_AMBIGUITIES)
+    ceiling = type_fidelity_ceiling(truth, truth.type_fidelity_ambiguities)
     return MetricReport(target, MappingProxyType(scores), ceiling)
 
 

@@ -121,6 +121,7 @@ def _schema(descriptor: FileDescriptorProto) -> dict[str, Any]:
         "enums": enums,
         "compiled": True,
         "round_trip": {"passed": 0, "total": 0},
+        "type_fidelity_ambiguities": [],
     }
 
 
