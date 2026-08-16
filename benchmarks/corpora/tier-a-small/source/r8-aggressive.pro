@@ -1,0 +1,4 @@
+-dontwarn **
+-allowaccessmodification
+-repackageclasses r
+-keep,allowoptimization,allowobfuscation class matrix.** { *; }
