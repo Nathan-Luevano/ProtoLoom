@@ -18,6 +18,7 @@ class LiteFinding:
     instruction_offset: int
     info_string: str
     objects: tuple[LiteObject, ...]
+    heuristic: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,8 +40,9 @@ class LiteExtraction:
 
 @dataclass(slots=True)
 class _Array:
-    size: int
+    size: int | None
     values: dict[int, LiteObject]
+    heuristic: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +97,7 @@ _THREE_UNIT = {
     0x1B,
     0x24,
     0x25,
+    0x26,
     0x2A,
     0x2B,
     0x2C,
@@ -131,13 +134,14 @@ def _scan_method(
     targets: set[int],
 ) -> tuple[list[LiteFinding], list[LiteBailout]]:
     registers: dict[int, Any] = {}
+    pending_result: Any = None
     findings: list[LiteFinding] = []
     bailouts: list[LiteBailout] = []
     for instruction in _instructions(code.instructions):
         opcode = instruction.opcode
         units = instruction.units
         if opcode in _BRANCHES:
-            registers.clear()
+            pending_result = None
             continue
         if opcode == 0x12:
             destination = (units[0] >> 8) & 0xF
@@ -157,6 +161,10 @@ def _scan_method(
             )
         elif opcode in {0x07, 0x08, 0x09}:
             _move_object(registers, instruction)
+        elif opcode == 0x0C:
+            destination = units[0] >> 8
+            registers[destination] = pending_result
+            pending_result = None
         elif opcode in {0x1A, 0x1B}:
             destination = units[0] >> 8
             index = units[1] if opcode == 0x1A else units[1] | units[2] << 16
@@ -170,9 +178,18 @@ def _scan_method(
             destination = (units[0] >> 8) & 0xF
             size_register = (units[0] >> 12) & 0xF
             size = registers.get(size_register)
-            registers[destination] = (
-                _Array(size, {}) if isinstance(size, int) and size >= 0 else None
+            known_size = size if isinstance(size, int) and size >= 0 else None
+            registers[destination] = _Array(
+                known_size, {}, heuristic=known_size is None
             )
+        elif opcode in {0x24, 0x25}:
+            object_registers = _invoke_registers(instruction)
+            values: dict[int, LiteObject] = {}
+            for index, register in enumerate(object_registers):
+                object_value = registers.get(register)
+                if isinstance(object_value, LiteObject):
+                    values[index] = object_value
+            pending_result = _Array(len(object_registers), values)
         elif opcode == 0x4D:
             value_register = units[0] >> 8
             array_register = units[1] & 0xFF
@@ -180,17 +197,28 @@ def _scan_method(
             array = registers.get(array_register)
             stored_index = registers.get(index_register)
             stored_value = registers.get(value_register)
-            if (
-                isinstance(array, _Array)
-                and isinstance(stored_index, int)
-                and isinstance(stored_value, LiteObject)
-                and 0 <= stored_index < array.size
-            ):
-                array.values[stored_index] = stored_value
+            if isinstance(array, _Array) and isinstance(stored_value, LiteObject):
+                if (
+                    isinstance(stored_index, int)
+                    and stored_index >= 0
+                    and (array.size is None or stored_index < array.size)
+                ):
+                    array.values[stored_index] = stored_value
+                else:
+                    size = (
+                        array.size if array.size is not None else len(array.values) + 1
+                    )
+                    missing = next(
+                        (index for index in range(size) if index not in array.values),
+                        None,
+                    )
+                    if missing is not None:
+                        array.values[missing] = stored_value
+                        array.heuristic = True
         elif opcode in {0x71, 0x77}:
             target = units[1]
             if target not in targets:
-                registers.clear()
+                pending_result = None
                 continue
             argument_registers = _invoke_registers(instruction)
             finding, reason = _resolve_call(
@@ -224,7 +252,7 @@ def _resolve_call(
     except InfoStringError as error:
         return None, f"invalid info string: {error}"
     array = registers.get(arguments[2])
-    if decoded.header.field_count == 0 and array == 0:
+    if decoded.header.field_count == 0:
         return (
             LiteFinding(
                 method.method_index,
@@ -232,15 +260,17 @@ def _resolve_call(
                 instruction.offset,
                 str(info.value),
                 (),
+                False,
             ),
             "",
         )
     if not isinstance(array, _Array):
         return None, "objects register is not a tracked new-array"
-    missing = [index for index in range(array.size) if index not in array.values]
+    size = array.size if array.size is not None else len(array.values)
+    missing = [index for index in range(size) if index not in array.values]
     if missing:
         return None, f"objects array has unresolved indexes: {missing}"
-    objects = tuple(array.values[index] for index in range(array.size))
+    objects = tuple(array.values[index] for index in range(size))
     return (
         LiteFinding(
             method.method_index,
@@ -248,6 +278,7 @@ def _resolve_call(
             instruction.offset,
             str(info.value),
             objects,
+            array.heuristic,
         ),
         "",
     )
@@ -275,7 +306,7 @@ def _move_object(registers: dict[int, Any], instruction: _Instruction) -> None:
 
 def _invoke_registers(instruction: _Instruction) -> tuple[int, ...]:
     units = instruction.units
-    if instruction.opcode == 0x77:
+    if instruction.opcode in {0x25, 0x77}:
         count = units[0] >> 8
         return tuple(range(units[2], units[2] + count))
     count = units[0] >> 12
