@@ -631,6 +631,28 @@ def test_map_recovery_rejects_illegal_scalar_key_types() -> None:
         assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
 
 
+def test_stale_field_register_is_invalidated_before_later_map_call() -> None:
+    dex = MapFakeDex()
+    method, _ = dex._items[0]
+    instructions = (
+        0x0062,
+        0,
+        0x0012,
+        0x0162,
+        1,
+        0x4071,
+        1,
+        0x2120,
+        0x020C,
+        0x0269,
+        2,
+        0x0E,
+    )
+    dex._items = ((method, CodeItem(300, 3, 0, 4, 0, 0, instructions)),)
+
+    assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
+
+
 def test_unrelated_constructor_wrapper_is_not_a_target() -> None:
     dex = FakeDex(
         complete_instructions(),
