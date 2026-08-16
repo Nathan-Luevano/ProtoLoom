@@ -35,6 +35,12 @@ class LiteEnumEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class LiteMapEvidence:
+    key_type: str
+    value_type: str
+
+
+@dataclass(frozen=True, slots=True)
 class LiteExtraction:
     findings: tuple[LiteFinding, ...]
     bailouts: tuple[LiteBailout, ...]
@@ -269,6 +275,117 @@ def _enum_values(dex: DexFile, descriptor: str) -> tuple[tuple[str, int], ...]:
                 ):
                     recovered[name] = int(enum_instance[3])
     return tuple(recovered.items())
+
+
+def recover_map_evidence(dex: DexFile, field_index: int) -> LiteMapEvidence | None:
+    if field_index < 0 or field_index >= len(dex.fields):
+        return None
+    target = dex.fields[field_index]
+    registers: dict[int, tuple[str, int]] = {}
+    pending: LiteMapEvidence | None = None
+    ready_to_store: tuple[int, LiteMapEvidence] | None = None
+    scalar_names = {
+        "BOOL": "bool",
+        "BYTES": "bytes",
+        "DOUBLE": "double",
+        "FIXED32": "fixed32",
+        "FIXED64": "fixed64",
+        "FLOAT": "float",
+        "INT32": "int32",
+        "INT64": "int64",
+        "SFIXED32": "sfixed32",
+        "SFIXED64": "sfixed64",
+        "SINT32": "sint32",
+        "SINT64": "sint64",
+        "STRING": "string",
+        "UINT32": "uint32",
+        "UINT64": "uint64",
+    }
+    key_scalar_names = {
+        "BOOL",
+        "FIXED32",
+        "FIXED64",
+        "INT32",
+        "INT64",
+        "SFIXED32",
+        "SFIXED64",
+        "SINT32",
+        "SINT64",
+        "STRING",
+        "UINT32",
+        "UINT64",
+    }
+    for method, code in dex.iter_code_items():
+        raw_method = dex.methods[method.method_index]
+        if (
+            raw_method.class_index != target.class_index
+            or dex.method_name(raw_method) != "<clinit>"
+        ):
+            continue
+        registers.clear()
+        pending = None
+        ready_to_store = None
+        for instruction in _instructions(code.instructions):
+            units = instruction.units
+            if pending is not None and instruction.opcode != 0x0C:
+                pending = None
+            if ready_to_store is not None and instruction.opcode != 0x69:
+                ready_to_store = None
+            if instruction.opcode == 0x62 and units[1] < len(dex.fields):
+                destination = units[0] >> 8
+                registers[destination] = ("field", units[1])
+            elif instruction.opcode == 0x71:
+                pending = None
+                if units[1] >= len(dex.methods):
+                    continue
+                arguments = _invoke_registers(instruction)
+                called = dex.methods[units[1]]
+                parameters = dex.method_parameter_types(called)
+                if (
+                    len(arguments) == 4
+                    and parameters
+                    == (
+                        "Lcom/google/protobuf/WireFormat$FieldType;",
+                        "Ljava/lang/Object;",
+                        "Lcom/google/protobuf/WireFormat$FieldType;",
+                        "Ljava/lang/Object;",
+                    )
+                    and dex.method_name(called) == "newDefaultInstance"
+                    and dex.types[called.class_index].endswith("/MapEntryLite;")
+                    and dex.method_return_type(called).endswith("/MapEntryLite;")
+                ):
+                    key = registers.get(arguments[0])
+                    value = registers.get(arguments[2])
+                    if key is not None and value is not None:
+                        key_field = dex.fields[key[1]]
+                        value_field = dex.fields[value[1]]
+                        if (
+                            dex.types[key_field.type_index] != parameters[0]
+                            or dex.types[value_field.type_index] != parameters[2]
+                        ):
+                            continue
+                        names = (
+                            dex.field_name(key_field),
+                            dex.field_name(value_field),
+                        )
+                        if names[0] in key_scalar_names and names[1] in scalar_names:
+                            pending = LiteMapEvidence(
+                                scalar_names[names[0]], scalar_names[names[1]]
+                            )
+            elif instruction.opcode == 0x0C:
+                destination = units[0] >> 8
+                if pending is not None:
+                    ready_to_store = (destination, pending)
+                pending = None
+            elif instruction.opcode == 0x69:
+                if (
+                    units[1] == field_index
+                    and ready_to_store is not None
+                    and units[0] >> 8 == ready_to_store[0]
+                ):
+                    return ready_to_store[1]
+                ready_to_store = None
+    return None
 
 
 def _scan_method(

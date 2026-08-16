@@ -87,7 +87,9 @@ def _enum(item: EnumType, indent: str) -> list[str]:
 
 def _field(item: Field, syntax: str, indent: str) -> str:
     label = item.label
-    if item.oneof is not None and not item.proto3_optional:
+    if item.type_name.startswith("map<") or (
+        item.oneof is not None and not item.proto3_optional
+    ):
         label = ""
     elif syntax == "proto3" and label == "optional":
         label = "optional" if item.proto3_optional else ""
@@ -154,7 +156,9 @@ def emit_proto(schema: RecoveredSchema) -> str:
         message = pending.pop()
         pending.extend(message.messages)
         for field in message.fields:
-            if field.type_name not in _SCALARS and not field.type_name.startswith("."):
+            if field.type_name not in _SCALARS and not field.type_name.startswith(
+                (".", "map<")
+            ):
                 referenced.add(field.type_name)
     for missing in sorted(referenced - declared):
         lines.extend((f"message {_name(missing, 'RecoveredType')} {{}}", ""))
