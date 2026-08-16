@@ -81,3 +81,16 @@ def test_proto2_oneof_fields_have_no_label() -> None:
     assert "oneof choice" in emitted
     assert "optional string text" not in emitted
     assert compile_proto(emitted).success
+
+
+def test_enum_aliases_emit_required_option() -> None:
+    descriptor = _descriptor()
+    enum = descriptor.enum_type.add(name="State")
+    enum.options.allow_alias = True
+    enum.value.add(name="UNKNOWN", number=0)
+    enum.value.add(name="UNSPECIFIED", number=0)
+
+    emitted = emit_proto(decode_file_descriptor(descriptor, "fixture", "0"))
+
+    assert "option allow_alias = true;" in emitted
+    assert compile_proto(emitted).success

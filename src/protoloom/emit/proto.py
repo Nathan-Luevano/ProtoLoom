@@ -73,8 +73,11 @@ def _name(value: str, fallback: str) -> str:
 def _enum(item: EnumType, indent: str) -> list[str]:
     lines = [f"{indent}enum {_name(item.name, 'RecoveredEnum')} {{"]
     values = item.values or []
-    if values and values[0].number != 0:
+    numbers = [value.number for value in values]
+    needs_synthetic_zero = bool(values and values[0].number != 0)
+    if needs_synthetic_zero or len(numbers) != len(set(numbers)):
         lines.append(f"{indent}  option allow_alias = true;")
+    if needs_synthetic_zero:
         lines.append(f"{indent}  UNSPECIFIED = 0;")
     for value in values:
         lines.append(f"{indent}  {_name(value.name, 'VALUE')} = {value.number};")
@@ -142,7 +145,9 @@ def emit_proto(schema: RecoveredSchema) -> str:
     for message in schema.messages:
         lines.extend(_message(message, schema.syntax))
         lines.append("")
-    declared = {message.name for message in schema.messages}
+    declared = {message.name for message in schema.messages} | {
+        enum.name for enum in schema.enums
+    }
     referenced: set[str] = set()
     pending = list(schema.messages)
     while pending:
