@@ -1,0 +1,267 @@
+from __future__ import annotations
+
+import struct
+from dataclasses import dataclass
+from pathlib import Path
+
+
+class DexError(ValueError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class DexHeader:
+    version: str
+    file_size: int
+    header_size: int
+    endian_tag: int
+    string_ids_size: int
+    string_ids_offset: int
+    type_ids_size: int
+    type_ids_offset: int
+    method_ids_size: int
+    method_ids_offset: int
+    class_defs_size: int
+    class_defs_offset: int
+    data_size: int
+    data_offset: int
+
+
+@dataclass(frozen=True, slots=True)
+class DexMethod:
+    class_index: int
+    prototype_index: int
+    name_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class DexClass:
+    class_index: int
+    access_flags: int
+    superclass_index: int
+    interfaces_offset: int
+    source_file_index: int
+    annotations_offset: int
+    class_data_offset: int
+    static_values_offset: int
+
+
+@dataclass(frozen=True, slots=True)
+class EncodedMethod:
+    method_index: int
+    access_flags: int
+    code_offset: int
+
+
+@dataclass(frozen=True, slots=True)
+class CodeItem:
+    offset: int
+    registers_size: int
+    ins_size: int
+    outs_size: int
+    tries_size: int
+    debug_info_offset: int
+    instructions: tuple[int, ...]
+
+
+class DexFile:
+    NO_INDEX = 0xFFFFFFFF
+
+    def __init__(self, data: bytes | bytearray | memoryview) -> None:
+        self._data = memoryview(data)
+        self.header = self._parse_header()
+        self.strings = self._parse_strings()
+        self.type_ids = self._uint_table(
+            self.header.type_ids_offset, self.header.type_ids_size
+        )
+        self.methods = self._parse_methods()
+        self.classes = self._parse_classes()
+
+    @classmethod
+    def from_path(cls, path: str | Path) -> DexFile:
+        return cls(Path(path).read_bytes())
+
+    @property
+    def types(self) -> tuple[str, ...]:
+        return tuple(self.strings[index] for index in self.type_ids)
+
+    def class_methods(self, item: DexClass) -> tuple[EncodedMethod, ...]:
+        if item.class_data_offset == 0:
+            return ()
+        cursor = item.class_data_offset
+        static_count, cursor = self._uleb128(cursor)
+        instance_count, cursor = self._uleb128(cursor)
+        direct_count, cursor = self._uleb128(cursor)
+        virtual_count, cursor = self._uleb128(cursor)
+        for _ in range(static_count + instance_count):
+            _, cursor = self._uleb128(cursor)
+            _, cursor = self._uleb128(cursor)
+        result: list[EncodedMethod] = []
+        for count in (direct_count, virtual_count):
+            method_index = 0
+            for _ in range(count):
+                index_delta, cursor = self._uleb128(cursor)
+                flags, cursor = self._uleb128(cursor)
+                code_offset, cursor = self._uleb128(cursor)
+                method_index += index_delta
+                if method_index >= len(self.methods):
+                    raise DexError("encoded method index is out of range")
+                result.append(EncodedMethod(method_index, flags, code_offset))
+        return tuple(result)
+
+    def code_item(self, offset: int) -> CodeItem:
+        if offset == 0:
+            raise DexError("method has no code item")
+        registers, ins, outs, tries, debug_offset, count = self._unpack(
+            "<HHHHII", offset
+        )
+        instruction_offset = offset + 16
+        raw = self._slice(instruction_offset, int(count) * 2)
+        instructions = struct.unpack_from(f"<{int(count)}H", raw) if count else ()
+        # Validate the start of try/catch data too; callers can safely scan past insns.
+        tail = instruction_offset + int(count) * 2
+        if tries and count & 1:
+            tail += 2
+        self._slice(tail, int(tries) * 8)
+        return CodeItem(
+            offset,
+            int(registers),
+            int(ins),
+            int(outs),
+            int(tries),
+            int(debug_offset),
+            tuple(instructions),
+        )
+
+    def iter_code_items(self) -> tuple[tuple[EncodedMethod, CodeItem], ...]:
+        result: list[tuple[EncodedMethod, CodeItem]] = []
+        for item in self.classes:
+            for method in self.class_methods(item):
+                if method.code_offset:
+                    result.append((method, self.code_item(method.code_offset)))
+        return tuple(result)
+
+    def method_name(self, method: DexMethod | EncodedMethod) -> str:
+        item = (
+            self.methods[method.method_index]
+            if isinstance(method, EncodedMethod)
+            else method
+        )
+        return self.strings[item.name_index]
+
+    def _parse_header(self) -> DexHeader:
+        if (
+            len(self._data) < 112
+            or bytes(self._data[:4]) != b"dex\n"
+            or bytes(self._data[7:8]) != b"\x00"
+        ):
+            raise DexError("not a valid DEX header")
+        version = bytes(self._data[4:7]).decode("ascii", errors="strict")
+        values = self._unpack("<20I", 32)
+        file_size, header_size, endian_tag = (
+            int(values[0]),
+            int(values[1]),
+            int(values[2]),
+        )
+        if (
+            header_size != 112
+            or file_size != len(self._data)
+            or endian_tag != 0x12345678
+        ):
+            raise DexError("invalid DEX size, header size, or byte order")
+        return DexHeader(
+            version,
+            file_size,
+            header_size,
+            endian_tag,
+            int(values[6]),
+            int(values[7]),
+            int(values[8]),
+            int(values[9]),
+            int(values[14]),
+            int(values[15]),
+            int(values[16]),
+            int(values[17]),
+            int(values[18]),
+            int(values[19]),
+        )
+
+    def _parse_strings(self) -> tuple[str, ...]:
+        offsets = self._uint_table(
+            self.header.string_ids_offset, self.header.string_ids_size
+        )
+        result: list[str] = []
+        for offset in offsets:
+            utf16_size, cursor = self._uleb128(offset)
+            end = cursor
+            while end < len(self._data) and self._data[end] != 0:
+                end += 1
+            if end == len(self._data):
+                raise DexError("unterminated string_data_item")
+            raw = bytes(self._data[cursor:end])
+            value = _decode_mutf8(raw)
+            actual_size = len(value.encode("utf-16-le", errors="surrogatepass")) // 2
+            if actual_size != utf16_size:
+                raise DexError("string_data_item UTF-16 length mismatch")
+            result.append(value)
+        return tuple(result)
+
+    def _parse_methods(self) -> tuple[DexMethod, ...]:
+        result: list[DexMethod] = []
+        for index in range(self.header.method_ids_size):
+            class_index, prototype_index, name_index = self._unpack(
+                "<HHI", self.header.method_ids_offset + index * 8
+            )
+            if class_index >= len(self.type_ids) or name_index >= len(self.strings):
+                raise DexError("method identifier is out of range")
+            result.append(
+                DexMethod(int(class_index), int(prototype_index), int(name_index))
+            )
+        return tuple(result)
+
+    def _parse_classes(self) -> tuple[DexClass, ...]:
+        result: list[DexClass] = []
+        for index in range(self.header.class_defs_size):
+            raw = self._unpack("<8I", self.header.class_defs_offset + index * 32)
+            if raw[0] >= len(self.type_ids):
+                raise DexError("class type identifier is out of range")
+            result.append(DexClass(*(int(value) for value in raw)))
+        return tuple(result)
+
+    def _uint_table(self, offset: int, count: int) -> tuple[int, ...]:
+        raw = self._slice(offset, count * 4)
+        return tuple(struct.unpack_from(f"<{count}I", raw)) if count else ()
+
+    def _uleb128(self, offset: int) -> tuple[int, int]:
+        value = 0
+        for shift in range(0, 35, 7):
+            if offset >= len(self._data):
+                raise DexError("truncated ULEB128 value")
+            byte = int(self._data[offset])
+            offset += 1
+            value |= (byte & 0x7F) << shift
+            if byte < 0x80:
+                if shift == 28 and byte > 0x0F:
+                    raise DexError("ULEB128 value exceeds 32 bits")
+                return value, offset
+        raise DexError("invalid ULEB128 value")
+
+    def _unpack(self, fmt: str, offset: int) -> tuple[int, ...]:
+        size = struct.calcsize(fmt)
+        if offset < 0 or offset + size > len(self._data):
+            raise DexError("DEX structure lies outside the file")
+        return struct.unpack_from(fmt, self._data, offset)
+
+    def _slice(self, offset: int, size: int) -> memoryview:
+        if offset < 0 or size < 0 or offset + size > len(self._data):
+            raise DexError("DEX range lies outside the file")
+        return self._data[offset : offset + size]
+
+
+def _decode_mutf8(raw: bytes) -> str:
+    # DEX uses Java's NUL encoding and permits UTF-16 surrogate code units.
+    cooked = raw.replace(b"\xc0\x80", b"\x00")
+    try:
+        return cooked.decode("utf-8", errors="surrogatepass")
+    except UnicodeDecodeError as error:
+        raise DexError("invalid modified UTF-8 string") from error
