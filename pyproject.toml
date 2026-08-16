@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "protoloom"
-version = "0.0.0"
+version = "0.1.0"
 description = "Recover compilable protobuf schemas from stripped binaries"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -9,6 +9,12 @@ runner = CliRunner()
 FIXTURE = Path("tests/fixtures/bench/manifest.json")
 
 
+def test_version_matches_release() -> None:
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == "0.1.0"
+
+
 def test_bench_accepts_manifest_path(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     result = runner.invoke(app, ["bench", "--corpus", str(FIXTURE), "--per-target"])
