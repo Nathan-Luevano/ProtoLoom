@@ -1,0 +1,36 @@
+{
+  "compiled": true,
+  "enums": [],
+  "messages": [
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "currency_code",
+          "number": 1,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "units",
+          "number": 2,
+          "proto_type": "int64",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "nanos",
+          "number": 3,
+          "proto_type": "int32",
+          "wire_type": 0
+        }
+      ],
+      "name": "google.type.Money"
+    }
+  ],
+  "round_trip": {
+    "passed": 0,
+    "total": 0
+  }
+}

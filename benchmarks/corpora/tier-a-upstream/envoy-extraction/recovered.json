@@ -1,0 +1,394 @@
+{
+  "compiled": true,
+  "enums": [
+    {
+      "name": "extraction.TestEnum",
+      "values": [
+        [
+          "TEST_ENUM_UNSPECIFIED",
+          0
+        ],
+        [
+          "ALPHA",
+          1
+        ],
+        [
+          "BETA",
+          2
+        ],
+        [
+          "GAMMA",
+          3
+        ]
+      ]
+    },
+    {
+      "name": "extraction.TestProto2Enum",
+      "values": [
+        [
+          "PROTO2_ALPHA",
+          0
+        ],
+        [
+          "PROTO2_BETA",
+          1
+        ],
+        [
+          "PROTO2_GAMMA",
+          2
+        ]
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "name",
+          "number": 1,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "ratio",
+          "number": 2,
+          "proto_type": "float",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "objects",
+          "number": 3,
+          "proto_type": "bytes",
+          "wire_type": 2
+        }
+      ],
+      "name": "extraction.TestBucket"
+    },
+    {
+      "fields": [
+        {
+          "label": "repeated",
+          "name": "repeated_strings",
+          "number": 3,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_enum",
+          "number": 17,
+          "proto_type": "enum",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_double",
+          "number": 4,
+          "proto_type": "double",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_float",
+          "number": 5,
+          "proto_type": "float",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_int64",
+          "number": 6,
+          "proto_type": "int64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_uint64",
+          "number": 7,
+          "proto_type": "uint64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_int32",
+          "number": 8,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_fixed64",
+          "number": 9,
+          "proto_type": "fixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_fixed32",
+          "number": 10,
+          "proto_type": "fixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_bool",
+          "number": 11,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_uint32",
+          "number": 12,
+          "proto_type": "uint32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sfixed64",
+          "number": 13,
+          "proto_type": "sfixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sfixed32",
+          "number": 14,
+          "proto_type": "sfixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sint32",
+          "number": 15,
+          "proto_type": "sint32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sint64",
+          "number": 16,
+          "proto_type": "sint64",
+          "wire_type": 0
+        }
+      ],
+      "name": "extraction.TestProto2Message"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "id",
+          "number": 1,
+          "proto_type": "int64",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "bucket",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "proto2_message",
+          "number": 18,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_strings",
+          "number": 3,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_enum",
+          "number": 17,
+          "proto_type": "enum",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_double",
+          "number": 4,
+          "proto_type": "double",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_float",
+          "number": 5,
+          "proto_type": "float",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_int64",
+          "number": 6,
+          "proto_type": "int64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_uint64",
+          "number": 7,
+          "proto_type": "uint64",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_int32",
+          "number": 8,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_fixed64",
+          "number": 9,
+          "proto_type": "fixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_fixed32",
+          "number": 10,
+          "proto_type": "fixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_bool",
+          "number": 11,
+          "proto_type": "bool",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_uint32",
+          "number": 12,
+          "proto_type": "uint32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sfixed64",
+          "number": 13,
+          "proto_type": "sfixed64",
+          "wire_type": 1
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sfixed32",
+          "number": 14,
+          "proto_type": "sfixed32",
+          "wire_type": 5
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sint32",
+          "number": 15,
+          "proto_type": "sint32",
+          "wire_type": 0
+        },
+        {
+          "label": "repeated",
+          "name": "repeated_sint64",
+          "number": 16,
+          "proto_type": "sint64",
+          "wire_type": 0
+        }
+      ],
+      "name": "extraction.TestRequest"
+    },
+    {
+      "fields": [
+        {
+          "label": "repeated",
+          "name": "buckets",
+          "number": 1,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "sub_buckets",
+          "number": 3,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "bucket_present",
+          "number": 4,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "bucket_absent",
+          "number": 5,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "sub_message",
+          "number": 6,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "extraction.TestResponse"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "extraction.TestResponse.SubBucketsEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "bucket_present",
+          "number": 1,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "bucket_absent",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "extraction.TestResponse.SubMessage"
+    }
+  ],
+  "round_trip": {
+    "passed": 0,
+    "total": 0
+  }
+}

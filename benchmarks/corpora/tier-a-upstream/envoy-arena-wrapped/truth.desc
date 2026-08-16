@@ -1,0 +1,9 @@
+
+®
+3test/common/protobuf/arena_wrapped_proto_test.prototest"*
+
+SubMessage
+	stringval (	R	stringval"E
+TestMessage
+name (	Rname"
+sub (2.test.SubMessageRsub

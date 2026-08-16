@@ -1,0 +1,182 @@
+{
+  "matrix": {
+    "optimization": [
+      "none"
+    ],
+    "runtime": [
+      "embedded-descriptor"
+    ]
+  },
+  "name": "tier-a-upstream",
+  "targets": [
+    {
+      "name": "protobuf-unittest-proto3",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "protobuf-unittest-proto3/recovered.json",
+        "sha256": "e5c86cceaff74f512c2ffd985836f61c399c3efc51503a435f9a123dc13643fe"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "protobuf-unittest-proto3/truth.json",
+        "sha256": "e5c86cceaff74f512c2ffd985836f61c399c3efc51503a435f9a123dc13643fe"
+      }
+    },
+    {
+      "name": "protobuf-well-known-unittest",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "protobuf-well-known-unittest/recovered.json",
+        "sha256": "749f8a7feb439aca53be56e64b99444ebcf9b7a96f041eb47f57b43a4ee57ea7"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "protobuf-well-known-unittest/truth.json",
+        "sha256": "749f8a7feb439aca53be56e64b99444ebcf9b7a96f041eb47f57b43a4ee57ea7"
+      }
+    },
+    {
+      "name": "protobuf-test-messages-proto3",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "protobuf-test-messages-proto3/recovered.json",
+        "sha256": "ea02b9e0f50606d992a630cd42454d8abaf09e1534ee0f421cc2655c4d1a8814"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "protobuf-test-messages-proto3/truth.json",
+        "sha256": "ea02b9e0f50606d992a630cd42454d8abaf09e1534ee0f421cc2655c4d1a8814"
+      }
+    },
+    {
+      "name": "protobuf-conformance",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "protobuf-conformance/recovered.json",
+        "sha256": "51ee8bfa5a354d4c58eaa8791157d8c02b484a1d83ac7b6eb67eba272ab9952b"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "protobuf-conformance/truth.json",
+        "sha256": "51ee8bfa5a354d4c58eaa8791157d8c02b484a1d83ac7b6eb67eba272ab9952b"
+      }
+    },
+    {
+      "name": "googleapis-date",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "googleapis-date/recovered.json",
+        "sha256": "2fd2b044f5eed8d768704ce3867df81ae552896429c54b77e873c6992b2a9e4c"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "googleapis-date/truth.json",
+        "sha256": "2fd2b044f5eed8d768704ce3867df81ae552896429c54b77e873c6992b2a9e4c"
+      }
+    },
+    {
+      "name": "googleapis-money",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "googleapis-money/recovered.json",
+        "sha256": "315b988a83de0a1b38973bf13250fdc3d52fa171b03e5eb72562cfa6779a0d53"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "googleapis-money/truth.json",
+        "sha256": "315b988a83de0a1b38973bf13250fdc3d52fa171b03e5eb72562cfa6779a0d53"
+      }
+    },
+    {
+      "name": "googleapis-latlng",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "googleapis-latlng/recovered.json",
+        "sha256": "41ac4a17e05970b8e986c0625dea5f8f18c60afe400e454b376b144b12df8cd1"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "googleapis-latlng/truth.json",
+        "sha256": "41ac4a17e05970b8e986c0625dea5f8f18c60afe400e454b376b144b12df8cd1"
+      }
+    },
+    {
+      "name": "googleapis-timeofday",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "googleapis-timeofday/recovered.json",
+        "sha256": "d0a7daad61d3e356d60d4f7ebbe44ab269063bb102e512176c67c6b7a495e05a"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "googleapis-timeofday/truth.json",
+        "sha256": "d0a7daad61d3e356d60d4f7ebbe44ab269063bb102e512176c67c6b7a495e05a"
+      }
+    },
+    {
+      "name": "googleapis-month",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "googleapis-month/recovered.json",
+        "sha256": "9c59c15d1e64c8f4a69b9a4f7b73b26a7c73dcabfb7487fae0d3ddb4fa3ed157"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "googleapis-month/truth.json",
+        "sha256": "9c59c15d1e64c8f4a69b9a4f7b73b26a7c73dcabfb7487fae0d3ddb4fa3ed157"
+      }
+    },
+    {
+      "name": "grpc-health",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "grpc-health/recovered.json",
+        "sha256": "e0fc9b9ffafe542314e90a102d2cb9830332de87b5789c7ecf203e1fe97bba71"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "grpc-health/truth.json",
+        "sha256": "e0fc9b9ffafe542314e90a102d2cb9830332de87b5789c7ecf203e1fe97bba71"
+      }
+    },
+    {
+      "name": "envoy-helloworld",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "envoy-helloworld/recovered.json",
+        "sha256": "52ca5b665cbbb89df29420c65f98eaa546981203add46e06a03b0e2d16c3a785"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "envoy-helloworld/truth.json",
+        "sha256": "52ca5b665cbbb89df29420c65f98eaa546981203add46e06a03b0e2d16c3a785"
+      }
+    },
+    {
+      "name": "envoy-extraction",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "envoy-extraction/recovered.json",
+        "sha256": "d0ec79536a37ec5c1a9cc77fdc8b36c4a82cb8bf57429f2e408228fecba444f2"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "envoy-extraction/truth.json",
+        "sha256": "d0ec79536a37ec5c1a9cc77fdc8b36c4a82cb8bf57429f2e408228fecba444f2"
+      }
+    },
+    {
+      "name": "envoy-arena-wrapped",
+      "recovered": {
+        "name": "recovered.json",
+        "path": "envoy-arena-wrapped/recovered.json",
+        "sha256": "64f496219eae38dc63e83e06f340bcd9c94cee8ff0e117337c0a86306e89edf9"
+      },
+      "truth": {
+        "name": "truth.json",
+        "path": "envoy-arena-wrapped/truth.json",
+        "sha256": "64f496219eae38dc63e83e06f340bcd9c94cee8ff0e117337c0a86306e89edf9"
+      }
+    }
+  ]
+}

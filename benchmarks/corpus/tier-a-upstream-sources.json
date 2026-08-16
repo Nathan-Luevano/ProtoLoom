@@ -1,0 +1,117 @@
+{
+  "name": "tier-a-upstream",
+  "sources": [
+    {
+      "name": "protobuf",
+      "commit": "85425fce61be6ce0d7ac6f2a154fef7de2e684f3",
+      "url": "https://codeload.github.com/protocolbuffers/protobuf/tar.gz/85425fce61be6ce0d7ac6f2a154fef7de2e684f3",
+      "sha256": "c820e85c2bbd6151776d9fe1334ff7c2a07723a33a47baf1d5f8f8afd103da0b",
+      "size": 9356052,
+      "includes": ["src", "."],
+      "targets": [
+        {
+          "name": "protobuf-unittest-proto3",
+          "proto": "google/protobuf/unittest_proto3.proto"
+        },
+        {
+          "name": "protobuf-well-known-unittest",
+          "proto": "google/protobuf/unittest_well_known_types.proto"
+        },
+        {
+          "name": "protobuf-test-messages-proto3",
+          "proto": "google/protobuf/test_messages_proto3.proto"
+        },
+        {
+          "name": "protobuf-conformance",
+          "proto": "conformance/conformance.proto",
+          "compiled_leg": "cpp-object"
+        }
+      ]
+    },
+    {
+      "name": "googleapis",
+      "commit": "ca91093129b6744ee1dbb062381cdf63dcec669b",
+      "url": "https://codeload.github.com/googleapis/googleapis/tar.gz/ca91093129b6744ee1dbb062381cdf63dcec669b",
+      "sha256": "00a17d6b7b6269c2f3aacc094a8f89a06dc0d8fa92f517841fa2032940887d22",
+      "size": 13123630,
+      "includes": ["."],
+      "targets": [
+        {
+          "name": "googleapis-date",
+          "proto": "google/type/date.proto",
+          "compiled_leg": "cpp-object"
+        },
+        {
+          "name": "googleapis-money",
+          "proto": "google/type/money.proto"
+        },
+        {
+          "name": "googleapis-latlng",
+          "proto": "google/type/latlng.proto"
+        },
+        {
+          "name": "googleapis-timeofday",
+          "proto": "google/type/timeofday.proto"
+        },
+        {
+          "name": "googleapis-month",
+          "proto": "google/type/month.proto"
+        }
+      ]
+    },
+    {
+      "name": "grpc-proto",
+      "commit": "99135b19189588fcc787acb84cff27991787473d",
+      "url": "https://codeload.github.com/grpc/grpc-proto/tar.gz/99135b19189588fcc787acb84cff27991787473d",
+      "sha256": "342edc01f146056f106dc21d54c85c1ee181710b3fe4e14fd7f55c1c62eab615",
+      "size": 45662,
+      "includes": ["."],
+      "targets": [
+        {
+          "name": "grpc-health",
+          "proto": "grpc/health/v1/health.proto",
+          "compiled_leg": "cpp-object"
+        }
+      ]
+    },
+    {
+      "name": "envoy",
+      "commit": "7ff6d762f19d5a52b7b4cd3633a3b958638142fb",
+      "files": [
+        {
+          "path": "test/proto/helloworld.proto",
+          "url": "https://raw.githubusercontent.com/envoyproxy/envoy/7ff6d762f19d5a52b7b4cd3633a3b958638142fb/test/proto/helloworld.proto",
+          "sha256": "c22ce5a8b84f45749cc7b84b15caeef1e9e1b27da36f2386a76f954368d22b9f",
+          "size": 575
+        },
+        {
+          "path": "test/proto/extraction.proto",
+          "url": "https://raw.githubusercontent.com/envoyproxy/envoy/7ff6d762f19d5a52b7b4cd3633a3b958638142fb/test/proto/extraction.proto",
+          "sha256": "1224b9d334cc6f6be34c4f7a29b76e1d8f3904c9e318ea8668879646f505acc7",
+          "size": 2197
+        },
+        {
+          "path": "test/common/protobuf/arena_wrapped_proto_test.proto",
+          "url": "https://raw.githubusercontent.com/envoyproxy/envoy/7ff6d762f19d5a52b7b4cd3633a3b958638142fb/test/common/protobuf/arena_wrapped_proto_test.proto",
+          "sha256": "87613424e174cec9da740fbf232a995aa760231d4463371278c17f2bbf54755d",
+          "size": 175
+        }
+      ],
+      "includes": ["."],
+      "targets": [
+        {
+          "name": "envoy-helloworld",
+          "proto": "test/proto/helloworld.proto"
+        },
+        {
+          "name": "envoy-extraction",
+          "proto": "test/proto/extraction.proto"
+        },
+        {
+          "name": "envoy-arena-wrapped",
+          "proto": "test/common/protobuf/arena_wrapped_proto_test.proto"
+        }
+      ]
+    }
+  ]
+}

@@ -25,6 +25,43 @@ Corpus: `tier-a-small` local calibration fixture. Targets: 1. Reproduce it with
 `protoloom bench --corpus tier-a-small --per-target`. The manifest hash-pins
 both inputs.
 
+## Tier A pinned upstream corpus
+
+Tier A now includes 13 compiled schema roots from four commit-pinned upstream
+families rather than treating the one local calibration fixture as corpus
+coverage. The roots cover protobuf `unittest_proto3`, well-known-type unittest,
+test messages, and conformance; five `google/type` schemas; gRPC Health; and
+three self-contained Envoy schemas. Together they contain 80 messages, 549
+fields, 64 enum values, and 32,397 serialized root-descriptor bytes.
+
+| Measurement | Result | Count |
+|---|---:|---:|
+| Root descriptor recovery | 100.00% | 13 / 13 |
+| Descriptor byte identity | 100.00% | 32,397 / 32,397 |
+| Recovered proto compile rate | 100.00% | 13 / 13 |
+| Field recall and precision | 100.00% | 549 / 549 |
+| Wire and exact type fidelity | 100.00% | 549 / 549 |
+| Enum recovery | 100.00% | 64 / 64 values |
+| Generated C++ object recovery | 0.00% | 0 / 3 objects |
+| Round trip | not measured | 0 payloads |
+
+The perfect descriptor scores are Path-1 results, not a claim that stripped
+generated code is solved: each selected root descriptor is embedded directly
+for the exact scanner oracle. As a separate compiled-code check, the driver ran
+protoc's C++ generator and compiled optimized objects for protobuf conformance,
+Google Date, and gRPC Health. None exposed a standalone serialized descriptor
+accepted by the current scanner. That 0/3 result is retained in
+`measurements.json`; the existing custom-section C++ and Go carriers remain the
+positive compiled Path-1 cases below. No payloads belong to this corpus, so the
+benchmark renderer's vacuous 100% for a zero round-trip denominator is not used
+as a result.
+
+Reproduce both generation and scoring with `scripts/run_tier_a_upstream.py`
+followed by `protoloom bench --corpus tier-a-upstream --per-target`. The source
+manifest pins full commits, archive or file hashes, and byte sizes. The checked
+in benchmark manifest separately hash-pins every generated truth and recovery
+input.
+
 ## Extractor baselines
 
 `scripts/run_path1_cpp.sh` generates and strips an optimized C++ binary with

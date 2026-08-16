@@ -1,0 +1,9 @@
+
+ç
+google/type/money.protogoogle.type"X
+Money#
+currency_code (	RcurrencyCode
+units (Runits
+nanos (RnanosB]
+com.google.typeB
+MoneyProtoPZ6google.golang.org/genproto/googleapis/type/money;money¢GTPbproto3

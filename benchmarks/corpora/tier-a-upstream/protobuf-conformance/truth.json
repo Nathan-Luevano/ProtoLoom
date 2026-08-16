@@ -1,0 +1,264 @@
+{
+  "compiled": true,
+  "enums": [
+    {
+      "name": "conformance.WireFormat",
+      "values": [
+        [
+          "UNSPECIFIED",
+          0
+        ],
+        [
+          "PROTOBUF",
+          1
+        ],
+        [
+          "JSON",
+          2
+        ],
+        [
+          "JSPB",
+          3
+        ],
+        [
+          "TEXT_FORMAT",
+          4
+        ]
+      ]
+    },
+    {
+      "name": "conformance.TestCategory",
+      "values": [
+        [
+          "UNSPECIFIED_TEST",
+          0
+        ],
+        [
+          "BINARY_TEST",
+          1
+        ],
+        [
+          "JSON_TEST",
+          2
+        ],
+        [
+          "JSON_IGNORE_UNKNOWN_PARSING_TEST",
+          3
+        ],
+        [
+          "JSPB_TEST",
+          4
+        ],
+        [
+          "TEXT_FORMAT_TEST",
+          5
+        ]
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "name",
+          "number": 1,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "failure_message",
+          "number": 2,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "matched_name",
+          "number": 3,
+          "proto_type": "string",
+          "wire_type": 2
+        }
+      ],
+      "name": "conformance.TestStatus"
+    },
+    {
+      "fields": [
+        {
+          "label": "repeated",
+          "name": "test",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "conformance.FailureSet"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "protobuf_payload",
+          "number": 1,
+          "oneof": "payload",
+          "proto_type": "bytes",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "json_payload",
+          "number": 2,
+          "oneof": "payload",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "jspb_payload",
+          "number": 7,
+          "oneof": "payload",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "text_payload",
+          "number": 8,
+          "oneof": "payload",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "requested_output_format",
+          "number": 3,
+          "proto_type": "enum",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "message_type",
+          "number": 4,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "test_category",
+          "number": 5,
+          "proto_type": "enum",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "jspb_encoding_options",
+          "number": 6,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "print_unknown_fields",
+          "number": 9,
+          "proto_type": "bool",
+          "wire_type": 0
+        }
+      ],
+      "name": "conformance.ConformanceRequest"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "parse_error",
+          "number": 1,
+          "oneof": "result",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "serialize_error",
+          "number": 6,
+          "oneof": "result",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "timeout_error",
+          "number": 9,
+          "oneof": "result",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "runtime_error",
+          "number": 2,
+          "oneof": "result",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "protobuf_payload",
+          "number": 3,
+          "oneof": "result",
+          "proto_type": "bytes",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "json_payload",
+          "number": 4,
+          "oneof": "result",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "skipped",
+          "number": 5,
+          "oneof": "result",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "jspb_payload",
+          "number": 7,
+          "oneof": "result",
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "text_payload",
+          "number": 8,
+          "oneof": "result",
+          "proto_type": "string",
+          "wire_type": 2
+        }
+      ],
+      "name": "conformance.ConformanceResponse"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "use_jspb_array_any_format",
+          "number": 1,
+          "proto_type": "bool",
+          "wire_type": 0
+        }
+      ],
+      "name": "conformance.JspbEncodingConfig"
+    }
+  ],
+  "round_trip": {
+    "passed": 0,
+    "total": 0
+  }
+}

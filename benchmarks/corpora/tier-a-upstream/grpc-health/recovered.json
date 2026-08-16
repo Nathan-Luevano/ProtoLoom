@@ -1,0 +1,91 @@
+{
+  "compiled": true,
+  "enums": [
+    {
+      "name": "grpc.health.v1.HealthCheckResponse.ServingStatus",
+      "values": [
+        [
+          "UNKNOWN",
+          0
+        ],
+        [
+          "SERVING",
+          1
+        ],
+        [
+          "NOT_SERVING",
+          2
+        ],
+        [
+          "SERVICE_UNKNOWN",
+          3
+        ]
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "service",
+          "number": 1,
+          "proto_type": "string",
+          "wire_type": 2
+        }
+      ],
+      "name": "grpc.health.v1.HealthCheckRequest"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "status",
+          "number": 1,
+          "proto_type": "enum",
+          "wire_type": 0
+        }
+      ],
+      "name": "grpc.health.v1.HealthCheckResponse"
+    },
+    {
+      "fields": [],
+      "name": "grpc.health.v1.HealthListRequest"
+    },
+    {
+      "fields": [
+        {
+          "label": "repeated",
+          "name": "statuses",
+          "number": 1,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "grpc.health.v1.HealthListResponse"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "string",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "grpc.health.v1.HealthListResponse.StatusesEntry"
+    }
+  ],
+  "round_trip": {
+    "passed": 0,
+    "total": 0
+  }
+}

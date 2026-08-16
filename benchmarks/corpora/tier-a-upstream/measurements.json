@@ -1,0 +1,132 @@
+[
+  {
+    "compiled_leg": null,
+    "compiled_object_exact": null,
+    "descriptor_bytes": 6487,
+    "descriptor_exact": true,
+    "proto": "google/protobuf/unittest_proto3.proto",
+    "recovered_proto_compiled": true,
+    "source": "protobuf",
+    "target": "protobuf-unittest-proto3"
+  },
+  {
+    "compiled_leg": null,
+    "compiled_object_exact": null,
+    "descriptor_bytes": 7299,
+    "descriptor_exact": true,
+    "proto": "google/protobuf/unittest_well_known_types.proto",
+    "recovered_proto_compiled": true,
+    "source": "protobuf",
+    "target": "protobuf-well-known-unittest"
+  },
+  {
+    "compiled_leg": null,
+    "compiled_object_exact": null,
+    "descriptor_bytes": 12176,
+    "descriptor_exact": true,
+    "proto": "google/protobuf/test_messages_proto3.proto",
+    "recovered_proto_compiled": true,
+    "source": "protobuf",
+    "target": "protobuf-test-messages-proto3"
+  },
+  {
+    "compiled_leg": "cpp-object",
+    "compiled_object_exact": false,
+    "descriptor_bytes": 1463,
+    "descriptor_exact": true,
+    "proto": "conformance/conformance.proto",
+    "recovered_proto_compiled": true,
+    "source": "protobuf",
+    "target": "protobuf-conformance"
+  },
+  {
+    "compiled_leg": "cpp-object",
+    "compiled_object_exact": false,
+    "descriptor_bytes": 205,
+    "descriptor_exact": true,
+    "proto": "google/type/date.proto",
+    "recovered_proto_compiled": true,
+    "source": "googleapis",
+    "target": "googleapis-date"
+  },
+  {
+    "compiled_leg": null,
+    "compiled_object_exact": null,
+    "descriptor_bytes": 231,
+    "descriptor_exact": true,
+    "proto": "google/type/money.proto",
+    "recovered_proto_compiled": true,
+    "source": "googleapis",
+    "target": "googleapis-money"
+  },
+  {
+    "compiled_leg": null,
+    "compiled_object_exact": null,
+    "descriptor_bytes": 213,
+    "descriptor_exact": true,
+    "proto": "google/type/latlng.proto",
+    "recovered_proto_compiled": true,
+    "source": "googleapis",
+    "target": "googleapis-latlng"
+  },
+  {
+    "compiled_leg": null,
+    "compiled_object_exact": null,
+    "descriptor_bytes": 266,
+    "descriptor_exact": true,
+    "proto": "google/type/timeofday.proto",
+    "recovered_proto_compiled": true,
+    "source": "googleapis",
+    "target": "googleapis-timeofday"
+  },
+  {
+    "compiled_leg": null,
+    "compiled_object_exact": null,
+    "descriptor_bytes": 320,
+    "descriptor_exact": true,
+    "proto": "google/type/month.proto",
+    "recovered_proto_compiled": true,
+    "source": "googleapis",
+    "target": "googleapis-month"
+  },
+  {
+    "compiled_leg": "cpp-object",
+    "compiled_object_exact": false,
+    "descriptor_bytes": 871,
+    "descriptor_exact": true,
+    "proto": "grpc/health/v1/health.proto",
+    "recovered_proto_compiled": true,
+    "source": "grpc-proto",
+    "target": "grpc-health"
+  },
+  {
+    "compiled_leg": null,
+    "compiled_object_exact": null,
+    "descriptor_bytes": 282,
+    "descriptor_exact": true,
+    "proto": "test/proto/helloworld.proto",
+    "recovered_proto_compiled": true,
+    "source": "envoy",
+    "target": "envoy-helloworld"
+  },
+  {
+    "compiled_leg": null,
+    "compiled_object_exact": null,
+    "descriptor_bytes": 2410,
+    "descriptor_exact": true,
+    "proto": "test/proto/extraction.proto",
+    "recovered_proto_compiled": true,
+    "source": "envoy",
+    "target": "envoy-extraction"
+  },
+  {
+    "compiled_leg": null,
+    "compiled_object_exact": null,
+    "descriptor_bytes": 174,
+    "descriptor_exact": true,
+    "proto": "test/common/protobuf/arena_wrapped_proto_test.proto",
+    "recovered_proto_compiled": true,
+    "source": "envoy",
+    "target": "envoy-arena-wrapped"
+  }
+]

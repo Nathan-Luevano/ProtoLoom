@@ -1,0 +1,901 @@
+{
+  "compiled": true,
+  "enums": [],
+  "messages": [
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "any_field",
+          "number": 1,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "api_field",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "duration_field",
+          "number": 3,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "empty_field",
+          "number": 4,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "field_mask_field",
+          "number": 5,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "source_context_field",
+          "number": 6,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "struct_field",
+          "number": 7,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "timestamp_field",
+          "number": 8,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "type_field",
+          "number": 9,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "double_field",
+          "number": 10,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "float_field",
+          "number": 11,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "int64_field",
+          "number": 12,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "uint64_field",
+          "number": 13,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "int32_field",
+          "number": 14,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "uint32_field",
+          "number": 15,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "bool_field",
+          "number": 16,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "string_field",
+          "number": 17,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "bytes_field",
+          "number": 18,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "value_field",
+          "number": 19,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.TestWellKnownTypes"
+    },
+    {
+      "fields": [
+        {
+          "label": "repeated",
+          "name": "any_field",
+          "number": 1,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "api_field",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "duration_field",
+          "number": 3,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "empty_field",
+          "number": 4,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "field_mask_field",
+          "number": 5,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "source_context_field",
+          "number": 6,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "struct_field",
+          "number": 7,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "timestamp_field",
+          "number": 8,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "type_field",
+          "number": 9,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "double_field",
+          "number": 10,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "float_field",
+          "number": 11,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "int64_field",
+          "number": 12,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "uint64_field",
+          "number": 13,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "int32_field",
+          "number": 14,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "uint32_field",
+          "number": 15,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "bool_field",
+          "number": 16,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "string_field",
+          "number": 17,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "bytes_field",
+          "number": 18,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.RepeatedWellKnownTypes"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "any_field",
+          "number": 1,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "api_field",
+          "number": 2,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "duration_field",
+          "number": 3,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "empty_field",
+          "number": 4,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "field_mask_field",
+          "number": 5,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "source_context_field",
+          "number": 6,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "struct_field",
+          "number": 7,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "timestamp_field",
+          "number": 8,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "type_field",
+          "number": 9,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "double_field",
+          "number": 10,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "float_field",
+          "number": 11,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "int64_field",
+          "number": 12,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "uint64_field",
+          "number": 13,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "int32_field",
+          "number": 14,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "uint32_field",
+          "number": 15,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "bool_field",
+          "number": 16,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "string_field",
+          "number": 17,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "optional",
+          "name": "bytes_field",
+          "number": 18,
+          "oneof": "oneof_field",
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.OneofWellKnownTypes"
+    },
+    {
+      "fields": [
+        {
+          "label": "repeated",
+          "name": "any_field",
+          "number": 1,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "api_field",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "duration_field",
+          "number": 3,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "empty_field",
+          "number": 4,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "field_mask_field",
+          "number": 5,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "source_context_field",
+          "number": 6,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "struct_field",
+          "number": 7,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "timestamp_field",
+          "number": 8,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "type_field",
+          "number": 9,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "double_field",
+          "number": 10,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "float_field",
+          "number": 11,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "int64_field",
+          "number": 12,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "uint64_field",
+          "number": 13,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "int32_field",
+          "number": 14,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "uint32_field",
+          "number": 15,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "bool_field",
+          "number": 16,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "string_field",
+          "number": 17,
+          "proto_type": "message",
+          "wire_type": 2
+        },
+        {
+          "label": "repeated",
+          "name": "bytes_field",
+          "number": 18,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.AnyFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.ApiFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.DurationFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.EmptyFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.FieldMaskFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.SourceContextFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.StructFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.TimestampFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.TypeFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.DoubleFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.FloatFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.Int64FieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.Uint64FieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.Int32FieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.Uint32FieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.BoolFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.StringFieldEntry"
+    },
+    {
+      "fields": [
+        {
+          "label": "optional",
+          "name": "key",
+          "number": 1,
+          "proto_type": "int32",
+          "wire_type": 0
+        },
+        {
+          "label": "optional",
+          "name": "value",
+          "number": 2,
+          "proto_type": "message",
+          "wire_type": 2
+        }
+      ],
+      "name": "protobuf_unittest.MapWellKnownTypes.BytesFieldEntry"
+    }
+  ],
+  "round_trip": {
+    "passed": 0,
+    "total": 0
+  }
+}
