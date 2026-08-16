@@ -27,11 +27,21 @@ both inputs.
 
 ## Extractor baselines
 
-No Path 1 corpus result has been recorded yet. CLI integration is complete and
-the descriptor tests assert byte-identical recovery from noisy raw and
-gzip-wrapped blobs, but a generated multi-runtime descriptor corpus has not been
-run through the scoreboard. Do not compare the calibration numbers above with
-extractor performance.
+`scripts/run_path1_cpp.sh` generates and strips an optimized C++ binary with
+protoc 29.3, extracts its custom `protodesc_cold` ELF section, and verifies all
+82 embedded descriptor bytes are identical. `scripts/run_path1_go.sh` builds a
+stripped Go 1.24 binary with protoc-gen-go 1.36.6 and verifies all 173 embedded
+descriptor bytes. Both emitted schemas recompile:
+
+| Target | Descriptor identity | Compile rate |
+|---|---:|---:|
+| C++ ELF | 100.00% (82 / 82 bytes) | 100.00% (1 / 1) |
+| Go ELF | 100.00% (173 / 173 bytes) | 100.00% (1 / 1) |
+
+The generated-code descriptor deliberately omits redundant `json_name` values
+that `protoc --descriptor_set_out` materializes, so identity is measured against
+the actual descriptor bytes in the binary rather than a differently normalized
+descriptor-set rendering of the same source schema.
 
 ## Pinned javalite matrix
 

@@ -52,7 +52,9 @@ def _find(path: Path) -> list[DescriptorFinding]:
     elif detection.kind is ContainerKind.ELF:
         elf = ElfFile.from_path(path)
         for section in elf.sections:
-            if section.name in {".rodata", ".data.rel.ro", ".go.buildinfo"}:
+            if section.name in {".rodata", ".data.rel.ro", ".go.buildinfo"} or (
+                section.name.startswith("protodesc_")
+            ):
                 findings.extend(
                     _scan_blob(bytes(elf.section_data(section)), section.name)
                 )
