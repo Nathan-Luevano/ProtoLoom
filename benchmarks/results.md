@@ -144,18 +144,20 @@ The ceiling applies the roadmap's declared ambiguity between the
 message-reference and optimizer-sensitive map reconstruction; neither is
 presented as an information limit.
 
-## Tier B real-app run — 2026-08-16
+## Tier B real-app runs
 
 The eight hash-pinned APKs in `benchmarks/corpus/tier-b-real-apps.json` were
 downloaded, verified, and rerun directly without jadx under the current strict
 default. Signal and Molly remain a deliberate fork pair and count as one schema
 family, giving seven independent families across eight shipping artifacts.
+Bitwarden and Mullvad were rerun on 2026-08-17 after the nested-enum recovery
+change; their rows below contain those newer results.
 
 | App | Output schemas | Bail-outs | Strict-default result |
 |---|---:|---:|---|
 | Signal 8.22.2 | 9 | 404 | unresolved-order guesses refused |
 | Molly 8.19.2-4 | 3 | 206 | partial recovery |
-| Mullvad 2026.8 | 128 | 8 | recovered with explicit uncertainty |
+| Mullvad 2026.8 | 128 | 0 | recovered |
 | Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
 | Meshtastic 2.8.1-internal.3 | 52 | 1 | recovered; separately pinned schema repository |
 | Flipper 1.8.1.1890 | 0 | 6 | no recoverable evidence |
