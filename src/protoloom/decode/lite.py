@@ -89,6 +89,7 @@ def decode_lite_finding(
     )
     fields: list[Field] = []
     recovered_enums: dict[str, EnumType] = {}
+    recovered_message_enums: dict[str, EnumType] = {}
     for item, java_name, normalized_name, auxiliary_class, map_field in zip(
         info.fields,
         java_names,
@@ -119,12 +120,31 @@ def decode_lite_finding(
             if enum_evidence is None:
                 type_name = "int32"
             else:
-                type_name = _class_name(enum_evidence.descriptor)
-                recovered_enums[type_name] = EnumType(
+                nested_prefix = descriptor.removesuffix(";") + "$"
+                message_local = enum_evidence.descriptor.startswith(nested_prefix)
+                type_name = (
+                    enum_evidence.descriptor.removesuffix(";").rsplit("$", 1)[-1]
+                    if message_local
+                    else _class_name(enum_evidence.descriptor)
+                )
+                enum_evidence_record = Evidence(
+                    source,
+                    f"code_item@0x{enum_evidence.code_offset:x}",
+                    "enum "
+                    f"{enum_evidence.descriptor} initializer constructor/static stores "
+                    + ", ".join(
+                        f"+0x{offset * 2:x}"
+                        for offset in enum_evidence.instruction_offsets
+                    ),
+                )
+                target_enums = (
+                    recovered_message_enums if message_local else recovered_enums
+                )
+                target_enums[type_name] = EnumType(
                     type_name,
                     [EnumValue(name, number) for name, number in enum_evidence.values],
                     Confidence.HIGH,
-                    [evidence],
+                    [enum_evidence_record],
                 )
         elif type_name == "map":
             map_evidence = (
@@ -168,6 +188,7 @@ def decode_lite_finding(
     message = Message(
         name=_class_name(descriptor),
         fields=fields,
+        enums=list(recovered_message_enums.values()),
         confidence=Confidence.MEDIUM if finding.heuristic else Confidence.HIGH,
         evidence=[evidence],
     )

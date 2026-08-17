@@ -433,6 +433,25 @@ def test_enum_values_require_getter_constructor_and_static_field_evidence() -> N
     assert evidence is not None
     assert evidence.descriptor == "Lmatrix/MatrixProto$Mode;"
     assert evidence.values == (("MODE_UNSPECIFIED", 0), ("MODE_ACTIVE", 1))
+    assert evidence.code_offset == 200
+    assert evidence.instruction_offsets == (8, 18)
+
+
+def test_enum_recovery_accepts_message_nested_enum_descriptor() -> None:
+    dex = EnumFakeDex()
+    dex.types = (
+        "Lmatrix/MatrixProto$Everything;",
+        "Lmatrix/MatrixProto$Everything$Mode;",
+    )
+
+    evidence = recover_enum_evidence(
+        dex,  # type: ignore[arg-type]
+        "Lmatrix/MatrixProto$Everything;",
+        "mode_",
+    )
+
+    assert evidence is not None
+    assert evidence.descriptor == "Lmatrix/MatrixProto$Everything$Mode;"
 
 
 def test_enum_recovery_rejects_hostile_constructor_index() -> None:

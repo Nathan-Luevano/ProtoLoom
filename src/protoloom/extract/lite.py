@@ -32,6 +32,8 @@ class LiteBailout:
 class LiteEnumEvidence:
     descriptor: str
     values: tuple[tuple[str, int], ...]
+    code_offset: int
+    instruction_offsets: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,19 +197,23 @@ def recover_enum_evidence(
         return None
     descriptor = return_types.pop()
     class_name = descriptor.removeprefix("L").removesuffix(";").rsplit("/", 1)[-1]
-    if class_name.count("$") != 1:
+    if "$" not in class_name or any(not part for part in class_name.split("$")):
         return None
-    values = _enum_values(dex, descriptor)
+    values, code_offset, instruction_offsets = _enum_values(dex, descriptor)
     if not values or values[0][1] != 0:
         return None
-    return LiteEnumEvidence(descriptor, values)
+    return LiteEnumEvidence(descriptor, values, code_offset, instruction_offsets)
 
 
-def _enum_values(dex: DexFile, descriptor: str) -> tuple[tuple[str, int], ...]:
+def _enum_values(
+    dex: DexFile, descriptor: str
+) -> tuple[tuple[tuple[str, int], ...], int, tuple[int, ...]]:
     type_indexes = {
         index for index, value in enumerate(dex.types) if value == descriptor
     }
     recovered: dict[str, int] = {}
+    initializer_offset = 0
+    store_offsets: list[int] = []
     for method, code in dex.iter_code_items():
         raw_method = dex.methods[method.method_index]
         if (
@@ -274,7 +280,9 @@ def _enum_values(dex: DexFile, descriptor: str) -> tuple[tuple[str, int], ...]:
                     and name != "UNRECOGNIZED"
                 ):
                     recovered[name] = int(enum_instance[3])
-    return tuple(recovered.items())
+                    initializer_offset = code.offset
+                    store_offsets.append(instruction.offset)
+    return tuple(recovered.items()), initializer_offset, tuple(store_offsets)
 
 
 def recover_map_evidence(dex: DexFile, field_index: int) -> LiteMapEvidence | None:

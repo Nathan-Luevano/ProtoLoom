@@ -148,13 +148,25 @@ def load_truth(path: Path, file_name: str) -> BenchmarkSchema:
 def _recovered_message(
     raw: dict[str, Any], package: str, enum_names: set[str]
 ) -> BenchmarkMessage:
+    local_enums = tuple(
+        BenchmarkEnum(
+            enum["name"],
+            tuple((value["name"], value["number"]) for value in enum["values"]),
+        )
+        for enum in raw["enums"]
+    )
+    local_enum_names = {enum.name for enum in local_enums}
     fields = tuple(
         BenchmarkField(
             field["number"],
             field["name"],
-            field["type_name"],
+            (
+                f"{package}.{field['type_name']}"
+                if field["type_name"] in enum_names
+                else field["type_name"]
+            ),
             0
-            if field["type_name"] in enum_names
+            if field["type_name"] in enum_names | local_enum_names
             else _SCALAR_WIRES.get(field["type_name"], 2),
             field["label"],
             field["oneof"],
@@ -162,7 +174,9 @@ def _recovered_message(
         for field in raw["fields"]
     )
     return BenchmarkMessage(
-        f"{package}.{raw['name']}" if package else raw["name"], fields
+        f"{package}.{raw['name']}" if package else raw["name"],
+        fields,
+        enums=local_enums,
     )
 
 
