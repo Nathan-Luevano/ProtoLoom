@@ -1,0 +1,44 @@
+{
+  "id": "bitwarden-google-authenticator-migration",
+  "captured_at": "2026-08-17",
+  "capture": {
+    "application": "Google Authenticator",
+    "method": "account-transfer QR exported from an Android emulator",
+    "content": "one intentionally disposable TOTP credential",
+    "payload_file": "payload.bin",
+    "payload_sha256": "95355b10f72da459a915d2dacf537cebd05f67bdf6839ff7305ed184ed9de57b",
+    "payload_size": 63
+  },
+  "truth": {
+    "project": "Bitwarden Android",
+    "license": "GPL-3.0-only",
+    "source_commit": "abb9ddedcca453d07c2b5f27599774590b556aa1",
+    "schema_url": "https://github.com/bitwarden/android/blob/abb9ddedcca453d07c2b5f27599774590b556aa1/authenticator/src/main/proto/google_authenticator.proto",
+    "schema_sha256": "7e8b6666905c07ad3fa1c87d9fe8f6e4dd16243ef047dfb71f3aadeec92857e6",
+    "descriptor_file": "truth.desc",
+    "descriptor_sha256": "93636b6160631786dfe02c39d2d2065822e5d6b3409ae78b98973cc2d71305f4",
+    "message": "MigrationPayload"
+  },
+  "recovered": {
+    "application": "Bitwarden Authenticator 2026.7.1",
+    "apk_sha256": "ec05d08843cac10b5bc0f59b25723def1498c07988bb51ecee88990686c6180d",
+    "descriptor_file": "recovered.desc",
+    "descriptor_sha256": "a3ae52dffef52d07bc51dc54b6618a4b150685c24a9e17e8c6669b8ade5716ef",
+    "message": "com.bitwarden.authenticator.data.platform.manager.imports.model.MigrationPayload"
+  },
+  "expected": {
+    "truth": {
+      "decoded": true,
+      "semantically_equal": true,
+      "byte_identical": false,
+      "output_size": 61
+    },
+    "recovered": {
+      "decoded": true,
+      "semantically_equal": true,
+      "byte_identical": false,
+      "output_size": 61
+    },
+    "canonicalization": "the capture explicitly encodes default-valued batch_index=0; deterministic proto3 serialization omits it"
+  }
+}

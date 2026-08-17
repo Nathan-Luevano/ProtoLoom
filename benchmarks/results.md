@@ -208,8 +208,8 @@ Gadgetbridge's 20 outputs include generated empty Garmin messages, but none of
 the 115 selected truth fields matched; its field-bearing calls are among the 671
 strict bail-outs. Smartspacer and Bitwarden are valid positive diffs. Both show
 perfect wire accuracy on matched fields while preserving the already-reported
-enum and nesting gaps. None of these apps has a qualifying captured payload, so
-their round-trip denominator remains zero.
+enum and nesting gaps. These extraction rows retain a zero round-trip
+denominator. Bitwarden is measured separately against a real payload in Tier C.
 
 As a separate container-layer oracle, all 35,762 strings in Mullvad's primary
 DEX matched androguard 4.x in order and value. Reproduce that check with
@@ -248,19 +248,30 @@ oneof metadata, and enclosing-class identity. Their measured scores remain the
 honest numbers until the evidence model records those per-field observability
 facts.
 
-## Tier C capture status
+## Tier C captured payload
 
-Tier C remains unmeasured: 0 real payloads have been validated. The pinned
-Mullvad and Signal trees were audited for binary payload, protobuf fixture, and
-management-interface test captures. Neither contains a redistributable captured
-protobuf payload tied to the selected release and schema. Source-level
-constructors and synthetic test messages do not qualify as captured traffic and
-were not relabeled as such.
+Tier C now contains one real application payload. Google Authenticator exported
+one intentionally disposable TOTP account through its account-transfer QR flow
+on an Android emulator. The QR was decoded locally into a 63-byte
+`MigrationPayload`; the screenshot and URI are not retained. The fixture pins
+the payload, Bitwarden's upstream `google_authenticator.proto` descriptor, the
+descriptor emitted from ProtoLoom's Bitwarden recovery, and their provenance.
 
-Completing this tier requires an emulator/device capture or an upstream release
-of a real, redistributable capture with framing metadata. The existing Tier A
-1/1 byte-identical round trip stays separate and does not fill the Tier C
-denominator.
+| Schema used for validation | Decode | Semantic round trip | Byte-identical round trip |
+|---|---:|---:|---:|
+| Pinned upstream Bitwarden schema | 100% (1/1) | 100% (1/1) | 0% (0/1) |
+| ProtoLoom-recovered Bitwarden schema | 100% (1/1) | 100% (1/1) | 0% (0/1) |
+
+Both serializers produce 61 bytes from the 63-byte capture. The byte-level
+change is canonicalization: Google Authenticator explicitly encoded the proto3
+default `batch_index = 0`, while deterministic serialization omits that field.
+This is semantic success and byte-identity failure, not an inflated strict
+score. One payload exercises only one message path; it does not prove the
+entire recovered schema correct.
+
+The pinned Mullvad and Signal source trees still contain no qualifying captured
+payload. Tier A's synthetic byte-identical round trip remains separate from this
+real Tier C result.
 
 ## pbtk differential
 

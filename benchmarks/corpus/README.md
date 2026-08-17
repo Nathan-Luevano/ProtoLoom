@@ -64,3 +64,17 @@ packaged into the APK; extraction runs establish that and retain negative
 results. Flipper is the current negative control: its selected schemas are in
 the pinned source tree, but the direct lite extractor found no recoverable
 evidence in the release APK.
+
+## Tier C captured payload
+
+`../corpora/tier-c-bitwarden` contains one real Google Authenticator account-
+transfer payload produced by an Android emulator. The account was created only
+for this benchmark and is disposable. Its raw QR image is intentionally not
+retained; the decoded protobuf payload, truth descriptor, recovered descriptor,
+hashes, provenance, and expected results reproduce the measurement.
+
+The fixture is checked against both Bitwarden's pinned upstream schema and the
+schema recovered from the matching Bitwarden Authenticator APK. Both decode and
+semantically round-trip the payload. Neither produces byte-identical output
+because the captured encoder explicitly wrote the proto3 default value
+`batch_index = 0`, which deterministic serialization canonically omits.

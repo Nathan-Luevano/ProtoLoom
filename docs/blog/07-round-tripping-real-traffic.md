@@ -23,14 +23,18 @@ PROTOLOOM needs payload bytes and framing metadata, not privileged access to a
 live device. That matters on WSL and air-gapped analysis systems where running
 an emulator beside the tool is inconvenient or impossible.
 
-The local calibration benchmark already includes a deliberate failed round
-trip to prove the metric moves, and the pinned matrix has one synthetic 1/1
-byte-identical round trip. Neither result is real captured traffic. Tier C is
-currently unmeasured at 0 payloads and will not be backfilled from synthetic
-results. The eventual table will name
-the source and sample count for each target, retain failed payloads where
-licensing permits, and distinguish deterministic serialization issues from
-schema mismatches.
+The local calibration benchmark includes a deliberate failed round trip, and
+the pinned matrix has one synthetic byte-identical round trip. Tier C now adds
+one real Google Authenticator account-transfer payload created with a disposable
+credential on an Android emulator. Both the pinned upstream Bitwarden schema and
+ProtoLoom's recovered schema decode and semantically round-trip it.
+
+The captured 63 bytes reserialize to 61 bytes because the app explicitly wrote
+the default proto3 value `batch_index = 0`, while deterministic serialization
+omits it. The benchmark records semantic success and byte-identity failure. That
+distinction prevents a harmless canonicalization difference from being called
+data loss without pretending the bytes were identical. The fixture retains the
+binary payload and provenance, not the credential-bearing QR image.
 
 The practical output is a binary descriptor set, not only a pretty `.proto`.
 That artifact can immediately drive `protoc --decode`, `grpcurl`, or a proxy
