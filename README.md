@@ -78,7 +78,7 @@ protoloom demo
 - Keeps uncertain results visible
 - Runs deterministically without cloud services
 - Handles nested archives and multiple binary formats
-- Is tested against pinned upstream schemas and real applications
+- Is tested against pinned schemas, shipping apps, and a real exported payload
 
 ProtoLoom is currently alpha software. Obfuscation can permanently remove
 names, types, and relationships, so some apps will produce partial results.
