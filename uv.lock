@@ -784,6 +784,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "types-protobuf" },
 ]
 
 [package.dev-dependencies]
@@ -803,6 +804,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "typer", specifier = ">=0.12" },
+    { name = "types-protobuf", marker = "extra == 'dev'", specifier = ">=5.27" },
 ]
 provides-extras = ["dev"]
 
