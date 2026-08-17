@@ -1,0 +1,12 @@
+
+ñ
+MigrationPayload.proto?com.bitwarden.authenticator.data.platform.manager.imports.model"ê
+MigrationPayloadÜ
+otp_parameters (2_.com.bitwarden.authenticator.data.platform.manager.imports.model.MigrationPayload_OtpParametersRotpParameters
+version (Rversion
+
+batch_size (R	batchSize
+batch_index (R
+batchIndex
+batch_id (RbatchId" 
+MigrationPayload_OtpParametersbproto3
