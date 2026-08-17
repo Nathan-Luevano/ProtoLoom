@@ -12,6 +12,14 @@ files—with clear confidence and evidence for every result.
 
 </div>
 
+<div align="center">
+  <img
+    src="docs/assets/protoloom-demo.gif"
+    alt="ProtoLoom recovering protobuf schemas from Bitwarden Authenticator"
+    width="900"
+  />
+</div>
+
 ## What it does
 
 ProtoLoom finds protobuf information that remains inside compiled software and
