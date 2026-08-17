@@ -110,10 +110,10 @@ medium-confidence finding:
 
 | Leg | Counted calls | Type fidelity | Enum recovery |
 |---|---:|---:|---:|
-| javalite 3.21.12 + D8 | 27 | 69.23% (9 / 13) | 100.00% (2 / 2) |
-| javalite 4.29.3 + D8 | 61 | 69.23% (9 / 13) | 100.00% (2 / 2) |
-| javalite 4.35.1 + D8 | 61 | 69.23% (9 / 13) | 100.00% (2 / 2) |
-| javalite 4.35.1 + default R8 | 2 | 61.54% (8 / 13) | 100.00% (2 / 2) |
+| javalite 3.21.12 + D8 | 27 | 76.92% (10 / 13) | 100.00% (2 / 2) |
+| javalite 4.29.3 + D8 | 61 | 76.92% (10 / 13) | 100.00% (2 / 2) |
+| javalite 4.35.1 + D8 | 61 | 76.92% (10 / 13) | 100.00% (2 / 2) |
+| javalite 4.35.1 + default R8 | 2 | 69.23% (9 / 13) | 100.00% (2 / 2) |
 | javalite 4.35.1 + aggressive R8 | 2 | 61.54% (8 / 13) | 0.00% (0 / 2) |
 
 Heuristic lite recovery is disabled by default. The matrix opts in with
@@ -133,9 +133,10 @@ and matching static-field stores. That moves enum recovery from 0/2 to 2/2 on
 all D8 legs and default R8. Aggressive R8 renames the getter and removes that
 field-to-enum association, so it honestly remains 0/2. D8 also retains the
 `MapEntryLite.newDefaultInstance` call and exact `WireFormat.FieldType` static
-fields, recovering `map<string, int32>` and moving type fidelity from 8/13 to
-9/13. Both R8 modes reshape that initializer beyond this exact proof, so they
-remain 8/13. Original nesting is not invented when evidence is absent;
+fields, recovering `map<string, int32>`. Qualified enum scoring brings the D8
+legs to 10/13 and default R8 to 9/13. Both R8 modes reshape the map initializer
+beyond this exact proof, and aggressive R8 also lacks the enum association, so
+it remains 8/13. Original nesting is not invented when evidence is absent;
 structural fidelity remains 1/2 on this fixture.
 The ceiling applies the roadmap's declared ambiguity between the
 `int32`/`sint32`/`uint32` and `int64`/`sint64`/`uint64` families. The remaining
@@ -220,24 +221,24 @@ The comparison covers 112 truth messages and 297 truth fields:
 | Field recall | 90.91% | 270 / 297 |
 | Field precision | 90.91% | 270 / 297 |
 | Wire-type accuracy | 100.00% | 270 / 270 |
-| Type fidelity | 50.37% | 136 / 270 |
-| Name recovery | 90.74% | 245 / 270 |
+| Type fidelity | 54.07% | 146 / 270 |
+| Name recovery | 85.93% | 232 / 270 |
 | Label accuracy | 100.00% | 270 / 270 |
 | Structural fidelity | 16.36% | 9 / 55 |
-| Enum recovery | 0.00% | 0 / 106 |
+| Enum recovery | 100.00% | 106 / 106 |
 | Compile rate | 100.00% | 1 / 1 target |
 | Round-trip rate | not measured | 0 payloads |
 | Type-fidelity ceiling | 99.66% | 296 / 297 fields |
 
 Reproduce the comparison with `scripts/diagnose_real_app.py` after compiling
-the pinned source proto to a descriptor set. The low structural and enum scores
-are current implementation losses: the lite model flattens nested Java classes
-and emits enum fields as `int32` because it does not yet resolve verifier
-objects into enum definitions.
+the pinned source proto to a descriptor set. Enum recovery uses retained getter
+return types to identify generated enum classes, then requires constructor and
+matching static-field-store evidence from each enum initializer. The remaining
+structural loss comes from flattening nested Java classes.
 
 The published ceiling is intentionally unflattering. Only one of Mullvad's 297
 fields is capped by the roadmap's scalar-varint ambiguity model, so the
-49.29-point gap between measured type fidelity and the 99.66% ceiling is mostly
+45.59-point gap between measured type fidelity and the 99.66% ceiling is mostly
 recoverable implementation loss, not an information-theoretic excuse. Name and
 structural ceilings are not assigned a made-up corpus-wide number: both depend
 on whether each target's optimizer retains field strings, class references,
@@ -272,11 +273,11 @@ messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
 | Field recall | 90.91% | 100.00% |
 | Field precision | 90.91% | 100.00% |
 | Wire-type accuracy | 100.00% | 100.00% |
-| Type fidelity | 50.37% | 100.00% |
-| Name recovery | 90.74% | 100.00% |
+| Type fidelity | 54.07% | 100.00% |
+| Name recovery | 85.93% | 100.00% |
 | Label accuracy | 100.00% | 100.00% |
 | Structural fidelity | 16.36% | 100.00% |
-| Enum recovery | 0.00% | 100.00% |
+| Enum recovery | 100.00% | 100.00% |
 | Compile rate | 100.00% | 100.00% |
 
 This is the less flattering result and the important one: ProtoLoom is already
