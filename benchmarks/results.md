@@ -237,7 +237,7 @@ and type fidelity was 85.19% (253/297):
 | Field precision | 100.00% | 297 / 297 |
 | Wire-type accuracy | 100.00% | 297 / 297 |
 | Type fidelity | 96.97% | 288 / 297 |
-| Name recovery | 87.21% | 259 / 297 |
+| Name recovery | 89.90% | 267 / 297 |
 | Label accuracy | 100.00% | 297 / 297 |
 | Structural fidelity | 96.36% | 53 / 55 |
 | Enum recovery | 100.00% | 106 / 106 |
@@ -273,6 +273,22 @@ explicit class literal for a plain message field on real, optimized
 bytecode — but well-known types are deliberately excluded from that
 resolution for now, since naming them correctly also needs an
 `emit/proto.py` import ProtoLoom does not yet add.
+
+Name recovery moved from 87.21% to 89.90% (259/297 -> 267/297) the same
+session, from a related but distinct cause: a real `oneof` member shares one
+storage field with its siblings and so never gets its own name string in the
+`newMessageInfo` objects array, only a class literal for its type. When that
+class descriptor carries at least two DEX `$` levels — genuine nesting, e.g.
+`TunnelState$Connected` — the field name is now derived from the type's bare
+local name (`connected`). Below that, a single `$` level is left alone rather
+than guessed, because some generators give the Java class itself an already
+class-name-based simple name (e.g. `CustomRelaySettings` as a direct child of
+the outer wrapper) with no recoverable relationship to the true field name
+(`custom`); guessing there would trade an honest placeholder for a
+confidently wrong one. That residual gap — along with two unrelated
+`java_to_proto_name` snake-casing quirks around digit-letter boundaries
+(`udp2tcp` -> `udp2_tcp`) and one raw trailing-underscore field name
+(`message_`) — is real and not yet fixed.
 
 The published ceiling is intentionally unflattering. Only one of Mullvad's 297
 fields is capped by the roadmap's scalar-varint ambiguity model, so the
@@ -323,7 +339,7 @@ messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
 | Field precision | 100.00% | 100.00% |
 | Wire-type accuracy | 100.00% | 100.00% |
 | Type fidelity | 96.97% | 100.00% |
-| Name recovery | 87.21% | 100.00% |
+| Name recovery | 89.90% | 100.00% |
 | Label accuracy | 100.00% | 100.00% |
 | Structural fidelity | 96.36% | 100.00% |
 | Enum recovery | 100.00% | 100.00% |
@@ -333,7 +349,7 @@ ProtoLoom now matches pbtk exactly on six of the nine rows above (field
 recall, precision, wire-type accuracy, label accuracy, enum recovery, and
 compile rate), after nesting fixes moved recall and precision off their
 earlier 90.91%. Type fidelity and structural fidelity are now within 3-4
-points of pbtk; name recovery, at 87.21% against pbtk's 100%, is the widest
+points of pbtk; name recovery, at 89.90% against pbtk's 100%, is the widest
 remaining gap. ProtoLoom is useful as a small direct parser with explicit
 uncertainty, and is close to matching pbtk's full schema fidelity on this
 unobfuscated real app rather than losing broadly to it. The pinned adapter is
