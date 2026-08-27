@@ -81,6 +81,55 @@ class CodeItem:
     instructions: tuple[int, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class AnnotationItem:
+    visibility: int
+    type_index: int
+    elements: tuple[tuple[int, object], ...]
+
+
+# dalvik.annotation.EnclosingClass carries a single "value" element of type
+# VALUE_TYPE naming the type index of the class this one is nested inside.
+_ENCLOSING_CLASS_TYPE = "Ldalvik/annotation/EnclosingClass;"
+
+_VALUE_BYTE = 0x00
+_VALUE_SHORT = 0x02
+_VALUE_CHAR = 0x03
+_VALUE_INT = 0x04
+_VALUE_LONG = 0x06
+_VALUE_FLOAT = 0x10
+_VALUE_DOUBLE = 0x11
+_VALUE_METHOD_TYPE = 0x15
+_VALUE_METHOD_HANDLE = 0x16
+_VALUE_STRING = 0x17
+_VALUE_TYPE = 0x18
+_VALUE_FIELD = 0x19
+_VALUE_METHOD = 0x1A
+_VALUE_ENUM = 0x1B
+_VALUE_ARRAY = 0x1C
+_VALUE_ANNOTATION = 0x1D
+_VALUE_NULL = 0x1E
+_VALUE_BOOLEAN = 0x1F
+_SIZED_VALUE_TYPES = frozenset(
+    {
+        _VALUE_BYTE,
+        _VALUE_SHORT,
+        _VALUE_CHAR,
+        _VALUE_INT,
+        _VALUE_LONG,
+        _VALUE_FLOAT,
+        _VALUE_DOUBLE,
+        _VALUE_METHOD_TYPE,
+        _VALUE_METHOD_HANDLE,
+        _VALUE_STRING,
+        _VALUE_TYPE,
+        _VALUE_FIELD,
+        _VALUE_METHOD,
+        _VALUE_ENUM,
+    }
+)
+
+
 class DexFile:
     NO_INDEX = 0xFFFFFFFF
 
@@ -191,6 +240,73 @@ class DexFile:
 
     def field_name(self, item: DexField) -> str:
         return self.strings[item.name_index]
+
+    def class_annotations(self, item: DexClass) -> tuple[AnnotationItem, ...]:
+        if item.annotations_offset == 0:
+            return ()
+        (class_annotations_off,) = self._unpack("<I", item.annotations_offset)
+        if class_annotations_off == 0:
+            return ()
+        (size,) = self._unpack("<I", int(class_annotations_off))
+        offsets = self._unpack(f"<{int(size)}I", int(class_annotations_off) + 4)
+        return tuple(self._annotation_item(int(offset)) for offset in offsets)
+
+    def enclosing_class_index(self, item: DexClass) -> int | None:
+        for annotation in self.class_annotations(item):
+            if self.types[annotation.type_index] != _ENCLOSING_CLASS_TYPE:
+                continue
+            for name_index, value in annotation.elements:
+                if self.strings[name_index] == "value" and isinstance(value, int):
+                    return value
+        return None
+
+    def _annotation_item(self, offset: int) -> AnnotationItem:
+        (visibility,) = self._unpack("<B", offset)
+        type_index, cursor = self._uleb128(offset + 1)
+        if type_index >= len(self.type_ids):
+            raise DexError("annotation type index is out of range")
+        element_count, cursor = self._uleb128(cursor)
+        elements: list[tuple[int, object]] = []
+        for _ in range(element_count):
+            name_index, cursor = self._uleb128(cursor)
+            if name_index >= len(self.strings):
+                raise DexError("annotation element name is out of range")
+            value, cursor = self._encoded_value(cursor)
+            elements.append((name_index, value))
+        return AnnotationItem(int(visibility), int(type_index), tuple(elements))
+
+    def _encoded_value(self, offset: int) -> tuple[object, int]:
+        (header,) = self._unpack("<B", offset)
+        cursor = offset + 1
+        value_type = header & 0x1F
+        value_arg = header >> 5
+        if value_type in _SIZED_VALUE_TYPES:
+            width = value_arg + 1
+            raw = bytes(self._slice(cursor, width))
+            cursor += width
+            index = int.from_bytes(raw, "little")
+            return index, cursor
+        if value_type == _VALUE_BOOLEAN:
+            return bool(value_arg), cursor
+        if value_type == _VALUE_NULL:
+            return None, cursor
+        if value_type == _VALUE_ARRAY:
+            count, cursor = self._uleb128(cursor)
+            values: list[object] = []
+            for _ in range(count):
+                item, cursor = self._encoded_value(cursor)
+                values.append(item)
+            return tuple(values), cursor
+        if value_type == _VALUE_ANNOTATION:
+            type_index, cursor = self._uleb128(cursor)
+            count, cursor = self._uleb128(cursor)
+            elements: list[tuple[int, object]] = []
+            for _ in range(count):
+                name_index, cursor = self._uleb128(cursor)
+                item, cursor = self._encoded_value(cursor)
+                elements.append((name_index, item))
+            return AnnotationItem(0, int(type_index), tuple(elements)), cursor
+        raise DexError(f"unsupported encoded_value type 0x{value_type:02x}")
 
     def _parse_header(self) -> DexHeader:
         if (
