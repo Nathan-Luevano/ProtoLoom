@@ -30,6 +30,66 @@ def _class_name(descriptor: str) -> str:
     return "_".join(parts) or "RecoveredMessage"
 
 
+# protobuf's well-known types: real compilable protoc-shipped .proto files,
+# not app schema. Recognizing them needs a fixed lookup, not name-guessing.
+_WELL_KNOWN_TYPES: dict[str, tuple[str, str]] = {
+    "Lcom/google/protobuf/Any;": ("google.protobuf.Any", "google/protobuf/any.proto"),
+    "Lcom/google/protobuf/Empty;": (
+        "google.protobuf.Empty",
+        "google/protobuf/empty.proto",
+    ),
+    "Lcom/google/protobuf/Duration;": (
+        "google.protobuf.Duration",
+        "google/protobuf/duration.proto",
+    ),
+    "Lcom/google/protobuf/Timestamp;": (
+        "google.protobuf.Timestamp",
+        "google/protobuf/timestamp.proto",
+    ),
+    "Lcom/google/protobuf/FieldMask;": (
+        "google.protobuf.FieldMask",
+        "google/protobuf/field_mask.proto",
+    ),
+    "Lcom/google/protobuf/Struct;": (
+        "google.protobuf.Struct",
+        "google/protobuf/struct.proto",
+    ),
+    "Lcom/google/protobuf/Value;": (
+        "google.protobuf.Value",
+        "google/protobuf/struct.proto",
+    ),
+    "Lcom/google/protobuf/ListValue;": (
+        "google.protobuf.ListValue",
+        "google/protobuf/struct.proto",
+    ),
+    **{
+        f"Lcom/google/protobuf/{name}Value;": (
+            f"google.protobuf.{name}Value",
+            "google/protobuf/wrappers.proto",
+        )
+        for name in (
+            "Double",
+            "Float",
+            "Int64",
+            "UInt64",
+            "Int32",
+            "UInt32",
+            "Bool",
+            "String",
+            "Bytes",
+        )
+    },
+}
+
+
+def _resolve_message_type(descriptor: str) -> tuple[str, str | None]:
+    known = _WELL_KNOWN_TYPES.get(descriptor)
+    if known is None:
+        return _class_name(descriptor), None
+    name, import_path = known
+    return f".{name}", import_path
+
+
 def _field_objects(
     finding: LiteFinding,
 ) -> tuple[list[str | None], list[str | None], list[int | None]]:
@@ -107,6 +167,7 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
     )
     recovered_enums: dict[str, EnumType] = {}
     recovered_message_enums: dict[str, EnumType] = {}
+    dependencies: set[str] = set()
     resolved_fields: list[tuple[str, bool, str | None]] = []
     for item, java_name, normalized_name, auxiliary_class, map_field in zip(
         info.fields,
@@ -126,22 +187,32 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
             # class literal for a plain message field on real bytecode; the
             # generated getter/field's own declared type is the reliable
             # source (protobuf-lite's Java runtime resolves it the same way,
-            # via reflection). Skip well-known SDK types for now: naming them
-            # correctly also needs an import that emit/proto.py doesn't add.
+            # via reflection).
             declared = declared_field_types.get(java_name) if java_name else None
             resolved = (
                 declared
                 if declared is not None
                 and declared.startswith("L")
                 and declared.endswith(";")
-                and not declared.startswith("Lcom/google/protobuf/")
+                # A `repeated` field's declared Java type is a list wrapper
+                # (e.g. ProtobufArrayList), not the element type. Runtime
+                # protobuf-internal classes are never a field's real proto
+                # type except the well-known ones we explicitly recognize.
+                and (
+                    not declared.startswith("Lcom/google/protobuf/")
+                    or declared in _WELL_KNOWN_TYPES
+                )
                 else None
             )
             source_descriptor = resolved if resolved is not None else auxiliary_class
             if resolved is not None:
-                type_name = _class_name(resolved)
+                type_name, import_path = _resolve_message_type(resolved)
+                if import_path is not None:
+                    dependencies.add(import_path)
             elif auxiliary_class is not None:
-                type_name = _class_name(auxiliary_class)
+                type_name, import_path = _resolve_message_type(auxiliary_class)
+                if import_path is not None:
+                    dependencies.add(import_path)
             elif normalized_name is not None:
                 type_name = "".join(part.title() for part in normalized_name.split("_"))
                 guessed_type = True
@@ -258,6 +329,7 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
         syntax="proto2" if info.header.is_proto2 else "proto3",
         messages=[message],
         enums=list(recovered_enums.values()),
+        dependencies=sorted(dependencies),
         evidence=[evidence],
     )
     own_class = dex.class_by_type_index(method.class_index)

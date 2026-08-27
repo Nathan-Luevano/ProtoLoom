@@ -236,7 +236,7 @@ and type fidelity was 85.19% (253/297):
 | Field recall | 100.00% | 297 / 297 |
 | Field precision | 100.00% | 297 / 297 |
 | Wire-type accuracy | 100.00% | 297 / 297 |
-| Type fidelity | 96.97% | 288 / 297 |
+| Type fidelity | 99.33% | 295 / 297 |
 | Name recovery | 89.90% | 267 / 297 |
 | Label accuracy | 100.00% | 297 / 297 |
 | Structural fidelity | 96.36% | 53 / 55 |
@@ -264,15 +264,23 @@ same-simple-name collision (two distinct DEX classes named `Relay` in
 different packages get merged by name during reconciliation) — a known,
 narrower gap, not yet fixed.
 
-Type fidelity's remaining 9-field gap on Mullvad is entirely well-known SDK
-types (`google.protobuf.Timestamp`, `Duration`, `StringValue`): message-typed
-field resolution now reads the owning class's own declared field type (the
-same signal protobuf-lite's Java runtime uses via reflection) rather than
-relying on the `newMessageInfo` objects array, which almost never carries an
-explicit class literal for a plain message field on real, optimized
-bytecode — but well-known types are deliberately excluded from that
-resolution for now, since naming them correctly also needs an
-`emit/proto.py` import ProtoLoom does not yet add.
+Type fidelity closed its well-known-type gap in the same session: 9 fields
+typed `google.protobuf.Timestamp`, `Duration`, or `StringValue` were guessed
+from the field's own name because that resolution deliberately excluded
+`Lcom/google/protobuf/...;` descriptors — correctly avoiding the alternative
+failure mode where the field's declared type is a `repeated` field's list
+wrapper (e.g. `ProtobufArrayList`), not its element type, but throwing out
+real well-known types along with it. A fixed lookup table now recognizes the
+well-known types protobuf itself ships (`Any`, `Empty`, `Duration`,
+`Timestamp`, `FieldMask`, `Struct`/`Value`/`ListValue`, and the wrapper
+types), resolves them to their fully-qualified `.google.protobuf.X` name, and
+records the matching `import "google/protobuf/....proto";` line via
+`RecoveredSchema.dependencies` — while every other `com.google.protobuf.*`
+declared type (list wrappers included) still falls through to the
+objects-array class literal or an honest guess, exactly as before. Type
+fidelity moved from 96.97% (288/297) to 99.33% (295/297); the 2 remaining
+misses are entirely the same `Relay`/`Relay` name-collision noted above, not
+a new well-known-type gap.
 
 Name recovery moved from 87.21% to 89.90% (259/297 -> 267/297) the same
 session, from a related but distinct cause: a real `oneof` member shares one
@@ -338,7 +346,7 @@ messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
 | Field recall | 100.00% | 100.00% |
 | Field precision | 100.00% | 100.00% |
 | Wire-type accuracy | 100.00% | 100.00% |
-| Type fidelity | 96.97% | 100.00% |
+| Type fidelity | 99.33% | 100.00% |
 | Name recovery | 89.90% | 100.00% |
 | Label accuracy | 100.00% | 100.00% |
 | Structural fidelity | 96.36% | 100.00% |
@@ -348,10 +356,12 @@ messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
 ProtoLoom now matches pbtk exactly on six of the nine rows above (field
 recall, precision, wire-type accuracy, label accuracy, enum recovery, and
 compile rate), after nesting fixes moved recall and precision off their
-earlier 90.91%. Type fidelity and structural fidelity are now within 3-4
-points of pbtk; name recovery, at 89.90% against pbtk's 100%, is the widest
-remaining gap. ProtoLoom is useful as a small direct parser with explicit
-uncertainty, and is close to matching pbtk's full schema fidelity on this
-unobfuscated real app rather than losing broadly to it. The pinned adapter is
+earlier 90.91%. Type fidelity is within 1 field of pbtk (its 2 remaining
+misses are the known `Relay`/`Relay` collision, not a type-resolution gap);
+structural fidelity is within 2 fields for the same reason. Name recovery, at
+89.90% against pbtk's 100%, is now the one clearly wide remaining gap.
+ProtoLoom is useful as a small direct parser with explicit uncertainty, and is
+close to matching pbtk's full schema fidelity on this unobfuscated real app
+rather than losing broadly to it. The pinned adapter is
 `scripts/pbtk_1_1_2_adapter.sh`; `scripts/compare_pbtk.sh` records isolated
 tool logs and statuses for a directory of artifacts.
