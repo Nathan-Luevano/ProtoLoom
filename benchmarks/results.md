@@ -217,9 +217,11 @@ DEX matched androguard 4.x in order and value. Reproduce that check with
 
 Mullvad's pinned `management_interface.proto` provides matching ground truth.
 The comparison covers 112 truth messages and 297 truth fields. Rerun on
-2026-08-27 after wiring DEX `EnclosingClass` annotations into the recovered
-message tree; before that fix, structural fidelity was 16.36% (9/55) and field
-recall/precision were 90.91% (270/297):
+2026-08-27 after two fixes: wiring DEX `EnclosingClass` annotations into the
+recovered message tree, then recovering proto3's synthetic single-field
+oneofs from the hasbit signal. Before either fix, structural fidelity was
+16.36% (9/55) and field recall/precision were 90.91% (270/297); after the
+first fix alone, structural fidelity was 52.73% (29/55):
 
 | Metric | Result | Count |
 |---|---:|---:|
@@ -229,7 +231,7 @@ recall/precision were 90.91% (270/297):
 | Type fidelity | 85.19% | 253 / 297 |
 | Name recovery | 87.21% | 259 / 297 |
 | Label accuracy | 100.00% | 297 / 297 |
-| Structural fidelity | 52.73% | 29 / 55 |
+| Structural fidelity | 96.36% | 53 / 55 |
 | Enum recovery | 100.00% | 106 / 106 |
 | Compile rate | 100.00% | 1 / 1 target |
 | Round-trip rate | not measured | 0 payloads |
@@ -239,13 +241,20 @@ Reproduce the comparison with `scripts/diagnose_real_app.py` after compiling
 the pinned source proto to a descriptor set. Enum recovery uses retained getter
 return types to identify generated enum classes, then requires constructor and
 matching static-field-store evidence from each enum initializer. Structural
-recovery now reads each class's `dalvik.annotation.EnclosingClass` system
+recovery reads each class's `dalvik.annotation.EnclosingClass` system
 annotation and rebuilds the real parent/child message tree instead of
-flattening every class to a top-level message; the previous field
+flattening every class to a top-level message; the earlier field
 recall/precision loss turned out to be downstream of that same flattening
 (mismatched nested-message names broke field-to-message matching), which is
-why those two metrics also moved to 100%. The remaining structural loss is
-chains and shapes the current fix does not yet cover — see `NEXT.md`.
+why those two metrics also moved to 100%. The remaining oneof-shaped share of
+the gap came from proto3 `optional` fields: they compile to a synthetic
+one-member oneof for presence tracking, and protobuf-lite's info string marks
+that with a hasbit rather than a real `oneof_index`, so the field-level hasbit
+signal is now read back into a synthetic oneof when the schema is proto3 and
+the field carries no real oneof index. The 2 remaining structural misses are a
+same-simple-name collision (two distinct DEX classes named `Relay` in
+different packages get merged by name during reconciliation) — a known,
+narrower gap, not yet fixed.
 
 The published ceiling is intentionally unflattering. Only one of Mullvad's 297
 fields is capped by the roadmap's scalar-varint ambiguity model, so the
@@ -298,7 +307,7 @@ messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
 | Type fidelity | 85.19% | 100.00% |
 | Name recovery | 87.21% | 100.00% |
 | Label accuracy | 100.00% | 100.00% |
-| Structural fidelity | 52.73% | 100.00% |
+| Structural fidelity | 96.36% | 100.00% |
 | Enum recovery | 100.00% | 100.00% |
 | Compile rate | 100.00% | 100.00% |
 
