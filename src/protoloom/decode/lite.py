@@ -220,4 +220,12 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
         if enclosing_index is not None and enclosing_index < len(dex.types)
         else None
     )
+    if enclosing_descriptor is None:
+        # Some shrinkers strip EnclosingClass/InnerClass annotations while
+        # leaving the "$"-joined class name itself untouched. Fall back to
+        # that name shape; the combine step still only trusts it when the
+        # guessed parent is itself a class recovered in the same run.
+        normalized = descriptor.removeprefix("L").removesuffix(";")
+        if "$" in normalized:
+            enclosing_descriptor = f"L{normalized.rsplit('$', 1)[0]};"
     return DecodedLite(schema, descriptor, enclosing_descriptor)
