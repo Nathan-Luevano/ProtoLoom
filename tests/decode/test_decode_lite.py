@@ -69,3 +69,61 @@ def test_message_field_type_comes_from_the_declared_field_type() -> None:
     )
     decoded = decode_lite_finding(_FakeDex(), finding, "test.dex")  # type: ignore[arg-type]
     assert decoded.schema.messages[0].fields[0].type_name == "Nested"
+
+
+class _FakeOneofDex(_FakeDex):
+    def __init__(self) -> None:
+        super().__init__()
+        self.types = ("LOwner;", "LOwner$Group$Variant;")
+        self.fields = ()
+
+
+def test_oneof_message_field_name_comes_from_a_deeply_nested_type() -> None:
+    # A real oneof member shares one storage field with its siblings, so it
+    # never gets its own name string; only a class literal for its type.
+    # header: oneof_count=1; one field: number=1, raw_type=9+ONEOF_TYPE_OFFSET,
+    # oneof_index=0.
+    info = _info_string(0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 60, 0)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(
+            LiteObject("string", "group_"),
+            LiteObject("string", "groupCase_"),
+            LiteObject("class", "LOwner$Group$Variant;"),
+        ),
+    )
+    decoded = decode_lite_finding(_FakeOneofDex(), finding, "test.dex")  # type: ignore[arg-type]
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "Group_Variant"
+    assert field.name == "variant"
+
+
+class _FakeFlatOneofDex(_FakeDex):
+    def __init__(self) -> None:
+        super().__init__()
+        self.types = ("LOwner;", "LOwner$FlatVariant;")
+        self.fields = ()
+
+
+def test_oneof_message_field_name_stays_speculative_when_flat() -> None:
+    # Only one "$" level: the bare class name may already be a generator's
+    # own flattened compound name with no recoverable field-name relationship.
+    info = _info_string(0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 60, 0)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(
+            LiteObject("string", "group_"),
+            LiteObject("string", "groupCase_"),
+            LiteObject("class", "LOwner$FlatVariant;"),
+        ),
+    )
+    decoded = decode_lite_finding(_FakeFlatOneofDex(), finding, "test.dex")  # type: ignore[arg-type]
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "FlatVariant"
+    assert field.name == "field_1"
