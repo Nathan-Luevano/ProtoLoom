@@ -1,5 +1,6 @@
 from collections import Counter
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import PurePosixPath
 
 from protoloom.container.dex import DexFile
@@ -133,6 +134,30 @@ class DecodedLite:
     schema: RecoveredSchema
     class_descriptor: str
     enclosing_descriptor: str | None
+    # File-scope (non-message-local) enum name -> the enum's own DEX
+    # enclosing class, so the combine step can nest it under the right
+    # message instead of leaving it at file scope when that message is
+    # actually a different class than the one that referenced the enum.
+    enum_enclosing: dict[str, str | None] = dataclass_field(default_factory=dict)
+
+
+def _enclosing_descriptor(dex: DexFile, descriptor: str) -> str | None:
+    if descriptor not in dex.types:
+        return None
+    dex_class = dex.class_by_type_index(dex.types.index(descriptor))
+    enclosing_index = dex.enclosing_class_index(dex_class) if dex_class else None
+    enclosing = (
+        dex.types[enclosing_index]
+        if enclosing_index is not None and enclosing_index < len(dex.types)
+        else None
+    )
+    if enclosing is None:
+        # Some shrinkers strip EnclosingClass/InnerClass annotations while
+        # leaving the "$"-joined class name itself untouched.
+        normalized = descriptor.removeprefix("L").removesuffix(";")
+        if "$" in normalized:
+            enclosing = f"L{normalized.rsplit('$', 1)[0]};"
+    return enclosing
 
 
 def _field_oneof(item: InfoField, is_proto2: bool) -> str | None:
@@ -186,6 +211,7 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
     )
     recovered_enums: dict[str, EnumType] = {}
     recovered_message_enums: dict[str, EnumType] = {}
+    enum_enclosing: dict[str, str | None] = {}
     dependencies: set[str] = set()
     resolved_fields: list[tuple[str, bool, str | None, bool]] = []
     for item, java_name, normalized_name, auxiliary_class, map_field in zip(
@@ -288,6 +314,13 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                     Confidence.HIGH,
                     [enum_evidence_record],
                 )
+                if not message_local:
+                    # Not nested inside the field's own owning message, but
+                    # very likely nested inside some other message in the
+                    # same file (protobuf enums are rarely truly top-level).
+                    enum_enclosing[type_name] = _enclosing_descriptor(
+                        dex, enum_evidence.descriptor
+                    )
         elif type_name == "map":
             map_evidence = (
                 recover_map_evidence(dex, map_field) if map_field is not None else None
@@ -356,18 +389,7 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
         dependencies=sorted(dependencies),
         evidence=[evidence],
     )
-    enclosing_index = dex.enclosing_class_index(own_class) if own_class else None
-    enclosing_descriptor = (
-        dex.types[enclosing_index]
-        if enclosing_index is not None and enclosing_index < len(dex.types)
-        else None
-    )
-    if enclosing_descriptor is None:
-        # Some shrinkers strip EnclosingClass/InnerClass annotations while
-        # leaving the "$"-joined class name itself untouched. Fall back to
-        # that name shape; the combine step still only trusts it when the
-        # guessed parent is itself a class recovered in the same run.
-        normalized = descriptor.removeprefix("L").removesuffix(";")
-        if "$" in normalized:
-            enclosing_descriptor = f"L{normalized.rsplit('$', 1)[0]};"
-    return DecodedLite(schema, descriptor, enclosing_descriptor)
+    # The combine step still only trusts a name-shape fallback guess when
+    # the guessed parent is itself a class recovered in the same run.
+    enclosing_descriptor = _enclosing_descriptor(dex, descriptor)
+    return DecodedLite(schema, descriptor, enclosing_descriptor, enum_enclosing)

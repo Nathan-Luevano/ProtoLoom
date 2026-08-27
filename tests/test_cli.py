@@ -1,10 +1,30 @@
-from protoloom.cli import _nested_lite_messages
-from protoloom.model import Confidence, Field, Message, RecoveredSchema
+from protoloom.cli import (
+    _apply_nested_renames,
+    _lite_message_index,
+    _nested_lite_enums,
+    _nested_lite_messages,
+)
+from protoloom.model import (
+    Confidence,
+    EnumType,
+    EnumValue,
+    Field,
+    Message,
+    RecoveredSchema,
+)
 from protoloom.reconcile import reconcile
 
 
 def _schema(name: str, message: Message, package: str = "") -> RecoveredSchema:
     return RecoveredSchema(name=f"{name}.proto", package=package, messages=[message])
+
+
+def _nest(
+    items: list[RecoveredSchema],
+    lineage: dict[tuple[str, str], tuple[str, str | None]],
+) -> list[Message]:
+    by_descriptor, enclosing_of = _lite_message_index(items, lineage)
+    return _nested_lite_messages(items, by_descriptor, enclosing_of)
 
 
 def test_nests_message_under_its_enclosing_class() -> None:
@@ -15,7 +35,7 @@ def test_nests_message_under_its_enclosing_class() -> None:
         ("", "Outer.proto"): ("LOuter;", None),
         ("", "Inner.proto"): ("LOuter$Inner;", "LOuter;"),
     }
-    top_level = _nested_lite_messages(items, lineage)
+    top_level = _nest(items, lineage)
     assert top_level == [outer]
     assert outer.messages == [inner]
 
@@ -41,7 +61,7 @@ def test_strips_redundant_parent_prefix_and_rewrites_field_references() -> None:
             "LAccessMethod;",
         ),
     }
-    top_level = _nested_lite_messages(items, lineage)
+    top_level = _nest(items, lineage)
     assert top_level == [outer]
     assert [child.name for child in outer.messages] == ["Bridges"]
     assert outer.fields[0].type_name == "Bridges"
@@ -50,7 +70,7 @@ def test_strips_redundant_parent_prefix_and_rewrites_field_references() -> None:
 def test_leaves_message_top_level_without_lineage() -> None:
     solo = Message(name="Solo")
     items = [_schema("Solo", solo)]
-    top_level = _nested_lite_messages(items, {})
+    top_level = _nest(items, {})
     assert top_level == [solo]
 
 
@@ -60,7 +80,7 @@ def test_ignores_enclosing_descriptor_never_recovered_in_this_run() -> None:
     lineage: dict[tuple[str, str], tuple[str, str | None]] = {
         ("", "Orphan.proto"): ("LSomewhere$Orphan;", "LSomewhere;")
     }
-    top_level = _nested_lite_messages(items, lineage)
+    top_level = _nest(items, lineage)
     assert top_level == [orphan]
     assert orphan.messages == []
 
@@ -96,3 +116,62 @@ def test_same_simple_name_in_different_packages_does_not_collide() -> None:
     by_package = {schema.package: schema for schema in result.schemas}
     assert by_package["pkg.a"].messages[0].fields[0].name == "hostname"
     assert by_package["pkg.b"].messages[0].fields[0].name == "weight"
+
+
+def test_nests_a_file_scope_enum_under_its_true_owning_message() -> None:
+    # A "MigrationPayload.OtpType" enum used by a *sibling* message (not the
+    # field's own owner) recovers as file-scope; the enum's own enclosing
+    # class tells us which recovered message should really hold it.
+    owner = Message(name="MigrationPayload")
+    field_owner = Message(
+        name="OtpParameters",
+        fields=[
+            Field(
+                name="type",
+                number=1,
+                type_name="MigrationPayload_OtpType",
+                confidence=Confidence.HIGH,
+            )
+        ],
+    )
+    enum = EnumType(
+        name="MigrationPayload_OtpType",
+        values=[EnumValue("OTP_INVALID", 0), EnumValue("OTP_HOTP", 1)],
+    )
+    items = [
+        _schema("MigrationPayload", owner),
+        RecoveredSchema(
+            name="OtpParameters.proto", messages=[field_owner], enums=[enum]
+        ),
+    ]
+    lineage = {
+        ("", "MigrationPayload.proto"): ("LMigrationPayload;", None),
+        ("", "OtpParameters.proto"): (
+            "LMigrationPayload$OtpParameters;",
+            "LMigrationPayload;",
+        ),
+    }
+    enum_lineage: dict[tuple[str, str], dict[str, str | None]] = {
+        ("", "OtpParameters.proto"): {"MigrationPayload_OtpType": "LMigrationPayload;"}
+    }
+    by_descriptor, enclosing_of = _lite_message_index(items, lineage)
+    messages = _nested_lite_messages(items, by_descriptor, enclosing_of)
+    top_level_enums, enum_renames = _nested_lite_enums(
+        items, by_descriptor, enum_lineage
+    )
+    _apply_nested_renames(messages, enum_renames)
+    assert top_level_enums == []
+    assert enum_renames == {"MigrationPayload_OtpType": "OtpType"}
+    assert [e.name for e in owner.enums] == ["OtpType"]
+    assert field_owner.fields[0].type_name == "OtpType"
+    assert messages == [owner]
+
+
+def test_enum_stays_file_scope_without_a_recovered_owner() -> None:
+    field_owner = Message(name="Solo")
+    enum = EnumType(name="Standalone", values=[EnumValue("A", 0)])
+    items = [RecoveredSchema(name="Solo.proto", messages=[field_owner], enums=[enum])]
+    by_descriptor, _ = _lite_message_index(items, {})
+    top_level_enums, enum_renames = _nested_lite_enums(items, by_descriptor, {})
+    assert top_level_enums == [enum]
+    assert enum_renames == {}
