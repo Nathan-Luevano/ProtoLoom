@@ -100,13 +100,17 @@ def _dex_inputs(path: Path) -> list[tuple[str, bytes]]:
 def _find_lite(
     path: Path, *, allow_heuristic: bool = False
 ) -> tuple[
-    list[RecoveredSchema], list[str], dict[tuple[str, str], tuple[str, str | None]]
+    list[RecoveredSchema],
+    list[str],
+    dict[tuple[str, str], tuple[str, str | None]],
+    dict[tuple[str, str], dict[str, str | None]],
 ]:
     schemas: list[RecoveredSchema] = []
     bailouts: list[str] = []
     # Keyed by (package, name): two unrelated classes can share a bare file
     # name across different packages (e.g. two distinct "Relay" classes).
     lineage: dict[tuple[str, str], tuple[str, str | None]] = {}
+    enum_lineage: dict[tuple[str, str], dict[str, str | None]] = {}
     for source, data in _dex_inputs(path):
         dex = DexFile(data)
         extraction = extract_lite(dex, allow_heuristic=allow_heuristic)
@@ -117,15 +121,15 @@ def _find_lite(
                 bailouts.append(f"{source}: {error}")
                 continue
             schemas.append(decoded.schema)
-            lineage[(decoded.schema.package, decoded.schema.name)] = (
-                decoded.class_descriptor,
-                decoded.enclosing_descriptor,
-            )
+            key = (decoded.schema.package, decoded.schema.name)
+            lineage[key] = (decoded.class_descriptor, decoded.enclosing_descriptor)
+            if decoded.enum_enclosing:
+                enum_lineage[key] = decoded.enum_enclosing
         bailouts.extend(
             f"{source}: method {item.containing_method}: {item.reason}"
             for item in extraction.bailouts
         )
-    return schemas, bailouts, lineage
+    return schemas, bailouts, lineage, enum_lineage
 
 
 def _compiled_descriptors(schema: RecoveredSchema) -> list[FileDescriptorProto]:
@@ -162,10 +166,10 @@ def _apply_nested_renames(top_level: list[Message], renames: dict[str, str]) -> 
                 )
 
 
-def _nested_lite_messages(
+def _lite_message_index(
     items: list[RecoveredSchema],
     lineage: dict[tuple[str, str], tuple[str, str | None]],
-) -> list[Message]:
+) -> tuple[dict[str, Message], dict[str, str | None]]:
     by_descriptor: dict[str, Message] = {}
     enclosing_of: dict[str, str | None] = {}
     for item in items:
@@ -175,6 +179,14 @@ def _nested_lite_messages(
         own_descriptor, enclosing_descriptor = info
         by_descriptor[own_descriptor] = item.messages[0]
         enclosing_of[own_descriptor] = enclosing_descriptor
+    return by_descriptor, enclosing_of
+
+
+def _nested_lite_messages(
+    items: list[RecoveredSchema],
+    by_descriptor: dict[str, Message],
+    enclosing_of: dict[str, str | None],
+) -> list[Message]:
     attached: set[int] = set()
     renames: dict[str, str] = {}
     for own_descriptor, message in by_descriptor.items():
@@ -207,10 +219,50 @@ def _nested_lite_messages(
     return top_level
 
 
+def _nested_lite_enums(
+    items: list[RecoveredSchema],
+    by_descriptor: dict[str, Message],
+    enum_lineage: dict[tuple[str, str], dict[str, str | None]],
+) -> tuple[list[EnumType], dict[str, str]]:
+    enums_by_name: dict[str, EnumType] = {}
+    enum_owner: dict[str, str | None] = {}
+    conflicting_enums: set[str] = set()
+    for item in items:
+        item_enum_lineage = enum_lineage.get((item.package, item.name), {})
+        for enum in item.enums:
+            current = enums_by_name.get(enum.name)
+            if current is None:
+                enums_by_name[enum.name] = enum
+                enum_owner[enum.name] = item_enum_lineage.get(enum.name)
+            elif current.values != enum.values:
+                conflicting_enums.add(enum.name)
+    top_level_enums: list[EnumType] = []
+    enum_renames: dict[str, str] = {}
+    for name, enum in enums_by_name.items():
+        if name in conflicting_enums:
+            continue
+        owner_descriptor = enum_owner.get(name)
+        owner = by_descriptor.get(owner_descriptor) if owner_descriptor else None
+        if owner is None:
+            top_level_enums.append(enum)
+            continue
+        # Same redundant-prefix shape as nested messages, e.g.
+        # MigrationPayload_OtpType once MigrationPayload is the known real
+        # parent.
+        prefix = f"{owner.name}_"
+        if enum.name.startswith(prefix) and len(enum.name) > len(prefix):
+            new_name = enum.name[len(prefix) :]
+            enum_renames[enum.name] = new_name
+            enum.name = new_name
+        owner.enums.append(enum)
+    return top_level_enums, enum_renames
+
+
 def _combined_lite_descriptors(
     schemas: list[RecoveredSchema],
     certain_names: set[str],
     lineage: dict[tuple[str, str], tuple[str, str | None]],
+    enum_lineage: dict[tuple[str, str], dict[str, str | None]],
 ) -> list[FileDescriptorProto]:
     groups: dict[tuple[str, str], list[RecoveredSchema]] = defaultdict(list)
     for schema in schemas:
@@ -218,25 +270,18 @@ def _combined_lite_descriptors(
             groups[(schema.package, schema.syntax)].append(schema)
     descriptors: list[FileDescriptorProto] = []
     for index, ((package, syntax), items) in enumerate(sorted(groups.items())):
-        enums_by_name: dict[str, EnumType] = {}
-        conflicting_enums: set[str] = set()
-        for item in items:
-            for enum in item.enums:
-                current = enums_by_name.get(enum.name)
-                if current is None:
-                    enums_by_name[enum.name] = enum
-                elif current.values != enum.values:
-                    conflicting_enums.add(enum.name)
+        by_descriptor, enclosing_of = _lite_message_index(items, lineage)
+        messages = _nested_lite_messages(items, by_descriptor, enclosing_of)
+        top_level_enums, enum_renames = _nested_lite_enums(
+            items, by_descriptor, enum_lineage
+        )
+        _apply_nested_renames(messages, enum_renames)
         combined = RecoveredSchema(
             name=f"recovered_{index}.proto",
             package=package,
             syntax=syntax,
-            messages=_nested_lite_messages(items, lineage),
-            enums=[
-                enum
-                for name, enum in enums_by_name.items()
-                if name not in conflicting_enums
-            ],
+            messages=messages,
+            enums=top_level_enums,
             dependencies=list(
                 dict.fromkeys(
                     dependency for item in items for dependency in item.dependencies
@@ -304,7 +349,7 @@ def extract(
     if not path.is_file():
         raise typer.BadParameter(f"file does not exist: {path}")
     findings = _find(path)
-    lite_schemas, bailouts, lineage = _find_lite(
+    lite_schemas, bailouts, lineage, enum_lineage = _find_lite(
         path, allow_heuristic=allow_heuristic_lite
     )
     if jadx:
@@ -353,7 +398,9 @@ def extract(
         prepared.append((schema, source))
     try:
         descriptors.extend(
-            _combined_lite_descriptors(reconciled.schemas, certain_names, lineage)
+            _combined_lite_descriptors(
+                reconciled.schemas, certain_names, lineage, enum_lineage
+            )
         )
     except ValueError as error:
         typer.echo(f"descriptor-set assembly failed: {error}", err=True)
