@@ -189,7 +189,7 @@ no recovery compile denominator.
 | Meshtastic, three selected files | 0% (0/483) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/132) | 0% (0/449) | 100% (3/3) |
 | Flipper, three selected schema groups | 0% (0/36) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/2) | 0% (0/20) | 100% (3/3) |
 | Gadgetbridge, three selected files | 0% (0/115) | n/a (0 matched) | n/a | n/a | n/a | 0% (0/16) | 0% (0/27) | 100% (3/3) |
-| Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 59.46% (22/37) | 97.30% (36/37) | 100% (7/7) | 0% (0/27) | 100% (1/1) |
+| Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 83.78% (31/37) | 97.30% (36/37) | 100% (7/7) | 0% (0/27) | 100% (1/1) |
 
 Bitwarden's first manifest entry mistakenly paired the Authenticator schema
 with the Password Manager APK. The manifest now pins the matching Authenticator
@@ -222,18 +222,21 @@ DEX matched androguard 4.x in order and value. Reproduce that check with
 
 Mullvad's pinned `management_interface.proto` provides matching ground truth.
 The comparison covers 112 truth messages and 297 truth fields. Rerun on
-2026-08-27 after two fixes: wiring DEX `EnclosingClass` annotations into the
-recovered message tree, then recovering proto3's synthetic single-field
-oneofs from the hasbit signal. Before either fix, structural fidelity was
-16.36% (9/55) and field recall/precision were 90.91% (270/297); after the
-first fix alone, structural fidelity was 52.73% (29/55):
+2026-08-27 after three fixes: wiring DEX `EnclosingClass` annotations into the
+recovered message tree, recovering proto3's synthetic single-field oneofs
+from the hasbit signal, and reading message-typed fields' real type from the
+owning class's own declared field type instead of the `newMessageInfo`
+objects array. Before any of it, structural fidelity was 16.36% (9/55), field
+recall/precision were 90.91% (270/297), and type fidelity was 54.07%
+(146/270); after the first two fixes, structural fidelity was 96.36% (53/55)
+and type fidelity was 85.19% (253/297):
 
 | Metric | Result | Count |
 |---|---:|---:|
 | Field recall | 100.00% | 297 / 297 |
 | Field precision | 100.00% | 297 / 297 |
 | Wire-type accuracy | 100.00% | 297 / 297 |
-| Type fidelity | 85.19% | 253 / 297 |
+| Type fidelity | 96.97% | 288 / 297 |
 | Name recovery | 87.21% | 259 / 297 |
 | Label accuracy | 100.00% | 297 / 297 |
 | Structural fidelity | 96.36% | 53 / 55 |
@@ -251,25 +254,35 @@ annotation and rebuilds the real parent/child message tree instead of
 flattening every class to a top-level message; the earlier field
 recall/precision loss turned out to be downstream of that same flattening
 (mismatched nested-message names broke field-to-message matching), which is
-why those two metrics also moved to 100%. The remaining oneof-shaped share of
-the gap came from proto3 `optional` fields: they compile to a synthetic
-one-member oneof for presence tracking, and protobuf-lite's info string marks
-that with a hasbit rather than a real `oneof_index`, so the field-level hasbit
-signal is now read back into a synthetic oneof when the schema is proto3 and
-the field carries no real oneof index. The 2 remaining structural misses are a
+why those two metrics also moved to 100%. Another share of the earlier gap
+came from proto3 `optional` fields: they compile to a synthetic one-member
+oneof for presence tracking, and protobuf-lite's info string marks that with a
+hasbit rather than a real `oneof_index`, so the field-level hasbit signal is
+now read back into a synthetic oneof when the schema is proto3 and the field
+carries no real oneof index. The 2 remaining structural misses are a
 same-simple-name collision (two distinct DEX classes named `Relay` in
 different packages get merged by name during reconciliation) — a known,
 narrower gap, not yet fixed.
 
+Type fidelity's remaining 9-field gap on Mullvad is entirely well-known SDK
+types (`google.protobuf.Timestamp`, `Duration`, `StringValue`): message-typed
+field resolution now reads the owning class's own declared field type (the
+same signal protobuf-lite's Java runtime uses via reflection) rather than
+relying on the `newMessageInfo` objects array, which almost never carries an
+explicit class literal for a plain message field on real, optimized
+bytecode — but well-known types are deliberately excluded from that
+resolution for now, since naming them correctly also needs an
+`emit/proto.py` import ProtoLoom does not yet add.
+
 The published ceiling is intentionally unflattering. Only one of Mullvad's 297
 fields is capped by the roadmap's scalar-varint ambiguity model, so the
-14.47-point gap between measured type fidelity and the 99.66% ceiling is mostly
-recoverable implementation loss, not an information-theoretic excuse. Name and
-structural ceilings are not assigned a made-up corpus-wide number: both depend
-on whether each target's optimizer retains field strings, class references,
-oneof metadata, and enclosing-class identity. Their measured scores remain the
-honest numbers until the evidence model records those per-field observability
-facts.
+2.69-point gap between measured type fidelity and the 99.66% ceiling is mostly
+the well-known-type import gap described above, not an information-theoretic
+excuse. Name and structural ceilings are not assigned a made-up corpus-wide
+number: both depend on whether each target's optimizer retains field strings,
+class references, oneof metadata, and enclosing-class identity. Their measured
+scores remain the honest numbers until the evidence model records those
+per-field observability facts.
 
 ## Tier C captured payload
 
@@ -309,7 +322,7 @@ messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
 | Field recall | 100.00% | 100.00% |
 | Field precision | 100.00% | 100.00% |
 | Wire-type accuracy | 100.00% | 100.00% |
-| Type fidelity | 85.19% | 100.00% |
+| Type fidelity | 96.97% | 100.00% |
 | Name recovery | 87.21% | 100.00% |
 | Label accuracy | 100.00% | 100.00% |
 | Structural fidelity | 96.36% | 100.00% |

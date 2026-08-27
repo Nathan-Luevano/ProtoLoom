@@ -1,5 +1,7 @@
+from protoloom.container.dex import DexField, DexMethod
 from protoloom.decode.infostring import HAS_HAS_BIT, InfoField
-from protoloom.decode.lite import _field_oneof
+from protoloom.decode.lite import _field_oneof, decode_lite_finding
+from protoloom.extract.lite import LiteFinding, LiteObject
 
 
 def _field(*, oneof_index: int | None, raw_type: int) -> InfoField:
@@ -24,3 +26,46 @@ def test_proto2_hasbit_does_not_synthesize_a_oneof() -> None:
 def test_no_presence_and_no_oneof_is_plain() -> None:
     field = _field(oneof_index=None, raw_type=0)
     assert _field_oneof(field, is_proto2=False) is None
+
+
+def _encode_int(value: int) -> str:
+    chars = []
+    while value >= 0xD800:
+        chars.append(chr((value & 0x1FFF) | 0xE000))
+        value >>= 13
+    chars.append(chr(value))
+    return "".join(chars)
+
+
+def _info_string(*values: int) -> str:
+    return "".join(_encode_int(value) for value in values)
+
+
+class _FakeDex:
+    def __init__(self) -> None:
+        self.types: tuple[str, ...] = ("LOwner;", "LOwner$Nested;")
+        self.strings: tuple[str, ...] = ("newMessageInfo", "nested_")
+        self.methods: tuple[DexMethod, ...] = (DexMethod(0, 0, 0),)
+        self.fields: tuple[DexField, ...] = (DexField(0, 1, 1),)
+
+    def field_name(self, item: DexField) -> str:
+        return self.strings[item.name_index]
+
+    def class_by_type_index(self, type_index: int) -> None:
+        return None
+
+
+def test_message_field_type_comes_from_the_declared_field_type() -> None:
+    # header: flags, field_count, oneof_count, hasbits_count, min, max,
+    # entry_count, map_field_count, repeated_field_count, check_initialized;
+    # then one field: number=1, raw_type=9 (message, no hasbit/oneof).
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 9)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(LiteObject("string", "nested_"),),
+    )
+    decoded = decode_lite_finding(_FakeDex(), finding, "test.dex")  # type: ignore[arg-type]
+    assert decoded.schema.messages[0].fields[0].type_name == "Nested"

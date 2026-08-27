@@ -89,6 +89,11 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
     info = decode_info_string(finding.info_string)
     method = dex.methods[finding.containing_method]
     descriptor = dex.types[method.class_index]
+    declared_field_types = {
+        dex.field_name(item): dex.types[item.type_index]
+        for item in dex.fields
+        if item.class_index == method.class_index
+    }
     java_names, auxiliary_classes, map_fields = _field_objects(finding)
     visible_names = [name for name in java_names if name is not None]
     obfuscated = names_are_obfuscated(visible_names)
@@ -119,7 +124,24 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
         guessed_type = False
         map_evidence = None
         if type_name in {"message", "group"}:
-            if auxiliary_class is not None:
+            # newMessageInfo's objects array almost never carries an explicit
+            # class literal for a plain message field on real bytecode; the
+            # generated getter/field's own declared type is the reliable
+            # source (protobuf-lite's Java runtime resolves it the same way,
+            # via reflection). Skip well-known SDK types for now: naming them
+            # correctly also needs an import that emit/proto.py doesn't add.
+            declared = declared_field_types.get(java_name) if java_name else None
+            resolved = (
+                declared
+                if declared is not None
+                and declared.startswith("L")
+                and declared.endswith(";")
+                and not declared.startswith("Lcom/google/protobuf/")
+                else None
+            )
+            if resolved is not None:
+                type_name = _class_name(resolved)
+            elif auxiliary_class is not None:
                 type_name = auxiliary_class
             elif normalized_name is not None:
                 type_name = "".join(part.title() for part in normalized_name.split("_"))
