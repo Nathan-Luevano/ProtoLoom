@@ -1,48 +1,8 @@
-import keyword
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 _OBFUSCATED = re.compile(r"^[a-z]{1,2}_?$")
-_PROTO_KEYWORDS = {
-    "bool",
-    "bytes",
-    "double",
-    "enum",
-    "extend",
-    "extensions",
-    "fixed32",
-    "fixed64",
-    "float",
-    "group",
-    "import",
-    "int32",
-    "int64",
-    "map",
-    "message",
-    "oneof",
-    "option",
-    "optional",
-    "package",
-    "public",
-    "repeated",
-    "required",
-    "reserved",
-    "returns",
-    "rpc",
-    "service",
-    "sfixed32",
-    "sfixed64",
-    "sint32",
-    "sint64",
-    "stream",
-    "string",
-    "syntax",
-    "to",
-    "uint32",
-    "uint64",
-    "weak",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,8 +22,11 @@ def java_to_proto_name(name: str) -> str:
         name = "field"
     if name[0].isdigit():
         name = f"field_{name}"
-    if name in _PROTO_KEYWORDS or keyword.iskeyword(name):
-        name += "_"
+    # protoc's grammar accepts any identifier, including its own directive
+    # keywords, in a field-name position (verified: `string message = 1;`
+    # and friends compile). Escaping is emit/proto.py's job at render time,
+    # against the .proto text -- not the recovered model's job here, where
+    # it would corrupt names.json and truth comparisons.
     return name
 
 

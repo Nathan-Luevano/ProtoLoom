@@ -1,4 +1,4 @@
-from protoloom.container.dex import DexField, DexMethod
+from protoloom.container.dex import DexClass, DexField, DexMethod
 from protoloom.decode.infostring import HAS_HAS_BIT, InfoField
 from protoloom.decode.lite import _field_oneof, decode_lite_finding
 from protoloom.extract.lite import LiteFinding, LiteObject
@@ -51,7 +51,7 @@ class _FakeDex:
     def field_name(self, item: DexField) -> str:
         return self.strings[item.name_index]
 
-    def class_by_type_index(self, type_index: int) -> None:
+    def class_by_type_index(self, type_index: int) -> DexClass | None:
         return None
 
 
@@ -181,3 +181,75 @@ def test_oneof_message_field_name_stays_speculative_when_flat() -> None:
     field = decoded.schema.messages[0].fields[0]
     assert field.type_name == "FlatVariant"
     assert field.name == "field_1"
+
+
+class _FakeFieldNumberConstantDex(_FakeDex):
+    def __init__(self) -> None:
+        super().__init__()
+        self.types = ("LOwner;", "LOwner$FlatVariant;")
+        self.fields = ()
+        self._own_class = DexClass(0, 0, 0xFFFFFFFF, 0, 0xFFFFFFFF, 0, 1, 1)
+        self._static_fields = (DexField(0, 4, 2),)
+        self.strings = (*self.strings, "CUSTOM_FIELD_NUMBER")
+
+    def class_by_type_index(self, type_index: int) -> DexClass:
+        return self._own_class
+
+    def class_static_fields(self, item: DexClass) -> tuple[DexField, ...]:
+        return self._static_fields
+
+    def static_field_values(self, item: DexClass) -> tuple[object, ...]:
+        return (1,)
+
+    def enclosing_class_index(self, item: DexClass) -> None:
+        return None
+
+
+def test_field_number_constant_wins_over_flat_oneof_guess() -> None:
+    # The same flat single-`$`-level type the previous test leaves
+    # speculative, but this class also carries protoc's generated
+    # `NAME_FIELD_NUMBER` constant -- the authoritative source.
+    info = _info_string(0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 60, 0)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(
+            LiteObject("string", "group_"),
+            LiteObject("string", "groupCase_"),
+            LiteObject("class", "LOwner$FlatVariant;"),
+        ),
+    )
+    decoded = decode_lite_finding(_FakeFieldNumberConstantDex(), finding, "test.dex")  # type: ignore[arg-type]
+    field = decoded.schema.messages[0].fields[0]
+    assert field.name == "custom"
+    assert field.confidence.value == "high"
+
+
+class _FakeShortAuthoritativeNameDex(_FakeFieldNumberConstantDex):
+    def __init__(self) -> None:
+        super().__init__()
+        self.types = ("LOwner;", "I")
+        self.strings = ("newMessageInfo", "id_", "ID_FIELD_NUMBER")
+
+
+def test_authoritative_name_is_not_treated_as_obfuscated() -> None:
+    # A single short field name ("id_") would otherwise trip the
+    # obfuscation heuristic; the FIELD_NUMBER constant is immune to it.
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 8)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(LiteObject("string", "id_"),),
+    )
+    decoded = decode_lite_finding(
+        _FakeShortAuthoritativeNameDex(),  # type: ignore[arg-type]
+        finding,
+        "test.dex",
+    )
+    field = decoded.schema.messages[0].fields[0]
+    assert field.name == "id"
+    assert field.confidence.value == "high"
