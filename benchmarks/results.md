@@ -189,7 +189,7 @@ no recovery compile denominator.
 | Meshtastic, three selected files | 0% (0/483) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/132) | 0% (0/449) | 100% (3/3) |
 | Flipper, three selected schema groups | 0% (0/36) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/2) | 0% (0/20) | 100% (3/3) |
 | Gadgetbridge, three selected files | 0% (0/115) | n/a (0 matched) | n/a | n/a | n/a | 0% (0/16) | 0% (0/27) | 100% (3/3) |
-| Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 48.65% (18/37) | 97.30% (36/37) | 0% (0/7) | 0% (0/27) | 100% (1/1) |
+| Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 59.46% (22/37) | 97.30% (36/37) | 100% (7/7) | 0% (0/27) | 100% (1/1) |
 
 Bitwarden's first manifest entry mistakenly paired the Authenticator schema
 with the Password Manager APK. The manifest now pins the matching Authenticator
@@ -208,8 +208,13 @@ Gadgetbridge's 20 outputs include generated empty Garmin messages, but none of
 the 115 selected truth fields matched; its field-bearing calls are among the 671
 strict bail-outs. Smartspacer and Bitwarden are valid positive diffs. Both show
 perfect wire accuracy on matched fields while preserving the already-reported
-enum and nesting gaps. These extraction rows retain a zero round-trip
-denominator. Bitwarden is measured separately against a real payload in Tier C.
+enum gap. Smartspacer's nested-message structure recovers cleanly now that
+enclosing-class recovery falls back to the DEX name shape when
+`EnclosingClass` annotations are stripped; Bitwarden's aggressive R8
+obfuscation removes both the annotation and the `$`-joined name shape, so its
+single structural relationship stays unrecovered — a harder, separate gap.
+These extraction rows retain a zero round-trip denominator. Bitwarden is
+measured separately against a real payload in Tier C.
 
 As a separate container-layer oracle, all 35,762 strings in Mullvad's primary
 DEX matched androguard 4.x in order and value. Reproduce that check with
