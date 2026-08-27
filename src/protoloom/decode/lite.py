@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 
 from protoloom.container.dex import DexFile
 from protoloom.decode.fieldtype import field_type
-from protoloom.decode.infostring import decode_info_string
+from protoloom.decode.infostring import InfoField, decode_info_string
 from protoloom.decode.names import java_to_proto_name, names_are_obfuscated
 from protoloom.extract.lite import (
     LiteFinding,
@@ -73,6 +73,16 @@ class DecodedLite:
     schema: RecoveredSchema
     class_descriptor: str
     enclosing_descriptor: str | None
+
+
+def _field_oneof(item: InfoField, is_proto2: bool) -> str | None:
+    if item.oneof_index is not None:
+        return f"choice_{item.oneof_index}"
+    # proto3 gives every "optional" scalar its own synthetic one-member oneof
+    # so HasField works; the hasbit is the only surviving signal for it.
+    if not is_proto2 and item.has_presence:
+        return f"synthetic_{item.number}"
+    return None
 
 
 def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> DecodedLite:
@@ -181,11 +191,7 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                 number=item.number,
                 type_name=type_name,
                 label="required" if item.required else kind.label,
-                oneof=(
-                    f"choice_{item.oneof_index}"
-                    if item.oneof_index is not None
-                    else None
-                ),
+                oneof=_field_oneof(item, info.header.is_proto2),
                 packed=kind.packed or None,
                 confidence=confidence,
                 evidence=[evidence],
