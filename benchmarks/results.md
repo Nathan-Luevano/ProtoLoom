@@ -216,6 +216,20 @@ single structural relationship stays unrecovered — a harder, separate gap.
 These extraction rows retain a zero round-trip denominator. Bitwarden is
 measured separately against a real payload in Tier C.
 
+Smartspacer's enum recovery (0/27) was investigated directly rather than
+assumed: its enum classes are ordinary generated Java enums — not a proto2
+Verifier-specific shape — but `SmartspaceCard`'s own class has *no getter
+method at all* for `card_type` (nor does its `Builder` retain a setter with
+the enum parameter type), so the getter-return-type technique that proves
+Mullvad's enums has no accessor to read in the first place. This is the same
+failure mode the javalite matrix's aggressive-R8 leg already documents
+(getter inlining/removal drops enum recovery to 0/2 there); Smartspacer's
+build evidently strips accessors just as aggressively. Recovering these
+enums would need a genuinely different, accessor-independent evidence
+source — not yet identified — rather than a variant of the existing
+technique. Treated as a confirmed information-limit finding, not a bug
+sitting unfixed.
+
 As a separate container-layer oracle, all 35,762 strings in Mullvad's primary
 DEX matched androguard 4.x in order and value. Reproduce that check with
 `uv run --with androguard python scripts/check_dex_oracle.py <apk>`.
