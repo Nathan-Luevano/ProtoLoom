@@ -241,6 +241,12 @@ class DexFile:
     def field_name(self, item: DexField) -> str:
         return self.strings[item.name_index]
 
+    def class_by_type_index(self, type_index: int) -> DexClass | None:
+        for item in self.classes:
+            if item.class_index == type_index:
+                return item
+        return None
+
     def class_annotations(self, item: DexClass) -> tuple[AnnotationItem, ...]:
         if item.annotations_offset == 0:
             return ()
