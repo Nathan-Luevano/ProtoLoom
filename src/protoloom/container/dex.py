@@ -153,6 +153,36 @@ class DexFile:
     def types(self) -> tuple[str, ...]:
         return tuple(self.strings[index] for index in self.type_ids)
 
+    def class_static_fields(self, item: DexClass) -> tuple[DexField, ...]:
+        if item.class_data_offset == 0:
+            return ()
+        cursor = item.class_data_offset
+        static_count, cursor = self._uleb128(cursor)
+        _, cursor = self._uleb128(cursor)  # instance_fields_size
+        _, cursor = self._uleb128(cursor)  # direct_methods_size
+        _, cursor = self._uleb128(cursor)  # virtual_methods_size
+        result: list[DexField] = []
+        field_index = 0
+        for _ in range(static_count):
+            index_delta, cursor = self._uleb128(cursor)
+            _, cursor = self._uleb128(cursor)
+            field_index += index_delta
+            if field_index >= len(self.fields):
+                raise DexError("encoded field index is out of range")
+            result.append(self.fields[field_index])
+        return tuple(result)
+
+    def static_field_values(self, item: DexClass) -> tuple[object, ...]:
+        if item.static_values_offset == 0:
+            return ()
+        cursor = item.static_values_offset
+        count, cursor = self._uleb128(cursor)
+        values: list[object] = []
+        for _ in range(count):
+            value, cursor = self._encoded_value(cursor)
+            values.append(value)
+        return tuple(values)
+
     def class_methods(self, item: DexClass) -> tuple[EncodedMethod, ...]:
         if item.class_data_offset == 0:
             return ()

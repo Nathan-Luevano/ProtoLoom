@@ -3,47 +3,6 @@ import re
 from protoloom.model import EnumType, Field, Message, RecoveredSchema
 
 _IDENTIFIER = re.compile(r"[^A-Za-z0-9_]")
-_KEYWORDS = {
-    "bool",
-    "bytes",
-    "double",
-    "enum",
-    "extend",
-    "extensions",
-    "false",
-    "fixed32",
-    "fixed64",
-    "float",
-    "group",
-    "import",
-    "int32",
-    "int64",
-    "map",
-    "message",
-    "oneof",
-    "option",
-    "optional",
-    "package",
-    "public",
-    "repeated",
-    "required",
-    "reserved",
-    "returns",
-    "rpc",
-    "service",
-    "sfixed32",
-    "sfixed64",
-    "sint32",
-    "sint64",
-    "stream",
-    "string",
-    "syntax",
-    "to",
-    "true",
-    "uint32",
-    "uint64",
-    "weak",
-}
 _SCALARS = {
     "bool",
     "bytes",
@@ -64,10 +23,15 @@ _SCALARS = {
 
 
 def _name(value: str, fallback: str) -> str:
+    # protoc's grammar accepts any identifier, including its own directive
+    # keywords, as a message/enum/field/oneof name (verified against protoc
+    # 29.3: `message message { string message = 1; } enum enum {...}` and
+    # `oneof oneof {...}` all compile). Only invalid-character and
+    # leading-digit sanitizing is a real constraint here.
     cleaned = _IDENTIFIER.sub("_", value)
     if not cleaned or cleaned[0].isdigit():
         cleaned = f"_{cleaned}" if cleaned else fallback
-    return f"{cleaned}_" if cleaned in _KEYWORDS else cleaned
+    return cleaned
 
 
 def _enum(item: EnumType, indent: str) -> list[str]:

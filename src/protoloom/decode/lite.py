@@ -154,6 +154,25 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
         for item in dex.fields
         if item.class_index == method.class_index
     }
+    own_class = dex.class_by_type_index(method.class_index)
+    # protobuf-lite emits a `NAME_FIELD_NUMBER` static int constant per field,
+    # including oneof members that otherwise never get a name string in the
+    # objects array. Its own name is generated directly from the original
+    # proto field name uppercased, so lowercasing it the true name losslessly
+    # -- unlike reversing the getter's camelCase, which can't tell whether a
+    # digit-letter transition in the original name had an underscore or not.
+    field_number_names: dict[int, str] = {}
+    if own_class is not None:
+        static_fields = dex.class_static_fields(own_class)
+        static_values = dex.static_field_values(own_class)
+        for static_field, value in zip(static_fields, static_values, strict=False):
+            if not isinstance(value, int):
+                continue
+            static_name = dex.field_name(static_field)
+            if static_name.endswith("_FIELD_NUMBER"):
+                field_number_names[value] = static_name.removesuffix(
+                    "_FIELD_NUMBER"
+                ).lower()
     java_names, auxiliary_classes, map_fields = _field_objects(finding)
     visible_names = [name for name in java_names if name is not None]
     obfuscated = names_are_obfuscated(visible_names)
@@ -168,7 +187,7 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
     recovered_enums: dict[str, EnumType] = {}
     recovered_message_enums: dict[str, EnumType] = {}
     dependencies: set[str] = set()
-    resolved_fields: list[tuple[str, bool, str | None]] = []
+    resolved_fields: list[tuple[str, bool, str | None, bool]] = []
     for item, java_name, normalized_name, auxiliary_class, map_field in zip(
         info.fields,
         java_names,
@@ -278,19 +297,24 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                 if map_evidence is not None
                 else "bytes"
             )
-        effective_name = derived_name or normalized_name
-        resolved_fields.append((type_name, guessed_type, effective_name))
-    effective_names = [name for _, _, name in resolved_fields]
+        authoritative_name = field_number_names.get(item.number)
+        effective_name = authoritative_name or derived_name or normalized_name
+        resolved_fields.append(
+            (type_name, guessed_type, effective_name, authoritative_name is not None)
+        )
+    effective_names = [name for _, _, name, _ in resolved_fields]
     duplicate_names = {
         name for name, count in Counter(effective_names).items() if name and count > 1
     }
     fields: list[Field] = []
-    for item, (type_name, guessed_type, effective_name) in zip(
+    for item, (type_name, guessed_type, effective_name, authoritative) in zip(
         info.fields, resolved_fields, strict=True
     ):
         kind = field_type(item.type_id)
         speculative_name = (
-            obfuscated or effective_name is None or effective_name in duplicate_names
+            (obfuscated and not authoritative)
+            or effective_name is None
+            or effective_name in duplicate_names
         )
         if speculative_name:
             name = f"field_{item.number}"
@@ -332,7 +356,6 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
         dependencies=sorted(dependencies),
         evidence=[evidence],
     )
-    own_class = dex.class_by_type_index(method.class_index)
     enclosing_index = dex.enclosing_class_index(own_class) if own_class else None
     enclosing_descriptor = (
         dex.types[enclosing_index]
