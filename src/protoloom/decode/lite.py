@@ -53,7 +53,7 @@ def _field_objects(
             cursor += 1
         if kind.proto_type in {"message", "group"}:
             if cursor < len(objects) and objects[cursor].kind == "class":
-                class_name = _class_name(str(objects[cursor].value))
+                class_name = str(objects[cursor].value)
                 cursor += 1
         elif kind.proto_type == "enum" and cursor < len(objects):
             if objects[cursor].kind in {"class", "static_field", "call_result"}:
@@ -100,17 +100,14 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
     normalized_names = [
         java_to_proto_name(name) if name is not None else None for name in java_names
     ]
-    duplicate_names = {
-        name for name, count in Counter(normalized_names).items() if name and count > 1
-    }
     evidence = Evidence(
         source,
         f"code_item@0x{finding.code_offset:x}+{finding.instruction_offset * 2}",
         "protobuf-lite newMessageInfo",
     )
-    fields: list[Field] = []
     recovered_enums: dict[str, EnumType] = {}
     recovered_message_enums: dict[str, EnumType] = {}
+    resolved_fields: list[tuple[str, bool, str | None]] = []
     for item, java_name, normalized_name, auxiliary_class, map_field in zip(
         info.fields,
         java_names,
@@ -123,6 +120,7 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
         type_name = kind.proto_type
         guessed_type = False
         map_evidence = None
+        derived_name: str | None = None
         if type_name in {"message", "group"}:
             # newMessageInfo's objects array almost never carries an explicit
             # class literal for a plain message field on real bytecode; the
@@ -139,16 +137,32 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                 and not declared.startswith("Lcom/google/protobuf/")
                 else None
             )
+            source_descriptor = resolved if resolved is not None else auxiliary_class
             if resolved is not None:
                 type_name = _class_name(resolved)
             elif auxiliary_class is not None:
-                type_name = auxiliary_class
+                type_name = _class_name(auxiliary_class)
             elif normalized_name is not None:
                 type_name = "".join(part.title() for part in normalized_name.split("_"))
                 guessed_type = True
             else:
                 type_name = f"RecoveredField{item.number}"
                 guessed_type = True
+            if (
+                java_name is None
+                and not guessed_type
+                and source_descriptor is not None
+                # Below two "$" levels a bare class name is often already a
+                # flattened compound (e.g. "CustomRelaySettings" as a direct
+                # child of the outer wrapper) with no recoverable relationship
+                # to the true field name; only trust real multi-level nesting.
+                and source_descriptor.count("$") >= 2
+            ):
+                # A oneof member shares one storage field with its siblings
+                # and never gets its own name string in the objects array;
+                # generators name it after its message type instead.
+                last_segment = source_descriptor.removesuffix(";").rsplit("$", 1)[-1]
+                derived_name = java_to_proto_name(last_segment)
         elif type_name == "enum":
             enum_evidence = (
                 recover_enum_evidence(dex, descriptor, java_name)
@@ -193,14 +207,25 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                 if map_evidence is not None
                 else "bytes"
             )
+        effective_name = derived_name or normalized_name
+        resolved_fields.append((type_name, guessed_type, effective_name))
+    effective_names = [name for _, _, name in resolved_fields]
+    duplicate_names = {
+        name for name, count in Counter(effective_names).items() if name and count > 1
+    }
+    fields: list[Field] = []
+    for item, (type_name, guessed_type, effective_name) in zip(
+        info.fields, resolved_fields, strict=True
+    ):
+        kind = field_type(item.type_id)
         speculative_name = (
-            obfuscated or java_name is None or normalized_name in duplicate_names
+            obfuscated or effective_name is None or effective_name in duplicate_names
         )
         if speculative_name:
             name = f"field_{item.number}"
         else:
-            assert normalized_name is not None
-            name = normalized_name
+            assert effective_name is not None
+            name = effective_name
         if speculative_name:
             confidence = Confidence.SPECULATIVE
         elif finding.heuristic or guessed_type:
