@@ -189,7 +189,7 @@ no recovery compile denominator.
 | Meshtastic, three selected files | 0% (0/483) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/132) | 0% (0/449) | 100% (3/3) |
 | Flipper, three selected schema groups | 0% (0/36) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/2) | 0% (0/20) | 100% (3/3) |
 | Gadgetbridge, three selected files | 0% (0/115) | n/a (0 matched) | n/a | n/a | n/a | 0% (0/16) | 0% (0/27) | 100% (3/3) |
-| Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 83.78% (31/37) | 97.30% (36/37) | 100% (7/7) | 0% (0/27) | 100% (1/1) |
+| Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 83.78% (31/37) | 100% (37/37) | 100% (7/7) | 0% (0/27) | 100% (1/1) |
 
 Bitwarden's first manifest entry mistakenly paired the Authenticator schema
 with the Password Manager APK. The manifest now pins the matching Authenticator
@@ -237,7 +237,7 @@ and type fidelity was 85.19% (253/297):
 | Field precision | 100.00% | 297 / 297 |
 | Wire-type accuracy | 100.00% | 297 / 297 |
 | Type fidelity | 100.00% | 297 / 297 |
-| Name recovery | 89.90% | 267 / 297 |
+| Name recovery | 100.00% | 297 / 297 |
 | Label accuracy | 100.00% | 297 / 297 |
 | Structural fidelity | 100.00% | 55 / 55 |
 | Enum recovery | 100.00% | 106 / 106 |
@@ -287,31 +287,57 @@ records the matching `import "google/protobuf/....proto";` line via
 declared type (list wrappers included) still falls through to the
 objects-array class literal or an honest guess, exactly as before.
 
-Name recovery moved from 87.21% to 89.90% (259/297 -> 267/297) the same
-session, from a related but distinct cause: a real `oneof` member shares one
-storage field with its siblings and so never gets its own name string in the
-`newMessageInfo` objects array, only a class literal for its type. When that
-class descriptor carries at least two DEX `$` levels — genuine nesting, e.g.
-`TunnelState$Connected` — the field name is now derived from the type's bare
-local name (`connected`). Below that, a single `$` level is left alone rather
-than guessed, because some generators give the Java class itself an already
-class-name-based simple name (e.g. `CustomRelaySettings` as a direct child of
-the outer wrapper) with no recoverable relationship to the true field name
-(`custom`); guessing there would trade an honest placeholder for a
-confidently wrong one. That residual gap — along with two unrelated
-`java_to_proto_name` snake-casing quirks around digit-letter boundaries
-(`udp2tcp` -> `udp2_tcp`) and one raw trailing-underscore field name
-(`message_`) — is real and not yet fixed.
+Name recovery went through three fixes in the same session and finished at
+100.00% (297/297), up from 85.93% (232/270) at the start of this document's
+history. First, from 87.21% to 89.90% (259/297 -> 267/297): a real `oneof`
+member shares one storage field with its siblings and so never gets its own
+name string in the `newMessageInfo` objects array, only a class literal for
+its type; when that class descriptor carries at least two DEX `$` levels —
+genuine nesting, e.g. `TunnelState$Connected` — the field name is now
+derived from the type's bare local name (`connected`). Second, from 89.90%
+to 90.24% (267/297 -> 268/297): `java_to_proto_name` was escaping every
+protobuf directive keyword (`message`, `class`, ...) as if field identifiers
+couldn't be named that, appending a trailing `_` — but real protoc (verified
+against the pinned 29.3 binary) accepts `string message = 1;`,
+`message message {}`, `enum enum {}`, and `oneof oneof {}` without complaint;
+`emit/proto.py` already escapes independently at render time, so the
+decode-level escaping was both redundant and wrong, corrupting the recovered
+model's own field name (`message_` instead of `message` on `LogMessage`).
+Both escaping mechanisms are now gone.
+
+The third fix closed the rest of the gap in one step, from 90.24% to
+**100.00%** (268/297 -> 297/297): protobuf-lite emits a
+`NAME_FIELD_NUMBER` static `int` constant per field — including oneof
+members, which is exactly the case the first fix could only partially cover.
+Its own name is generated directly from the original proto field name
+uppercased, so lowercasing it recovers the true name losslessly, unlike
+reversing a getter's camelCase, which can't tell whether a digit-letter
+transition in the original name (`Udp2Tcp`) had an underscore (`udp2_tcp`)
+or not (`udp2tcp`) — this is what closed that specific case, plus the
+remaining single-`$`-level flat-oneof names (`RelaySettings.custom`,
+`AccessMethod.custom`, `DaemonEvent`'s 8 members, and more) that the local
+name-derivation heuristic in the first fix couldn't reach at all. Reading it
+needed two new `DexFile` primitives — `class_static_fields` and
+`static_field_values`, parsing the DEX `class_data_item`'s static-field list
+and its `static_values_off` encoded array — verified with a hand-built DEX
+fixture before use on real APKs. The constant is also immune to the
+short-name false positive in the obfuscation heuristic (a lone two-letter
+field like `id_` would otherwise get treated as obfuscated); an
+authoritative `*_FIELD_NUMBER` name now bypasses that check. Confirmed on
+Smartspacer (name recovery 97.30% -> 100.00%) and on Bitwarden
+(100.00%, 12/12).
 
 The published ceiling is intentionally unflattering. Only one of Mullvad's 297
 fields is capped by the roadmap's scalar-varint ambiguity model, so the
-2.69-point gap between measured type fidelity and the 99.66% ceiling is mostly
-the well-known-type import gap described above, not an information-theoretic
-excuse. Name and structural ceilings are not assigned a made-up corpus-wide
-number: both depend on whether each target's optimizer retains field strings,
-class references, oneof metadata, and enclosing-class identity. Their measured
-scores remain the honest numbers until the evidence model records those
-per-field observability facts.
+0.34-point gap between measured type fidelity and the 99.66% ceiling is not
+an information-theoretic shortfall — it's the model correctly resolving a
+field the ceiling's wire-only reasoning treats as ambiguous, using signals
+(the field's own declared type) beyond raw wire behavior. Name and structural
+ceilings are not assigned a made-up corpus-wide number: both depend on
+whether each target's optimizer retains field strings, class references,
+oneof metadata, and enclosing-class identity. Their measured scores remain
+the honest numbers until the evidence model records those per-field
+observability facts.
 
 ## Tier C captured payload
 
@@ -352,16 +378,26 @@ messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
 | Field precision | 100.00% | 100.00% |
 | Wire-type accuracy | 100.00% | 100.00% |
 | Type fidelity | 100.00% | 100.00% |
-| Name recovery | 89.90% | 100.00% |
+| Name recovery | 100.00% | 100.00% |
 | Label accuracy | 100.00% | 100.00% |
 | Structural fidelity | 100.00% | 100.00% |
 | Enum recovery | 100.00% | 100.00% |
 | Compile rate | 100.00% | 100.00% |
 
-ProtoLoom now matches pbtk exactly on eight of the nine rows above — every
-metric except name recovery, at 89.90% against pbtk's 100%, which is the one
-remaining gap on this diff. ProtoLoom is useful as a small direct parser with
-explicit uncertainty, and on this unobfuscated real app it now matches pbtk's
-schema fidelity almost entirely, rather than losing broadly to it. The pinned
-adapter is `scripts/pbtk_1_1_2_adapter.sh`; `scripts/compare_pbtk.sh` records
-isolated tool logs and statuses for a directory of artifacts.
+ProtoLoom now matches pbtk exactly on **all nine rows** of this differential.
+At the start of this document's history ProtoLoom lost on every row; the gap
+closed one diagnosed root cause at a time — DEX `EnclosingClass` recovery,
+proto3 synthetic-oneof recovery, declared-field-type resolution,
+well-known-type imports, a schema-identity collision fix, and finally the
+`*_FIELD_NUMBER` static-constant signal for names — with each fix's
+before/after numbers recorded in this file and in the commit that made it.
+On this unobfuscated real app, ProtoLoom no longer loses to pbtk at all; it
+matches it exactly, while additionally reporting per-field confidence and
+evidence that pbtk does not. The honest caveat is scope, not accuracy on this
+target: this is one app, one ground-truth file, unobfuscated Java-lite —
+Bitwarden and Smartspacer confirm several of these fixes generalize, but
+Signal, Molly, Gadgetbridge, and aggressively obfuscated builds still show
+real, separate gaps (bail-outs, the R8-stripped structural cases) that this
+session did not touch. The pinned adapter is
+`scripts/pbtk_1_1_2_adapter.sh`; `scripts/compare_pbtk.sh` records isolated
+tool logs and statuses for a directory of artifacts.

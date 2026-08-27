@@ -13,8 +13,8 @@ from protoloom.decode.names import (
     [
         ("userId_", "user_id"),
         ("URLValue_", "url_value"),
-        ("class_", "class_"),
-        ("message_", "message_"),
+        ("class_", "class"),
+        ("message_", "message"),
         ("9patch_", "field_9patch"),
         ("bad$name_", "bad_name"),
     ],
