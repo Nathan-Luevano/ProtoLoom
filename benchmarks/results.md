@@ -216,17 +216,20 @@ DEX matched androguard 4.x in order and value. Reproduce that check with
 `uv run --with androguard python scripts/check_dex_oracle.py <apk>`.
 
 Mullvad's pinned `management_interface.proto` provides matching ground truth.
-The comparison covers 112 truth messages and 297 truth fields:
+The comparison covers 112 truth messages and 297 truth fields. Rerun on
+2026-08-27 after wiring DEX `EnclosingClass` annotations into the recovered
+message tree; before that fix, structural fidelity was 16.36% (9/55) and field
+recall/precision were 90.91% (270/297):
 
 | Metric | Result | Count |
 |---|---:|---:|
-| Field recall | 90.91% | 270 / 297 |
-| Field precision | 90.91% | 270 / 297 |
-| Wire-type accuracy | 100.00% | 270 / 270 |
-| Type fidelity | 54.07% | 146 / 270 |
-| Name recovery | 85.93% | 232 / 270 |
-| Label accuracy | 100.00% | 270 / 270 |
-| Structural fidelity | 16.36% | 9 / 55 |
+| Field recall | 100.00% | 297 / 297 |
+| Field precision | 100.00% | 297 / 297 |
+| Wire-type accuracy | 100.00% | 297 / 297 |
+| Type fidelity | 85.19% | 253 / 297 |
+| Name recovery | 87.21% | 259 / 297 |
+| Label accuracy | 100.00% | 297 / 297 |
+| Structural fidelity | 52.73% | 29 / 55 |
 | Enum recovery | 100.00% | 106 / 106 |
 | Compile rate | 100.00% | 1 / 1 target |
 | Round-trip rate | not measured | 0 payloads |
@@ -235,12 +238,18 @@ The comparison covers 112 truth messages and 297 truth fields:
 Reproduce the comparison with `scripts/diagnose_real_app.py` after compiling
 the pinned source proto to a descriptor set. Enum recovery uses retained getter
 return types to identify generated enum classes, then requires constructor and
-matching static-field-store evidence from each enum initializer. The remaining
-structural loss comes from flattening nested Java classes.
+matching static-field-store evidence from each enum initializer. Structural
+recovery now reads each class's `dalvik.annotation.EnclosingClass` system
+annotation and rebuilds the real parent/child message tree instead of
+flattening every class to a top-level message; the previous field
+recall/precision loss turned out to be downstream of that same flattening
+(mismatched nested-message names broke field-to-message matching), which is
+why those two metrics also moved to 100%. The remaining structural loss is
+chains and shapes the current fix does not yet cover — see `NEXT.md`.
 
 The published ceiling is intentionally unflattering. Only one of Mullvad's 297
 fields is capped by the roadmap's scalar-varint ambiguity model, so the
-45.59-point gap between measured type fidelity and the 99.66% ceiling is mostly
+14.47-point gap between measured type fidelity and the 99.66% ceiling is mostly
 recoverable implementation loss, not an information-theoretic excuse. Name and
 structural ceilings are not assigned a made-up corpus-wide number: both depend
 on whether each target's optimizer retains field strings, class references,
@@ -283,13 +292,13 @@ messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
 
 | Metric | ProtoLoom | pbtk 1.1.2 |
 |---|---:|---:|
-| Field recall | 90.91% | 100.00% |
-| Field precision | 90.91% | 100.00% |
+| Field recall | 100.00% | 100.00% |
+| Field precision | 100.00% | 100.00% |
 | Wire-type accuracy | 100.00% | 100.00% |
-| Type fidelity | 54.07% | 100.00% |
-| Name recovery | 85.93% | 100.00% |
+| Type fidelity | 85.19% | 100.00% |
+| Name recovery | 87.21% | 100.00% |
 | Label accuracy | 100.00% | 100.00% |
-| Structural fidelity | 16.36% | 100.00% |
+| Structural fidelity | 52.73% | 100.00% |
 | Enum recovery | 100.00% | 100.00% |
 | Compile rate | 100.00% | 100.00% |
 
