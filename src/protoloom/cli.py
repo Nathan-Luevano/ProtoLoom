@@ -99,10 +99,14 @@ def _dex_inputs(path: Path) -> list[tuple[str, bytes]]:
 
 def _find_lite(
     path: Path, *, allow_heuristic: bool = False
-) -> tuple[list[RecoveredSchema], list[str], dict[str, tuple[str, str | None]]]:
+) -> tuple[
+    list[RecoveredSchema], list[str], dict[tuple[str, str], tuple[str, str | None]]
+]:
     schemas: list[RecoveredSchema] = []
     bailouts: list[str] = []
-    lineage: dict[str, tuple[str, str | None]] = {}
+    # Keyed by (package, name): two unrelated classes can share a bare file
+    # name across different packages (e.g. two distinct "Relay" classes).
+    lineage: dict[tuple[str, str], tuple[str, str | None]] = {}
     for source, data in _dex_inputs(path):
         dex = DexFile(data)
         extraction = extract_lite(dex, allow_heuristic=allow_heuristic)
@@ -113,7 +117,7 @@ def _find_lite(
                 bailouts.append(f"{source}: {error}")
                 continue
             schemas.append(decoded.schema)
-            lineage[decoded.schema.name] = (
+            lineage[(decoded.schema.package, decoded.schema.name)] = (
                 decoded.class_descriptor,
                 decoded.enclosing_descriptor,
             )
@@ -159,12 +163,13 @@ def _apply_nested_renames(top_level: list[Message], renames: dict[str, str]) -> 
 
 
 def _nested_lite_messages(
-    items: list[RecoveredSchema], lineage: dict[str, tuple[str, str | None]]
+    items: list[RecoveredSchema],
+    lineage: dict[tuple[str, str], tuple[str, str | None]],
 ) -> list[Message]:
     by_descriptor: dict[str, Message] = {}
     enclosing_of: dict[str, str | None] = {}
     for item in items:
-        info = lineage.get(item.name)
+        info = lineage.get((item.package, item.name))
         if info is None or not item.messages:
             continue
         own_descriptor, enclosing_descriptor = info
@@ -205,7 +210,7 @@ def _nested_lite_messages(
 def _combined_lite_descriptors(
     schemas: list[RecoveredSchema],
     certain_names: set[str],
-    lineage: dict[str, tuple[str, str | None]],
+    lineage: dict[tuple[str, str], tuple[str, str | None]],
 ) -> list[FileDescriptorProto]:
     groups: dict[tuple[str, str], list[RecoveredSchema]] = defaultdict(list)
     for schema in schemas:
