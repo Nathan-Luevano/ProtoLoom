@@ -40,10 +40,15 @@ T = TypeVar("T")
 
 
 def reconcile(schemas: list[RecoveredSchema]) -> ReconciliationResult:
-    merged: dict[str, RecoveredSchema] = {}
+    # Two unrelated classes can share a bare file name (e.g. two distinct
+    # "Relay" classes in different Java packages); the package qualifies
+    # that identity so they merge only when they're actually the same type,
+    # while the same class recovered from multiple DEX files (same package,
+    # same name) still merges as intended.
+    merged: dict[tuple[str, str], RecoveredSchema] = {}
     conflicts: list[Conflict] = []
     for source in schemas:
-        key = source.name
+        key = (source.package, source.name)
         if key not in merged:
             merged[key] = deepcopy(source)
             continue

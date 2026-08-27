@@ -157,7 +157,7 @@ change; their rows below contain those newer results.
 |---|---:|---:|---|
 | Signal 8.22.2 | 9 | 404 | unresolved-order guesses refused |
 | Molly 8.19.2-4 | 3 | 206 | partial recovery |
-| Mullvad 2026.8 | 128 | 0 | recovered |
+| Mullvad 2026.8 | 129 | 0 | recovered |
 | Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
 | Meshtastic 2.8.1-internal.3 | 52 | 1 | recovered; separately pinned schema repository |
 | Flipper 1.8.1.1890 | 0 | 6 | no recoverable evidence |
@@ -236,10 +236,10 @@ and type fidelity was 85.19% (253/297):
 | Field recall | 100.00% | 297 / 297 |
 | Field precision | 100.00% | 297 / 297 |
 | Wire-type accuracy | 100.00% | 297 / 297 |
-| Type fidelity | 99.33% | 295 / 297 |
+| Type fidelity | 100.00% | 297 / 297 |
 | Name recovery | 89.90% | 267 / 297 |
 | Label accuracy | 100.00% | 297 / 297 |
-| Structural fidelity | 96.36% | 53 / 55 |
+| Structural fidelity | 100.00% | 55 / 55 |
 | Enum recovery | 100.00% | 106 / 106 |
 | Compile rate | 100.00% | 1 / 1 target |
 | Round-trip rate | not measured | 0 payloads |
@@ -259,10 +259,18 @@ came from proto3 `optional` fields: they compile to a synthetic one-member
 oneof for presence tracking, and protobuf-lite's info string marks that with a
 hasbit rather than a real `oneof_index`, so the field-level hasbit signal is
 now read back into a synthetic oneof when the schema is proto3 and the field
-carries no real oneof index. The 2 remaining structural misses are a
-same-simple-name collision (two distinct DEX classes named `Relay` in
-different packages get merged by name during reconciliation) — a known,
-narrower gap, not yet fixed.
+carries no real oneof index. Both structural fidelity and type fidelity had 2
+remaining misses each, and both sets came from the same cause: two distinct
+DEX classes named `Relay` in different packages
+(`mullvad_daemon.management_interface` and `mullvad_daemon.relay_selector`)
+were merged into one schema by `reconcile.py`'s name-only merge key, so the
+real `Relay`'s enclosing-class lookup for its `WireguardEndpoint` field
+resolved against the wrong class's identity. The merge key is now
+`(package, name)` instead of bare `name`, which still merges the same class
+recovered from multiple DEX files (same package, same name) while no longer
+conflating unrelated classes that happen to share a bare file name. Both
+metrics moved to 100.00% (55/55 and 297/297) with this one fix, and nothing
+else changed — Smartspacer's numbers are identical before and after.
 
 Type fidelity closed its well-known-type gap in the same session: 9 fields
 typed `google.protobuf.Timestamp`, `Duration`, or `StringValue` were guessed
@@ -277,10 +285,7 @@ types), resolves them to their fully-qualified `.google.protobuf.X` name, and
 records the matching `import "google/protobuf/....proto";` line via
 `RecoveredSchema.dependencies` — while every other `com.google.protobuf.*`
 declared type (list wrappers included) still falls through to the
-objects-array class literal or an honest guess, exactly as before. Type
-fidelity moved from 96.97% (288/297) to 99.33% (295/297); the 2 remaining
-misses are entirely the same `Relay`/`Relay` name-collision noted above, not
-a new well-known-type gap.
+objects-array class literal or an honest guess, exactly as before.
 
 Name recovery moved from 87.21% to 89.90% (259/297 -> 267/297) the same
 session, from a related but distinct cause: a real `oneof` member shares one
@@ -346,22 +351,17 @@ messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
 | Field recall | 100.00% | 100.00% |
 | Field precision | 100.00% | 100.00% |
 | Wire-type accuracy | 100.00% | 100.00% |
-| Type fidelity | 99.33% | 100.00% |
+| Type fidelity | 100.00% | 100.00% |
 | Name recovery | 89.90% | 100.00% |
 | Label accuracy | 100.00% | 100.00% |
-| Structural fidelity | 96.36% | 100.00% |
+| Structural fidelity | 100.00% | 100.00% |
 | Enum recovery | 100.00% | 100.00% |
 | Compile rate | 100.00% | 100.00% |
 
-ProtoLoom now matches pbtk exactly on six of the nine rows above (field
-recall, precision, wire-type accuracy, label accuracy, enum recovery, and
-compile rate), after nesting fixes moved recall and precision off their
-earlier 90.91%. Type fidelity is within 1 field of pbtk (its 2 remaining
-misses are the known `Relay`/`Relay` collision, not a type-resolution gap);
-structural fidelity is within 2 fields for the same reason. Name recovery, at
-89.90% against pbtk's 100%, is now the one clearly wide remaining gap.
-ProtoLoom is useful as a small direct parser with explicit uncertainty, and is
-close to matching pbtk's full schema fidelity on this unobfuscated real app
-rather than losing broadly to it. The pinned adapter is
-`scripts/pbtk_1_1_2_adapter.sh`; `scripts/compare_pbtk.sh` records isolated
-tool logs and statuses for a directory of artifacts.
+ProtoLoom now matches pbtk exactly on eight of the nine rows above — every
+metric except name recovery, at 89.90% against pbtk's 100%, which is the one
+remaining gap on this diff. ProtoLoom is useful as a small direct parser with
+explicit uncertainty, and on this unobfuscated real app it now matches pbtk's
+schema fidelity almost entirely, rather than losing broadly to it. The pinned
+adapter is `scripts/pbtk_1_1_2_adapter.sh`; `scripts/compare_pbtk.sh` records
+isolated tool logs and statuses for a directory of artifacts.
