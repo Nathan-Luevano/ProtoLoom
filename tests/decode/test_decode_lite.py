@@ -101,6 +101,60 @@ def test_oneof_message_field_name_comes_from_a_deeply_nested_type() -> None:
     assert field.name == "variant"
 
 
+class _FakeWellKnownDex(_FakeDex):
+    def __init__(self) -> None:
+        super().__init__()
+        self.types = ("LOwner;", "Lcom/google/protobuf/Timestamp;")
+        self.strings = ("newMessageInfo", "expiry_")
+        self.fields = (DexField(0, 1, 1),)
+
+
+def test_well_known_type_field_gets_a_qualified_name_and_import() -> None:
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 9)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(LiteObject("string", "expiry_"),),
+    )
+    decoded = decode_lite_finding(_FakeWellKnownDex(), finding, "test.dex")  # type: ignore[arg-type]
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == ".google.protobuf.Timestamp"
+    assert decoded.schema.dependencies == ["google/protobuf/timestamp.proto"]
+
+
+class _FakeRepeatedFieldDex(_FakeDex):
+    def __init__(self) -> None:
+        super().__init__()
+        self.types = (
+            "LOwner;",
+            "Lcom/google/protobuf/ProtobufArrayList;",
+            "LOwner$Nested;",
+        )
+        self.strings = ("newMessageInfo", "items_")
+        self.fields = (DexField(0, 1, 1),)
+
+
+def test_repeated_field_declared_list_type_is_not_trusted_as_the_element_type() -> None:
+    # A `repeated` field's declared Java type is a list wrapper, not the
+    # element type; only the objects-array class literal names it here.
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 9)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(
+            LiteObject("string", "items_"),
+            LiteObject("class", "LOwner$Nested;"),
+        ),
+    )
+    decoded = decode_lite_finding(_FakeRepeatedFieldDex(), finding, "test.dex")  # type: ignore[arg-type]
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "Nested"
+
+
 class _FakeFlatOneofDex(_FakeDex):
     def __init__(self) -> None:
         super().__init__()
