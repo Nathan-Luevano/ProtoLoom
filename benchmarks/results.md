@@ -332,9 +332,10 @@ messages, 297 fields, 55 structural relationships, and 106 enum values exactly:
 ProtoLoom now matches pbtk exactly on six of the nine rows above (field
 recall, precision, wire-type accuracy, label accuracy, enum recovery, and
 compile rate), after nesting fixes moved recall and precision off their
-earlier 90.91%. The three remaining gaps — type fidelity, name recovery, and
-structural fidelity — are narrower than they were but still real: ProtoLoom is
-useful as a small direct parser with explicit uncertainty, but it does not yet
-match pbtk's full schema fidelity on this unobfuscated real app. The pinned
-adapter is `scripts/pbtk_1_1_2_adapter.sh`; `scripts/compare_pbtk.sh` records
-isolated tool logs and statuses for a directory of artifacts.
+earlier 90.91%. Type fidelity and structural fidelity are now within 3-4
+points of pbtk; name recovery, at 87.21% against pbtk's 100%, is the widest
+remaining gap. ProtoLoom is useful as a small direct parser with explicit
+uncertainty, and is close to matching pbtk's full schema fidelity on this
+unobfuscated real app rather than losing broadly to it. The pinned adapter is
+`scripts/pbtk_1_1_2_adapter.sh`; `scripts/compare_pbtk.sh` records isolated
+tool logs and statuses for a directory of artifacts.
