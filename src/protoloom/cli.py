@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import tempfile
 from collections import defaultdict
 from dataclasses import asdict
@@ -30,7 +31,7 @@ from protoloom.extract.descriptor import DescriptorFinding, scan_descriptors
 from protoloom.extract.gozip import scan_gzip_descriptors
 from protoloom.extract.jadx import JadxError, decompile_with_jadx
 from protoloom.extract.lite import extract_lite
-from protoloom.model import EnumType, RecoveredSchema
+from protoloom.model import EnumType, Message, RecoveredSchema
 from protoloom.reconcile import reconcile
 from protoloom.validate.compile import compile_proto
 
@@ -98,22 +99,29 @@ def _dex_inputs(path: Path) -> list[tuple[str, bytes]]:
 
 def _find_lite(
     path: Path, *, allow_heuristic: bool = False
-) -> tuple[list[RecoveredSchema], list[str]]:
+) -> tuple[list[RecoveredSchema], list[str], dict[str, tuple[str, str | None]]]:
     schemas: list[RecoveredSchema] = []
     bailouts: list[str] = []
+    lineage: dict[str, tuple[str, str | None]] = {}
     for source, data in _dex_inputs(path):
         dex = DexFile(data)
         extraction = extract_lite(dex, allow_heuristic=allow_heuristic)
         for finding in extraction.findings:
             try:
-                schemas.append(decode_lite_finding(dex, finding, source))
+                decoded = decode_lite_finding(dex, finding, source)
             except ValueError as error:
                 bailouts.append(f"{source}: {error}")
+                continue
+            schemas.append(decoded.schema)
+            lineage[decoded.schema.name] = (
+                decoded.class_descriptor,
+                decoded.enclosing_descriptor,
+            )
         bailouts.extend(
             f"{source}: method {item.containing_method}: {item.reason}"
             for item in extraction.bailouts
         )
-    return schemas, bailouts
+    return schemas, bailouts, lineage
 
 
 def _compiled_descriptors(schema: RecoveredSchema) -> list[FileDescriptorProto]:
@@ -124,8 +132,80 @@ def _compiled_descriptors(schema: RecoveredSchema) -> list[FileDescriptorProto]:
     return list(descriptor_set.file)
 
 
+def _walk_messages(messages: list[Message]) -> list[Message]:
+    result: list[Message] = []
+    stack = list(messages)
+    while stack:
+        message = stack.pop()
+        result.append(message)
+        stack.extend(message.messages)
+    return result
+
+
+def _apply_nested_renames(top_level: list[Message], renames: dict[str, str]) -> None:
+    if not renames:
+        return
+    pattern = re.compile(
+        "|".join(re.escape(name) for name in sorted(renames, key=len, reverse=True))
+    )
+    for message in _walk_messages(top_level):
+        for item in message.fields:
+            if item.type_name in renames:
+                item.type_name = renames[item.type_name]
+            elif "<" in item.type_name:
+                item.type_name = pattern.sub(
+                    lambda match: renames[match.group(0)], item.type_name
+                )
+
+
+def _nested_lite_messages(
+    items: list[RecoveredSchema], lineage: dict[str, tuple[str, str | None]]
+) -> list[Message]:
+    by_descriptor: dict[str, Message] = {}
+    enclosing_of: dict[str, str | None] = {}
+    for item in items:
+        info = lineage.get(item.name)
+        if info is None or not item.messages:
+            continue
+        own_descriptor, enclosing_descriptor = info
+        by_descriptor[own_descriptor] = item.messages[0]
+        enclosing_of[own_descriptor] = enclosing_descriptor
+    attached: set[int] = set()
+    renames: dict[str, str] = {}
+    for own_descriptor, message in by_descriptor.items():
+        enclosing_descriptor = enclosing_of.get(own_descriptor)
+        if (
+            enclosing_descriptor is None
+            or enclosing_descriptor == own_descriptor
+            or enclosing_descriptor not in by_descriptor
+        ):
+            continue
+        parent = by_descriptor[enclosing_descriptor]
+        # Some generators name a nested class after its own enclosing class,
+        # e.g. AccessMethod$AccessMethod_Bridges. Strip the redundant prefix
+        # once the real parent is known, so the emitted nested message keeps
+        # the bare local name a ground-truth .proto would use.
+        prefix = f"{parent.name}_"
+        if message.name.startswith(prefix) and len(message.name) > len(prefix):
+            new_name = message.name[len(prefix) :]
+            renames[message.name] = new_name
+            message.name = new_name
+        parent.messages.append(message)
+        attached.add(id(message))
+    top_level = [
+        message
+        for item in items
+        for message in item.messages
+        if id(message) not in attached
+    ]
+    _apply_nested_renames(top_level, renames)
+    return top_level
+
+
 def _combined_lite_descriptors(
-    schemas: list[RecoveredSchema], certain_names: set[str]
+    schemas: list[RecoveredSchema],
+    certain_names: set[str],
+    lineage: dict[str, tuple[str, str | None]],
 ) -> list[FileDescriptorProto]:
     groups: dict[tuple[str, str], list[RecoveredSchema]] = defaultdict(list)
     for schema in schemas:
@@ -146,7 +226,7 @@ def _combined_lite_descriptors(
             name=f"recovered_{index}.proto",
             package=package,
             syntax=syntax,
-            messages=[message for item in items for message in item.messages],
+            messages=_nested_lite_messages(items, lineage),
             enums=[
                 enum
                 for name, enum in enums_by_name.items()
@@ -219,7 +299,9 @@ def extract(
     if not path.is_file():
         raise typer.BadParameter(f"file does not exist: {path}")
     findings = _find(path)
-    lite_schemas, bailouts = _find_lite(path, allow_heuristic=allow_heuristic_lite)
+    lite_schemas, bailouts, lineage = _find_lite(
+        path, allow_heuristic=allow_heuristic_lite
+    )
     if jadx:
         if detect(path).kind not in {
             ContainerKind.APK,
@@ -266,7 +348,7 @@ def extract(
         prepared.append((schema, source))
     try:
         descriptors.extend(
-            _combined_lite_descriptors(reconciled.schemas, certain_names)
+            _combined_lite_descriptors(reconciled.schemas, certain_names, lineage)
         )
     except ValueError as error:
         typer.echo(f"descriptor-set assembly failed: {error}", err=True)

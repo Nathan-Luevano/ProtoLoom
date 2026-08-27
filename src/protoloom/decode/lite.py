@@ -1,4 +1,5 @@
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from protoloom.container.dex import DexFile
@@ -67,9 +68,14 @@ def _field_objects(
     return names, classes, map_fields
 
 
-def decode_lite_finding(
-    dex: DexFile, finding: LiteFinding, source: str
-) -> RecoveredSchema:
+@dataclass(frozen=True, slots=True)
+class DecodedLite:
+    schema: RecoveredSchema
+    class_descriptor: str
+    enclosing_descriptor: str | None
+
+
+def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> DecodedLite:
     info = decode_info_string(finding.info_string)
     method = dex.methods[finding.containing_method]
     descriptor = dex.types[method.class_index]
@@ -193,7 +199,7 @@ def decode_lite_finding(
         evidence=[evidence],
     )
     package = descriptor.removeprefix("L").removesuffix(";").rsplit("/", 1)[0]
-    return RecoveredSchema(
+    schema = RecoveredSchema(
         name=f"{message.name}.proto",
         package=package.replace("/", "."),
         syntax="proto2" if info.header.is_proto2 else "proto3",
@@ -201,3 +207,11 @@ def decode_lite_finding(
         enums=list(recovered_enums.values()),
         evidence=[evidence],
     )
+    own_class = dex.class_by_type_index(method.class_index)
+    enclosing_index = dex.enclosing_class_index(own_class) if own_class else None
+    enclosing_descriptor = (
+        dex.types[enclosing_index]
+        if enclosing_index is not None and enclosing_index < len(dex.types)
+        else None
+    )
+    return DecodedLite(schema, descriptor, enclosing_descriptor)
