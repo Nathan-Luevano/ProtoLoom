@@ -5,11 +5,12 @@ from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted_text
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.layout import DynamicContainer, HSplit, Layout, VSplit, Window
+from prompt_toolkit.layout.containers import Container
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.widgets import Button, Checkbox, TextArea
 
 from protoloom.tui.jobs import ExtractionJob, ExtractionRequest
-from protoloom.tui.render import render_summary
+from protoloom.tui.render import render_schema, render_summary
 from protoloom.tui.results import OutputError, load_output
 from protoloom.tui.state import AppState, Screen
 
@@ -44,7 +45,13 @@ class TuiApplication:
         )
         self.running = Window(FormattedTextControl(self._running_text), wrap_lines=True)
         self.results_control = FormattedTextControl(self._results_text, focusable=True)
-        self.results = Window(self.results_control, wrap_lines=True)
+        self.detail_control = FormattedTextControl(self._detail_text)
+        self.results = VSplit(
+            [
+                Window(self.results_control, width=40, wrap_lines=True),
+                Window(self.detail_control, wrap_lines=True),
+            ]
+        )
         self.job = ExtractionJob()
         self.screen = DynamicContainer(self._screen_container)
         root = HSplit(
@@ -80,7 +87,7 @@ class TuiApplication:
             return " Tab/Shift-Tab move  Space toggle  Enter activate  Esc back "
         return " ↑/↓ move  Enter select  ? help  q quit "
 
-    def _screen_container(self) -> Window | HSplit:
+    def _screen_container(self) -> Container:
         if self.state.screen is Screen.HOME:
             return self.home
         if self.state.screen is Screen.SETUP:
@@ -110,6 +117,13 @@ class TuiApplication:
             style = "reverse" if index == self.state.selected else ""
             result.append((style, f" {marker} {schema.name}\n"))
         return result
+
+    def _detail_text(self) -> ANSI | str:
+        schemas = self.state.visible_schemas()
+        if not schemas:
+            return "\n No matching schemas"
+        self.state.clamp_selection()
+        return ANSI(render_schema(schemas[self.state.selected]))
 
     def _start(self) -> None:
         source = Path(self.source.text).expanduser()
