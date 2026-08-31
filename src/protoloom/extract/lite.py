@@ -419,6 +419,42 @@ def recover_map_evidence(dex: DexFile, field_index: int) -> LiteMapEvidence | No
     return None
 
 
+def _static_constructor_name(dex: DexFile, field_index: int) -> str | None:
+    field = dex.fields[field_index]
+    for method, code in dex.iter_code_items():
+        raw_method = dex.methods[method.method_index]
+        if (
+            raw_method.class_index != field.class_index
+            or dex.method_name(raw_method) != "<clinit>"
+        ):
+            continue
+        registers: dict[int, str | tuple[str, str]] = {}
+        for instruction in _instructions(code.instructions):
+            units = instruction.units
+            destination = _written_register(instruction)
+            if destination is not None:
+                registers.pop(destination, None)
+            if instruction.opcode in {0x1A, 0x1B}:
+                register = units[0] >> 8
+                index = (
+                    units[1]
+                    if instruction.opcode == 0x1A
+                    else units[1] | units[2] << 16
+                )
+                if index < len(dex.strings):
+                    registers[register] = dex.strings[index]
+            elif instruction.opcode == 0x22 and units[1] < len(dex.types):
+                registers[(units[0] >> 8) & 0xF] = ("instance", dex.types[units[1]])
+            elif instruction.opcode == 0x70 and units[1] < len(dex.methods):
+                arguments = _invoke_registers(instruction)
+                if len(arguments) >= 2 and isinstance(registers.get(arguments[1]), str):
+                    registers[arguments[0]] = str(registers[arguments[1]])
+            elif instruction.opcode == 0x69 and units[1] == field_index:
+                value = registers.get(units[0] >> 8)
+                return value if isinstance(value, str) else None
+    return None
+
+
 def _written_register(instruction: _Instruction) -> int | None:
     opcode = instruction.opcode
     if opcode in {0x01, 0x04, 0x07, 0x12, 0x21} or 0x7B <= opcode <= 0x8F:
