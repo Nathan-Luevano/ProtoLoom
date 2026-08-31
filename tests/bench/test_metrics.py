@@ -179,3 +179,5 @@ def test_unmeasured_metrics_do_not_inflate_aggregate() -> None:
     for metric in ("type_fidelity", "structural_fidelity", "round_trip_rate"):
         assert math.isnan(report.macro[metric])
         assert math.isnan(report.micro[metric])
+    assert math.isnan(report.type_fidelity_ceiling_macro)
+    assert math.isnan(report.type_fidelity_ceiling_micro)
