@@ -247,6 +247,30 @@ def _enum_accessor_evidence(
     return LiteEnumEvidence(return_type, values, offset, stores) if values else None
 
 
+def recover_enum_evidence_from_owner(
+    dex: DexFile, owner_descriptor: str
+) -> LiteEnumEvidence | None:
+    evidence: dict[str, LiteEnumEvidence] = {}
+    owner_indexes = {
+        index
+        for index, descriptor in enumerate(dex.types)
+        if descriptor == owner_descriptor
+    }
+    for method, code in dex.iter_code_items():
+        raw_method = dex.methods[method.method_index]
+        if raw_method.class_index not in owner_indexes:
+            continue
+        instructions = _instructions(code.instructions)
+        if len(instructions) < 2 or instructions[0].opcode != 0x52:
+            continue
+        item = _enum_accessor_evidence(dex, raw_method, code, instructions[0].units[1])
+        if item is not None and not any(
+            name.endswith("_NOT_SET") for name, _ in item.values
+        ):
+            evidence[item.descriptor] = item
+    return next(iter(evidence.values())) if len(evidence) == 1 else None
+
+
 def recover_enum_evidence_from_verifier(
     dex: DexFile, verifier_descriptor: str
 ) -> LiteEnumEvidence | None:

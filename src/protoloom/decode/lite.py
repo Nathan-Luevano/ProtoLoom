@@ -10,6 +10,7 @@ from protoloom.decode.names import java_to_proto_name, names_are_obfuscated
 from protoloom.extract.lite import (
     LiteFinding,
     recover_enum_evidence,
+    recover_enum_evidence_from_owner,
     recover_enum_evidence_from_verifier,
     recover_map_evidence,
 )
@@ -323,6 +324,15 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
             )
             if enum_evidence is None and enum_verifier is not None:
                 enum_evidence = recover_enum_evidence_from_verifier(dex, enum_verifier)
+            if (
+                enum_evidence is None
+                and sum(
+                    field_type(field.type_id).proto_type == "enum"
+                    for field in info.fields
+                )
+                == 1
+            ):
+                enum_evidence = recover_enum_evidence_from_owner(dex, descriptor)
             if enum_evidence is None:
                 type_name = "int32"
             else:
