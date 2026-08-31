@@ -6,10 +6,19 @@ from google.protobuf import descriptor_pb2
 from protoloom.validate.roundtrip import roundtrip_descriptor_set
 
 
+def package_descriptor_set(
+    descriptors: descriptor_pb2.FileDescriptorSet, package: str
+) -> descriptor_pb2.FileDescriptorSet:
+    selected = descriptor_pb2.FileDescriptorSet()
+    selected.file.extend(file for file in descriptors.file if file.package == package)
+    return selected
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--truth", type=Path, required=True)
     parser.add_argument("--recovered", type=Path, required=True)
+    parser.add_argument("--package", required=True)
     args = parser.parse_args()
 
     truth = descriptor_pb2.FileDescriptorSet.FromString(args.truth.read_bytes())
@@ -25,8 +34,10 @@ def main() -> None:
         "3a070a056368696c6440014a080a0477696e731007520663686f73656e6001"
     )
 
-    recovered_bytes = args.recovered.read_bytes()
-    recovered = descriptor_pb2.FileDescriptorSet.FromString(recovered_bytes)
+    recovered = package_descriptor_set(
+        descriptor_pb2.FileDescriptorSet.FromString(args.recovered.read_bytes()),
+        args.package,
+    )
     candidates = [
         (
             len(message.field),
@@ -36,9 +47,11 @@ def main() -> None:
         for message in file.message_type
     ]
     if not candidates:
-        raise SystemExit("recovered descriptor set has no messages")
+        raise SystemExit(f"recovered descriptor set has no messages in {args.package}")
     _, recovered_name = max(candidates)
-    result = roundtrip_descriptor_set(recovered_bytes, recovered_name, payload)
+    result = roundtrip_descriptor_set(
+        recovered.SerializeToString(), recovered_name, payload
+    )
     print(f"round_trip_rate: {100.0 if result.byte_identical else 0.0:.2f}% (1/1)")
     if not result.byte_identical:
         raise SystemExit(result.error or "payload was not byte-identical")

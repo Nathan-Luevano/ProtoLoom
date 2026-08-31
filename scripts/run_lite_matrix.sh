@@ -78,7 +78,8 @@ printf '%s\n' "$matrix" | while IFS='|' read -r protoc_version protoc_sha protob
     --target "javalite-$protobuf_version-d8-$r8_version"
   uv run python scripts/check_matrix_roundtrip.py \
     --truth "$version_root/truth.desc" \
-    --recovered "$version_root/out/classes.desc"
+    --recovered "$version_root/out/classes.desc" \
+    --package matrix
 done
 
 latest="$work/4.35.1"
@@ -104,5 +105,6 @@ for mode in default aggressive; do
     --target "javalite-4.35.1-r8-$r8_version-$mode"
   uv run python scripts/check_matrix_roundtrip.py \
     --truth "$latest/truth.desc" \
-    --recovered "$r8_root/out/classes.desc"
+    --recovered "$r8_root/out/classes.desc" \
+    --package "$package"
 done
