@@ -40,3 +40,16 @@ def test_renders_summary_and_nested_schema_evidence() -> None:
     assert "ACTIVE = 1" in detail
     assert "Schemas" in summary
     assert "1" in summary
+
+
+def test_deep_schema_display_is_bounded() -> None:
+    message: dict[str, object] = {"name": "bottom"}
+    for index in range(100):
+        message = {"name": f"level{index}", "messages": [message]}
+    schema = SchemaRecord("deep.proto", "", {"messages": [message]})
+
+    detail = _plain(render_schema(schema, width=5000))
+
+    assert "Further" in detail
+    assert "omitted" in detail
+    assert "bottom" not in detail
