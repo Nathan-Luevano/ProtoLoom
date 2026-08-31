@@ -68,6 +68,8 @@ def test_report_renders_unmeasured_metrics_as_na() -> None:
     assert "type_fidelity=n/a" in rendered
     assert "round_trip_rate                 n/a       n/a" in rendered
     assert "round_trip_rate=n/a" in rendered
+    assert "type_fidelity_ceiling           n/a       n/a" in rendered
+    assert "type_fidelity_ceiling=n/a" in rendered
 
 
 def test_schema_loads_explicit_exact_type_evidence(tmp_path: Path) -> None:
