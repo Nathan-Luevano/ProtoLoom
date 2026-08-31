@@ -161,8 +161,8 @@ change; their rows below contain those newer results.
 | Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
 | Meshtastic 2.8.1-internal.3 | 52 | 1 | recovered; separately pinned schema repository |
 | Flipper 1.8.1.1890 | 0 | 6 | no recoverable evidence |
-| Gadgetbridge 0.93.0 | 20 | 671 | partial recovery |
-| Smartspacer 1.11.2 | 70 | 2 | recovered with explicit uncertainty |
+| Gadgetbridge 0.93.0 | 646 | 0 | recovered |
+| Smartspacer 1.11.2 | 70 | 0 | recovered with explicit enum uncertainty |
 
 An opt-in rerun increases Signal output from 9 to 183 schemas while still
 reporting 404 other bail-outs. That run is evidence of the recoverable floor,
@@ -188,7 +188,7 @@ no recovery compile denominator.
 | Bitwarden Authenticator, `google_authenticator.proto` | 100% (12/12) | 100% (12/12) | 100% (12/12) | 75% (9/12) | 100% (12/12) | 0% (0/1) | 100% (5/5) | 100% (1/1) |
 | Meshtastic, three selected files | 0% (0/483) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/132) | 0% (0/449) | 100% (3/3) |
 | Flipper, three selected schema groups | 0% (0/36) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/2) | 0% (0/20) | 100% (3/3) |
-| Gadgetbridge, three selected files | 0% (0/115) | n/a (0 matched) | n/a | n/a | n/a | 0% (0/16) | 0% (0/27) | 100% (3/3) |
+| Gadgetbridge, three selected files | 100% (115/115) | 100% (115/115) | 100% (115/115) | 100% (115/115) | 63.48% (73/115) | 100% (16/16) | 100% (27/27) | 100% (3/3) |
 | Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 86.49% (32/37) | 100% (37/37) | 100% (7/7) | 7.41% (2/27) | 100% (1/1) |
 
 Bitwarden's first manifest entry mistakenly paired the Authenticator schema
@@ -204,10 +204,32 @@ contains none of the selected messages as recoverable lite metadata or embedded
 descriptors, making its zero a measured unsupported-runtime result rather than
 a missing comparison.
 
-Gadgetbridge's 20 outputs include generated empty Garmin messages, but none of
-the 115 selected truth fields matched; its field-bearing calls are among the 671
-strict bail-outs. Smartspacer and Bitwarden are valid positive diffs. Both show
-perfect wire accuracy on matched fields. Smartspacer's nested-message
+Gadgetbridge's field-bearing calls used explicit array sizes and indexes, but
+the indexes `0` and `1` were constants established before `dynamicMethod`'s
+packed switch. The linear instruction scan then walked unrelated switch arms
+and replaced those registers before reaching the `newMessageInfo` arm, falsely
+classifying every affected objects array as unresolved-order. Restoring the
+pre-switch register state at each encoded packed-switch target moved a fresh
+strict run from 20 files and 626 bail-outs to 646 files and zero bail-outs.
+Smartspacer's two remaining bail-outs had the same shape and also moved to zero;
+Mullvad and Bitwarden stayed at 129/0 and 104/0 respectively.
+
+The selected Gadgetbridge messages now have perfect field, wire, type, label,
+structure, and enum scores. Name recovery remains 73/115 because Huami's Java
+generator camel-cases source fields such as `startTimestamp`, while the
+compiled field strings retain only `startTimestamp_`; reversing that spelling
+to the source's exact underscore/case form is not generally lossless. Scoring
+normalizes each truth file's proto package to its compiled `java_package` and
+filters the recovered descriptor to the selected top-level messages. This is
+necessary because `gdi_core.proto` uses `garmin_vivomovehr` while its Java
+classes use `nodomain.freeyourgadget.gadgetbridge.proto.garmin`, and
+`huami.proto` declares no proto package at all. The selected messages and all
+of their fields are matched by compiled class identity; the original proto
+package remains the same lite-runtime information limit described for
+Bitwarden below.
+
+Smartspacer and Bitwarden show perfect wire accuracy on matched fields.
+Smartspacer's nested-message
 structure recovers cleanly now that enclosing-class recovery falls back to
 the DEX name shape when `EnclosingClass` annotations are stripped; Bitwarden's
 one message-nesting relationship (`OtpParameters` inside `MigrationPayload`)
