@@ -220,8 +220,21 @@ that namespace as its package while truth's structural comparison expects
 the bare (unqualified) parent name. This is a genuine, narrow ambiguity —
 nothing in the compiled artifact says whether an unqualified proto and a
 `java_package`-only build are the same thing or a real divergent
-`java_package` override — not a nesting bug, and not chased further this
-session. These extraction rows retain a zero round-trip denominator.
+`java_package` override.
+
+Whether any other DEX-level signal could resolve it was investigated
+directly rather than left open by assumption: `MigrationPayload`'s compiled
+class carries `dynamicMethod`, no `getDescriptor()`/`DESCRIPTOR` accessor,
+and no embedded byte array of a serialized `FileDescriptorProto` — the
+hallmarks of `GeneratedMessageLite`, which deliberately carries no runtime
+descriptor at all (that's the whole efficiency point of the lite runtime).
+The original `.proto`'s `package` statement, distinct from the Java
+namespace `java_package` resolves to, simply isn't represented anywhere in
+a lite build's compiled output. For lite-recovered schemas this is a
+confirmed information limit, not an unexplored one; a full (non-lite)
+runtime target embedding real descriptor bytes could resolve it, but that's
+a different code path than anything covered here. These extraction rows
+retain a zero round-trip denominator.
 Bitwarden is measured separately against a real payload in Tier C.
 
 Bitwarden's enum recovery moved from 0/5 to **100.00% (5/5)** the same
@@ -267,8 +280,21 @@ one singleton that still names the class it actually lives in; the numbered
 siblings belong to an absorbed verifier and would misattribute the enum if
 trusted, so those fields are left unresolved rather than guessed. The
 remaining 25/27 need a way to disambiguate a merged Verifier class's
-absorbed singletons — a genuinely further, currently-unidentified
-information limit, not a bug sitting unfixed.
+absorbed singletons.
+
+That disambiguation was investigated directly, not left as a guess: reading
+the merged class's own `<clinit>` shows all five singletons (`INSTANCE`
+through `INSTANCE$4`) built the identical way — `new CardTypeVerifier()`
+with a no-argument constructor, then an `sput-object` into each field, no
+discriminator value passed or stored anywhere. The class also declares no
+`isInRange`-style method at all beyond `<clinit>`; R8 evidently proved the
+verifier's actual check was dead code (inlined and eliminated at every call
+site) and stripped the method bodies entirely, leaving five behaviorally
+identical, structurally indistinguishable marker objects. There is no
+surviving signal in the compiled artifact — not a constructor argument, not
+a per-instance method, not a discriminator field — that ties a numbered
+singleton back to its original enum. This is now a confirmed information
+limit for merged-Verifier singletons, not an unexplored one.
 
 As a separate container-layer oracle, all 35,762 strings in Mullvad's primary
 DEX matched androguard 4.x in order and value. Reproduce that check with
