@@ -22,6 +22,7 @@ class AppState:
     cancel_pending: bool = False
     query: str = ""
     selected: int = 0
+    started_at: float | None = None
     log: deque[str] = field(default_factory=lambda: deque(maxlen=1000))
 
     def show(self, screen: Screen) -> None:

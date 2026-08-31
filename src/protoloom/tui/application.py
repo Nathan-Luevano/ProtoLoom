@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import monotonic
 
 from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
@@ -89,6 +90,7 @@ class TuiApplication:
             key_bindings=self.bindings,
             full_screen=True,
             mouse_support=False,
+            refresh_interval=1,
             input=app_input,
             output=app_output,
         )
@@ -145,8 +147,11 @@ class TuiApplication:
             self.application.layout.focus(self.body)
 
     def _running_text(self) -> str:
+        elapsed = monotonic() - self.state.started_at if self.state.started_at else 0
         status = (
-            f"\n  {self.state.error}\n" if self.state.error else "\n  Extracting…\n"
+            f"\n  {self.state.error}\n"
+            if self.state.error
+            else f"\n  Extracting… {elapsed:.0f}s\n"
         )
         if self.state.cancel_pending:
             status = "\n  Cancel extraction? Press Ctrl-C again; Esc keeps running.\n"
@@ -206,6 +211,7 @@ class TuiApplication:
             return
         self.state.log.clear()
         self.state.show(Screen.RUNNING)
+        self.state.started_at = monotonic()
         request = ExtractionRequest(
             source, output, self.heuristic.checked, self.jadx.checked
         )
