@@ -78,12 +78,25 @@ protoloom demo
 - Keeps uncertain results visible
 - Runs deterministically without cloud services
 - Handles nested archives and multiple binary formats
+- Matches the established pbtk tool's schema fidelity exactly on a real,
+  unobfuscated production app — plus native and Go descriptor recovery,
+  which pbtk doesn't do
 - Is tested against pinned schemas, shipping apps, and a real exported payload
 
-ProtoLoom is currently alpha software. Obfuscation can permanently remove
-names, types, and relationships, so some apps will produce partial results.
-Detailed measurements and known limitations are published in
-[`benchmarks/results.md`](benchmarks/results.md).
+ProtoLoom is currently alpha software, but its numbers come from real shipping
+apps, not just synthetic fixtures. It matches pbtk on all nine measured
+metrics for Mullvad's protobuf-lite schema, and reaches the same 100% once
+Bitwarden Authenticator's and Gadgetbridge's proto packages are normalized to
+their compiled Java namespace — a real, documented ambiguity in what
+protobuf-lite compiles to, not a recovery bug. Where a signal is
+genuinely gone, ProtoLoom says so instead of guessing: Gadgetbridge's Java
+generator loses the exact source spelling of some field names, and a build
+optimizer can strip the last signal distinguishing some merged enum types on
+Smartspacer, so a minority of names and enum values in those apps stay
+unresolved rather than invented. Apps built with Square Wire instead of
+protobuf-lite (Signal, Molly, Meshtastic) aren't a supported schema source
+yet. Detailed measurements, methodology, and every known limitation are
+published in [`benchmarks/results.md`](benchmarks/results.md).
 
 ## Development
 
