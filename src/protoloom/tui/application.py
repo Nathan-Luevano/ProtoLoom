@@ -295,11 +295,11 @@ class TuiApplication:
         def leave_search(event: KeyPressEvent) -> None:
             event.app.layout.focus(self.results_control)
 
-        @self.bindings.add("tab", filter=~help_visible)
+        @self.bindings.add("tab", filter=~help_visible, eager=True)
         def focus_next(event: KeyPressEvent) -> None:
             event.app.layout.focus_next()
 
-        @self.bindings.add("s-tab", filter=~help_visible)
+        @self.bindings.add("s-tab", filter=~help_visible, eager=True)
         def focus_previous(event: KeyPressEvent) -> None:
             event.app.layout.focus_previous()
 
