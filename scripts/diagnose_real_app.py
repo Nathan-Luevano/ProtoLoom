@@ -75,12 +75,15 @@ def _enum(raw: EnumDescriptorProto) -> BenchmarkEnum:
 
 
 def _truth_messages(
-    raw: DescriptorProto, prefix: str, parent: str | None = None
+    raw: DescriptorProto,
+    prefix: str,
+    parent: str | None = None,
+    package_map: tuple[str, str] | None = None,
 ) -> list[BenchmarkMessage]:
     name = f"{prefix}.{raw.name}" if prefix else raw.name
     fields = []
     for field in raw.field:
-        type_name = _truth_field_type(raw, field)
+        type_name = _truth_field_type(raw, field, package_map)
         oneof = (
             raw.oneof_decl[field.oneof_index].name
             if field.HasField("oneof_index")
@@ -106,11 +109,15 @@ def _truth_messages(
     ]
     for nested in raw.nested_type:
         if not nested.options.map_entry:
-            messages.extend(_truth_messages(nested, name, name))
+            messages.extend(_truth_messages(nested, name, name, package_map))
     return messages
 
 
-def _truth_field_type(raw: DescriptorProto, field: FieldDescriptorProto) -> str:
+def _truth_field_type(
+    raw: DescriptorProto,
+    field: FieldDescriptorProto,
+    package_map: tuple[str, str] | None = None,
+) -> str:
     if field.type_name:
         target = field.type_name.rsplit(".", 1)[-1]
         entry = next(
@@ -122,23 +129,35 @@ def _truth_field_type(raw: DescriptorProto, field: FieldDescriptorProto) -> str:
             None,
         )
         if entry is not None and len(entry.field) == 2:
-            key = _truth_field_type(entry, entry.field[0])
-            value = _truth_field_type(entry, entry.field[1])
+            key = _truth_field_type(entry, entry.field[0], package_map)
+            value = _truth_field_type(entry, entry.field[1], package_map)
             return f"map<{key}, {value}>"
-        return field.type_name.lstrip(".")
+        type_name = field.type_name.lstrip(".")
+        if package_map is not None:
+            source, target = package_map
+            if not source or type_name == source or type_name.startswith(f"{source}."):
+                suffix = type_name.removeprefix(source).lstrip(".")
+                type_name = f"{target}.{suffix}" if target else suffix
+        return type_name
     return _TYPE_NAMES[field.type]
 
 
-def load_truth(path: Path, file_name: str) -> BenchmarkSchema:
+def load_truth(
+    path: Path, file_name: str, package_override: str | None = None
+) -> BenchmarkSchema:
     descriptor_set = FileDescriptorSet.FromString(path.read_bytes())
     descriptor = next(
         (item for item in descriptor_set.file if item.name == file_name), None
     )
     if descriptor is None:
         raise ValueError(f"descriptor set does not contain {file_name}")
+    package = descriptor.package if package_override is None else package_override
+    package_map = (
+        (descriptor.package, package) if package_override is not None else None
+    )
     messages = []
     for message in descriptor.message_type:
-        messages.extend(_truth_messages(message, descriptor.package))
+        messages.extend(_truth_messages(message, package, package_map=package_map))
     return BenchmarkSchema(
         tuple(messages),
         enums=tuple(_enum(item) for item in descriptor.enum_type),
