@@ -67,3 +67,29 @@ def test_cancels_long_running_process(
 
     assert cancelled is True
     assert lines == ["ready"]
+
+
+def test_task_cancellation_stops_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    script = "import time; print('ready', flush=True); time.sleep(30)"
+    monkeypatch.setattr(
+        ExtractionRequest,
+        "command",
+        lambda self: (sys.executable, "-c", script),
+    )
+
+    async def exercise() -> bool:
+        job = ExtractionJob()
+        lines: list[str] = []
+        task = asyncio.create_task(
+            job.run(ExtractionRequest(tmp_path, tmp_path), lines.append)
+        )
+        while not lines:
+            await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        return job.running
+
+    assert asyncio.run(exercise()) is False
