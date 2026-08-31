@@ -59,9 +59,13 @@ class ExtractionJob:
             start_new_session=os.name == "posix",
         )
         assert self._process.stdout is not None
-        while line := await self._process.stdout.readline():
-            on_line(line.decode(errors="replace").rstrip())
-        returncode = await self._process.wait()
+        try:
+            while line := await self._process.stdout.readline():
+                on_line(line.decode(errors="replace").rstrip())
+            returncode = await self._process.wait()
+        except asyncio.CancelledError:
+            await asyncio.shield(self.cancel())
+            raise
         return JobResult(returncode, self._cancelled)
 
     async def cancel(self) -> None:
