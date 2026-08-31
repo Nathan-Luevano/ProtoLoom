@@ -160,7 +160,7 @@ change; their rows below contain those newer results.
 | Mullvad 2026.8 | 129 | 0 | recovered |
 | Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
 | Meshtastic 2.8.1-internal.3 | 52 | 1 | recovered; separately pinned schema repository |
-| Flipper 1.8.1.1890 | 0 | 6 | no recoverable evidence |
+| Flipper 1.8.1.1890 | 0 | 0 | no recoverable evidence |
 | Gadgetbridge 0.93.0 | 646 | 0 | recovered |
 | Smartspacer 1.11.2 | 70 | 0 | recovered with explicit enum uncertainty |
 
@@ -207,8 +207,8 @@ Wire-generated Kotlin multiplatform models. Those selected messages therefore
 do not expose the Java-lite `newMessageInfo` path that ProtoLoom v0.1 targets;
 the 52 recovered files belong to unrelated lite dependencies. Flipper likewise
 contains none of the selected messages as recoverable lite metadata or embedded
-descriptors, making its zero a measured unsupported-runtime result rather than
-a missing comparison.
+descriptors. A fresh run finds no lite calls and no bail-outs, making its zero a
+measured unsupported-runtime result rather than a missing comparison.
 
 Gadgetbridge's field-bearing calls used explicit array sizes and indexes, but
 the indexes `0` and `1` were constants established before `dynamicMethod`'s
