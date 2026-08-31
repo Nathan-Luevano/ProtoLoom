@@ -7,6 +7,7 @@ from protoloom.tui.results import RecoveryOutput, SchemaRecord
 
 class Screen(StrEnum):
     HOME = "home"
+    OPEN = "open output"
     SETUP = "setup"
     RUNNING = "running"
     RESULTS = "results"
