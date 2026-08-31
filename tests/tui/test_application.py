@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 
 from prompt_toolkit.data_structures import Size
@@ -29,6 +30,33 @@ def test_keyboard_opens_existing_output_form() -> None:
 
             assert tui.state.screen is Screen.OPEN
             assert tui.application.layout.has_focus(tui.open_path)
+            tui.application.exit()
+            await task
+
+    asyncio.run(exercise())
+
+
+def test_keyboard_loads_existing_output(tmp_path: Path) -> None:
+    (tmp_path / "recovery.json").write_text(
+        json.dumps({"schemas": [{"name": "sample.proto"}], "conflicts": []}),
+        encoding="utf-8",
+    )
+
+    async def exercise() -> None:
+        with create_pipe_input() as app_input:
+            tui = TuiApplication(app_input, DummyOutput())
+            task = asyncio.create_task(tui.application.run_async())
+            await asyncio.sleep(0.05)
+            app_input.send_text(f"\x1b[B\r{tmp_path}")
+            await asyncio.sleep(0.05)
+            app_input.send_text("\t")
+            await asyncio.sleep(0.05)
+            app_input.send_text("\r")
+            await asyncio.sleep(0.05)
+
+            assert tui.state.screen is Screen.RESULTS
+            assert tui.state.output is not None
+            assert tui.state.output.schemas[0].name == "sample.proto"
             tui.application.exit()
             await task
 
