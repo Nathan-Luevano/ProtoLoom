@@ -274,6 +274,7 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                 if declared is not None
                 and declared.startswith("L")
                 and declared.endswith(";")
+                and kind.label != "repeated"
                 # A `repeated` field's declared Java type is a list wrapper
                 # (e.g. ProtobufArrayList), not the element type. Runtime
                 # protobuf-internal classes are never a field's real proto

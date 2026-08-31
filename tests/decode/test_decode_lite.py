@@ -129,7 +129,7 @@ class _FakeRepeatedFieldDex(_FakeDex):
         super().__init__()
         self.types = (
             "LOwner;",
-            "Lcom/google/protobuf/ProtobufArrayList;",
+            "Lxy2;",
             "LOwner$Nested;",
         )
         self.strings = ("newMessageInfo", "items_")
@@ -139,7 +139,7 @@ class _FakeRepeatedFieldDex(_FakeDex):
 def test_repeated_field_declared_list_type_is_not_trusted_as_the_element_type() -> None:
     # A `repeated` field's declared Java type is a list wrapper, not the
     # element type; only the objects-array class literal names it here.
-    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 9)
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 27)
     finding = LiteFinding(
         containing_method=0,
         code_offset=0,
