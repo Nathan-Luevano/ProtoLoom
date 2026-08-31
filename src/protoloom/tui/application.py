@@ -9,6 +9,7 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.widgets import Button, Checkbox, TextArea
 
 from protoloom.tui.jobs import ExtractionJob, ExtractionRequest
+from protoloom.tui.results import OutputError, load_output
 from protoloom.tui.state import AppState, Screen
 
 
@@ -117,7 +118,12 @@ class TuiApplication:
         elif result.returncode:
             self.state.fail(f"Extraction failed with status {result.returncode}")
         else:
-            self.state.fail("Extraction completed")
+            try:
+                self.state.output = load_output(request.output)
+            except OutputError as error:
+                self.state.fail(str(error))
+            else:
+                self.state.show(Screen.RESULTS)
         self.application.invalidate()
 
     def _bind_keys(self) -> None:
