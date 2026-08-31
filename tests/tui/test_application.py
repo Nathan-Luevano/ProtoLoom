@@ -1,13 +1,16 @@
 import asyncio
 import json
+import sys
 from pathlib import Path
 
+import pytest
 from google.protobuf.descriptor_pb2 import FileDescriptorProto, FileDescriptorSet
 from prompt_toolkit.data_structures import Size
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
 from protoloom.tui.application import TuiApplication
+from protoloom.tui.jobs import ExtractionRequest
 from protoloom.tui.results import RecoveryOutput, SchemaRecord
 from protoloom.tui.state import Screen
 
@@ -88,6 +91,47 @@ def test_keyboard_runs_extraction_to_results(tmp_path: Path) -> None:
             assert tui.state.screen is Screen.RESULTS
             assert tui.state.output is not None
             assert tui.state.output.schemas[0].name == "sample.proto"
+            tui.application.exit()
+            await task
+
+    asyncio.run(exercise())
+
+
+def test_keyboard_confirms_running_job_cancellation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "input"
+    source.touch()
+    script = "import time; print('ready', flush=True); time.sleep(30)"
+    monkeypatch.setattr(
+        ExtractionRequest,
+        "command",
+        lambda self: (sys.executable, "-c", script),
+    )
+
+    async def exercise() -> None:
+        with create_pipe_input() as app_input:
+            tui = TuiApplication(app_input, DummyOutput())
+            tui.source.text = str(source)
+            task = asyncio.create_task(tui.application.run_async())
+            await asyncio.sleep(0.05)
+            app_input.send_text("\r")
+            await asyncio.sleep(0.05)
+            app_input.send_text("\t\t\t\t")
+            await asyncio.sleep(0.05)
+            app_input.send_text("\r")
+            while not tui.state.log:
+                await asyncio.sleep(0.01)
+
+            app_input.send_text("\x03")
+            await asyncio.sleep(0.05)
+            assert tui.state.cancel_pending is True
+            assert tui.job.running is True
+            app_input.send_text("\x03")
+            while tui.job.running:
+                await asyncio.sleep(0.01)
+
+            assert tui.state.error == "Extraction cancelled"
             tui.application.exit()
             await task
 
