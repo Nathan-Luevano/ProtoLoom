@@ -292,15 +292,15 @@ def _enum_values(
             elif opcode == 0x69 and units[1] < len(dex.fields):
                 item = dex.fields[units[1]]
                 enum_instance = registers.get(units[0] >> 8)
-                name = dex.field_name(item)
                 if (
                     item.class_index in type_indexes
+                    and dex.types[item.type_index] == descriptor
                     and isinstance(enum_instance, tuple)
                     and len(enum_instance) == 4
-                    and enum_instance == ("enum", descriptor, name, enum_instance[3])
-                    and name != "UNRECOGNIZED"
+                    and enum_instance[:2] == ("enum", descriptor)
+                    and enum_instance[2] != "UNRECOGNIZED"
                 ):
-                    recovered[name] = int(enum_instance[3])
+                    recovered[str(enum_instance[2])] = int(enum_instance[3])
                     initializer_offset = code.offset
                     store_offsets.append(instruction.offset)
     return tuple(recovered.items()), initializer_offset, tuple(store_offsets)
