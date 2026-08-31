@@ -44,6 +44,19 @@ class TuiApplication:
             ],
             padding=1,
         )
+        self.open_path = TextArea(height=1, prompt=" Directory: ", multiline=False)
+        self.open_form = HSplit(
+            [
+                self.open_path,
+                VSplit(
+                    [
+                        Button("Open", handler=self._open_output),
+                        Button("Back", handler=self._show_home),
+                    ]
+                ),
+            ],
+            padding=1,
+        )
         self.running = Window(FormattedTextControl(self._running_text), wrap_lines=True)
         self.results_control = FormattedTextControl(self._results_text, focusable=True)
         self.detail_control = FormattedTextControl(self._detail_text)
@@ -73,7 +86,8 @@ class TuiApplication:
         )
 
     def _header_text(self) -> str:
-        return f" ProtoLoom — {self.state.screen.value} "
+        error = f" — {self.state.error}" if self.state.error else ""
+        return f" ProtoLoom — {self.state.screen.value}{error} "
 
     def _body_text(self) -> StyleAndTextTuples:
         if self.state.screen is not Screen.HOME:
@@ -87,7 +101,7 @@ class TuiApplication:
         return result
 
     def _footer_text(self) -> str:
-        if self.state.screen is Screen.SETUP:
+        if self.state.screen in {Screen.SETUP, Screen.OPEN}:
             return " Tab/Shift-Tab move  Space toggle  Enter activate  Esc back "
         if self.state.screen is Screen.RESULTS:
             return " ↑/↓ move  / search  Esc back  ? help "
@@ -100,6 +114,8 @@ class TuiApplication:
             return self.home
         if self.state.screen is Screen.SETUP:
             return self.setup
+        if self.state.screen is Screen.OPEN:
+            return self.open_form
         if self.state.screen is Screen.RUNNING:
             return self.running
         return self.results
@@ -113,6 +129,15 @@ class TuiApplication:
             f"\n  {self.state.error}\n" if self.state.error else "\n  Extracting…\n"
         )
         return status + "\n".join(f"  {line}" for line in self.state.log)
+
+    def _open_output(self) -> None:
+        try:
+            self.state.output = load_output(Path(self.open_path.text).expanduser())
+        except OutputError as error:
+            self.state.fail(str(error))
+            return
+        self.state.show(Screen.RESULTS)
+        self.application.layout.focus(self.results_control)
 
     def _results_text(self) -> StyleAndTextTuples:
         output = self.state.output
@@ -191,7 +216,8 @@ class TuiApplication:
                 self.state.show(Screen.SETUP)
                 event.app.layout.focus(self.source)
             elif self.home_selection == 1:
-                self.state.show(Screen.RESULTS)
+                self.state.show(Screen.OPEN)
+                event.app.layout.focus(self.open_path)
             else:
                 event.app.exit()
 
