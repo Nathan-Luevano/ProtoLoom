@@ -1,5 +1,7 @@
 from prompt_toolkit import Application
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import StyleAndTextTuples
+from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 
@@ -10,6 +12,8 @@ class TuiApplication:
     def __init__(self) -> None:
         self.state = AppState()
         self.home_selection = 0
+        self.bindings = KeyBindings()
+        self._bind_keys()
         self.body = FormattedTextControl(self._body_text, focusable=True)
         root = HSplit(
             [
@@ -20,6 +24,7 @@ class TuiApplication:
         )
         self.application: Application[None] = Application(
             layout=Layout(root, focused_element=self.body),
+            key_bindings=self.bindings,
             full_screen=True,
             mouse_support=False,
         )
@@ -40,6 +45,32 @@ class TuiApplication:
 
     def _footer_text(self) -> str:
         return " ↑/↓ move  Enter select  ? help  q quit "
+
+    def _bind_keys(self) -> None:
+        on_home = Condition(lambda: self.state.screen is Screen.HOME)
+
+        @self.bindings.add("up", filter=on_home)
+        def move_up(event: KeyPressEvent) -> None:
+            self.home_selection = (self.home_selection - 1) % 3
+            event.app.invalidate()
+
+        @self.bindings.add("down", filter=on_home)
+        def move_down(event: KeyPressEvent) -> None:
+            self.home_selection = (self.home_selection + 1) % 3
+            event.app.invalidate()
+
+        @self.bindings.add("enter", filter=on_home)
+        def choose(event: KeyPressEvent) -> None:
+            if self.home_selection == 0:
+                self.state.show(Screen.SETUP)
+            elif self.home_selection == 1:
+                self.state.show(Screen.RESULTS)
+            else:
+                event.app.exit()
+
+        @self.bindings.add("q", filter=on_home)
+        def quit_application(event: KeyPressEvent) -> None:
+            event.app.exit()
 
 
 def run() -> None:
