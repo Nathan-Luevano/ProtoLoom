@@ -199,7 +199,9 @@ def _recovered_message(
     )
 
 
-def load_recovered(path: Path, package: str) -> BenchmarkSchema:
+def load_recovered(
+    path: Path, package: str, roots: set[str] | None = None
+) -> BenchmarkSchema:
     if path.suffix == ".desc":
         descriptor_set = FileDescriptorSet()
         descriptor_set.ParseFromString(path.read_bytes())
@@ -209,6 +211,8 @@ def load_recovered(path: Path, package: str) -> BenchmarkSchema:
             if descriptor.package != package:
                 continue
             for message in descriptor.message_type:
+                if roots is not None and message.name not in roots:
+                    continue
                 descriptor_messages.extend(_truth_messages(message, descriptor.package))
             descriptor_enums.extend(_enum(item) for item in descriptor.enum_type)
         return BenchmarkSchema(
@@ -231,6 +235,7 @@ def load_recovered(path: Path, package: str) -> BenchmarkSchema:
         _recovered_message(message, schema["package"], enum_names)
         for schema in schemas
         for message in schema["messages"]
+        if roots is None or message["name"] in roots
     )
     return BenchmarkSchema(messages, enums=enums, compiled=True)
 
@@ -241,10 +246,25 @@ def main() -> None:
     parser.add_argument("--file", required=True)
     parser.add_argument("--recovered", type=Path, required=True)
     parser.add_argument("--package", required=True)
+    parser.add_argument("--normalize-truth-package", action="store_true")
+    parser.add_argument("--scope-to-truth-roots", action="store_true")
     parser.add_argument("--target", default="real-app")
     args = parser.parse_args()
-    truth = load_truth(args.truth, args.file)
-    recovered = load_recovered(args.recovered, args.package)
+    truth = load_truth(
+        args.truth,
+        args.file,
+        args.package if args.normalize_truth_package else None,
+    )
+    roots = (
+        {
+            message.name.rsplit(".", 1)[-1]
+            for message in truth.messages
+            if message.name is not None and message.parent is None
+        }
+        if args.scope_to_truth_roots
+        else None
+    )
+    recovered = load_recovered(args.recovered, args.package, roots)
     report = score_target(args.target, truth, recovered)
     print(f"truth messages: {len(truth.messages)}")
     print(f"recovered messages: {len(recovered.messages)}")
