@@ -445,6 +445,13 @@ def doctor() -> None:
 
 
 @app.command()
+def tui() -> None:
+    from protoloom.tui.application import run
+
+    run()
+
+
+@app.command()
 def demo(
     output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
 ) -> None:
