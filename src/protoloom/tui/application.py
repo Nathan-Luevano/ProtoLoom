@@ -25,7 +25,6 @@ class TuiApplication:
         self.state = AppState()
         self.home_selection = 0
         self.bindings = KeyBindings()
-        self._bind_keys()
         self.body = FormattedTextControl(self._body_text, focusable=True)
         self.home = Window(self.body, wrap_lines=True)
         self.source = TextArea(height=1, prompt=" Input: ", multiline=False)
@@ -76,6 +75,7 @@ class TuiApplication:
         )
         self.results = HSplit([self.search, result_columns])
         self.job = ExtractionJob()
+        self._bind_keys()
         self.screen = DynamicContainer(self._screen_container)
         root = HSplit(
             [
