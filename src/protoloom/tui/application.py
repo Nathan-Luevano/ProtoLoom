@@ -66,6 +66,8 @@ class TuiApplication:
         return result
 
     def _footer_text(self) -> str:
+        if self.state.screen is Screen.SETUP:
+            return " Tab/Shift-Tab move  Space toggle  Enter activate  Esc back "
         return " ↑/↓ move  Enter select  ? help  q quit "
 
     def _screen_container(self) -> Window | HSplit:
@@ -95,6 +97,7 @@ class TuiApplication:
         def choose(event: KeyPressEvent) -> None:
             if self.home_selection == 0:
                 self.state.show(Screen.SETUP)
+                event.app.layout.focus(self.source)
             elif self.home_selection == 1:
                 self.state.show(Screen.RESULTS)
             else:
@@ -103,6 +106,18 @@ class TuiApplication:
         @self.bindings.add("q", filter=on_home)
         def quit_application(event: KeyPressEvent) -> None:
             event.app.exit()
+
+        @self.bindings.add("tab")
+        def focus_next(event: KeyPressEvent) -> None:
+            event.app.layout.focus_next()
+
+        @self.bindings.add("s-tab")
+        def focus_previous(event: KeyPressEvent) -> None:
+            event.app.layout.focus_previous()
+
+        @self.bindings.add("escape", filter=~on_home)
+        def go_back(event: KeyPressEvent) -> None:
+            self._show_home()
 
 
 def run() -> None:
