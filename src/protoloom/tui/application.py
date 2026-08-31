@@ -2,8 +2,9 @@ from prompt_toolkit import Application
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
-from prompt_toolkit.layout import HSplit, Layout, Window
+from prompt_toolkit.layout import DynamicContainer, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.widgets import Button, Checkbox, TextArea
 
 from protoloom.tui.state import AppState, Screen
 
@@ -15,10 +16,31 @@ class TuiApplication:
         self.bindings = KeyBindings()
         self._bind_keys()
         self.body = FormattedTextControl(self._body_text, focusable=True)
+        self.home = Window(self.body, wrap_lines=True)
+        self.source = TextArea(height=1, prompt=" Input: ", multiline=False)
+        self.output = TextArea(height=1, prompt=" Output: ", multiline=False)
+        self.heuristic = Checkbox("Allow heuristic lite recovery")
+        self.jadx = Checkbox("Retain jadx context")
+        self.setup = HSplit(
+            [
+                self.source,
+                self.output,
+                self.heuristic,
+                self.jadx,
+                VSplit(
+                    [
+                        Button("Start", handler=self._start_placeholder),
+                        Button("Back", handler=self._show_home),
+                    ]
+                ),
+            ],
+            padding=1,
+        )
+        self.screen = DynamicContainer(self._screen_container)
         root = HSplit(
             [
                 Window(FormattedTextControl(self._header_text), height=1),
-                Window(self.body, wrap_lines=True),
+                self.screen,
                 Window(FormattedTextControl(self._footer_text), height=1),
             ]
         )
@@ -45,6 +67,16 @@ class TuiApplication:
 
     def _footer_text(self) -> str:
         return " ↑/↓ move  Enter select  ? help  q quit "
+
+    def _screen_container(self) -> Window | HSplit:
+        return self.home if self.state.screen is Screen.HOME else self.setup
+
+    def _show_home(self) -> None:
+        self.state.show(Screen.HOME)
+        self.application.layout.focus(self.body)
+
+    def _start_placeholder(self) -> None:
+        self.state.fail("Extraction runner is not connected yet")
 
     def _bind_keys(self) -> None:
         on_home = Condition(lambda: self.state.screen is Screen.HOME)
