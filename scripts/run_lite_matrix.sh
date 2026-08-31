@@ -73,7 +73,7 @@ printf '%s\n' "$matrix" | while IFS='|' read -r protoc_version protoc_sha protob
   uv run python scripts/diagnose_real_app.py \
     --truth "$version_root/truth.desc" \
     --file matrix.proto \
-    --recovered "$version_root/out/recovery.json" \
+    --recovered "$version_root/out/classes.desc" \
     --package matrix \
     --target "javalite-$protobuf_version-d8-$r8_version"
   uv run python scripts/check_matrix_roundtrip.py \
@@ -100,7 +100,7 @@ for mode in default aggressive; do
   uv run python scripts/diagnose_real_app.py \
     --truth "$latest/truth.desc" \
     --file matrix.proto \
-    --recovered "$r8_root/out/recovery.json" \
+    --recovered "$r8_root/out/classes.desc" \
     --package "$package" \
     --target "javalite-4.35.1-r8-$r8_version-$mode"
   uv run python scripts/check_matrix_roundtrip.py \
