@@ -45,6 +45,23 @@ def test_truth_package_override_rewrites_message_types(tmp_path: Path) -> None:
     assert recovered.messages[0].fields[0].proto_type == "runtime.Child"
 
 
+def test_recovered_descriptor_scopes_to_top_level_roots(tmp_path: Path) -> None:
+    descriptors = FileDescriptorSet()
+    schema = descriptors.file.add(name="recovered.proto", package="runtime")
+    keep = schema.message_type.add(name="Keep")
+    keep.nested_type.add(name="Nested")
+    schema.message_type.add(name="Unrelated")
+    recovered = tmp_path / "recovered.desc"
+    recovered.write_bytes(descriptors.SerializeToString())
+
+    result = load_recovered(recovered, "runtime", {"Keep"})
+
+    assert [message.name for message in result.messages] == [
+        "runtime.Keep",
+        "runtime.Keep.Nested",
+    ]
+
+
 def test_recovered_json_scores_top_level_and_message_local_enums(
     tmp_path: Path,
 ) -> None:
