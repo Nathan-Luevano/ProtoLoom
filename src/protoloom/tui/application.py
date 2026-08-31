@@ -3,8 +3,9 @@ from time import monotonic
 
 from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.data_structures import Point
 from prompt_toolkit.filters import Condition, has_focus
-from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted_text
+from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples
 from prompt_toolkit.input import Input
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.layout import DynamicContainer, HSplit, Layout, VSplit, Window
@@ -64,7 +65,12 @@ class TuiApplication:
         self.running = Window(FormattedTextControl(self._running_text), wrap_lines=True)
         self.help_control = FormattedTextControl(self._help_text, focusable=True)
         self.help = Window(self.help_control, wrap_lines=True)
-        self.results_control = FormattedTextControl(self._results_text, focusable=True)
+        self.summary_control = FormattedTextControl(self._summary_text)
+        self.results_control = FormattedTextControl(
+            self._schema_list_text,
+            focusable=True,
+            get_cursor_position=lambda: Point(x=0, y=self.state.selected + 1),
+        )
         self.detail_control = FormattedTextControl(self._detail_text)
         self.search = TextArea(height=1, prompt=" Search: ", multiline=False)
         self.search.buffer.on_text_changed += self._search_changed
@@ -74,7 +80,13 @@ class TuiApplication:
                 Window(self.detail_control, wrap_lines=True),
             ]
         )
-        self.results = HSplit([self.search, result_columns])
+        self.results = HSplit(
+            [
+                self.search,
+                Window(self.summary_control, height=5, wrap_lines=True),
+                result_columns,
+            ]
+        )
         self.job = ExtractionJob()
         self._bind_keys()
         self.screen = DynamicContainer(self._screen_container)
@@ -179,12 +191,14 @@ class TuiApplication:
         self.state.show(Screen.RESULTS)
         self.application.layout.focus(self.results_control)
 
-    def _results_text(self) -> StyleAndTextTuples:
+    def _summary_text(self) -> ANSI | str:
         output = self.state.output
         if output is None:
-            return [("", "\n  Choose an output directory from Home.")]
-        result = list(to_formatted_text(ANSI(render_summary(output))))
-        result.append(("bold", "\n Schemas\n"))
+            return " Choose an output directory from Home."
+        return ANSI(render_summary(output))
+
+    def _schema_list_text(self) -> StyleAndTextTuples:
+        result: StyleAndTextTuples = [("bold", " Schemas\n")]
         for index, schema in enumerate(self.state.visible_schemas()):
             marker = ">" if index == self.state.selected else " "
             style = "reverse" if index == self.state.selected else ""
