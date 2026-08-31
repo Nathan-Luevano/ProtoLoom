@@ -21,6 +21,7 @@ class TuiApplication:
         self.output = TextArea(height=1, prompt=" Output: ", multiline=False)
         self.heuristic = Checkbox("Allow heuristic lite recovery")
         self.jadx = Checkbox("Retain jadx context")
+        self.output.text = "out"
         self.setup = HSplit(
             [
                 self.source,
@@ -36,6 +37,7 @@ class TuiApplication:
             ],
             padding=1,
         )
+        self.running = Window(FormattedTextControl(self._running_text), wrap_lines=True)
         self.screen = DynamicContainer(self._screen_container)
         root = HSplit(
             [
@@ -71,11 +73,21 @@ class TuiApplication:
         return " ↑/↓ move  Enter select  ? help  q quit "
 
     def _screen_container(self) -> Window | HSplit:
-        return self.home if self.state.screen is Screen.HOME else self.setup
+        if self.state.screen is Screen.HOME:
+            return self.home
+        if self.state.screen is Screen.SETUP:
+            return self.setup
+        return self.running
 
     def _show_home(self) -> None:
         self.state.show(Screen.HOME)
         self.application.layout.focus(self.body)
+
+    def _running_text(self) -> str:
+        status = (
+            f"\n  {self.state.error}\n" if self.state.error else "\n  Extracting…\n"
+        )
+        return status + "\n".join(f"  {line}" for line in self.state.log)
 
     def _start_placeholder(self) -> None:
         self.state.fail("Extraction runner is not connected yet")
