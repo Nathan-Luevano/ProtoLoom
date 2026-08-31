@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from prompt_toolkit import Application
-from prompt_toolkit.filters import Condition
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.filters import Condition, has_focus
 from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted_text
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.layout import DynamicContainer, HSplit, Layout, VSplit, Window
@@ -46,12 +47,15 @@ class TuiApplication:
         self.running = Window(FormattedTextControl(self._running_text), wrap_lines=True)
         self.results_control = FormattedTextControl(self._results_text, focusable=True)
         self.detail_control = FormattedTextControl(self._detail_text)
-        self.results = VSplit(
+        self.search = TextArea(height=1, prompt=" Search: ", multiline=False)
+        self.search.buffer.on_text_changed += self._search_changed
+        result_columns = VSplit(
             [
                 Window(self.results_control, width=40, wrap_lines=True),
                 Window(self.detail_control, wrap_lines=True),
             ]
         )
+        self.results = HSplit([self.search, result_columns])
         self.job = ExtractionJob()
         self.screen = DynamicContainer(self._screen_container)
         root = HSplit(
@@ -129,6 +133,11 @@ class TuiApplication:
         self.state.clamp_selection()
         return ANSI(render_schema(schemas[self.state.selected]))
 
+    def _search_changed(self, buffer: Buffer) -> None:
+        self.state.query = buffer.text
+        self.state.selected = 0
+        self.application.invalidate()
+
     def _start(self) -> None:
         source = Path(self.source.text).expanduser()
         output = Path(self.output.text).expanduser()
@@ -190,17 +199,25 @@ class TuiApplication:
         def quit_application(event: KeyPressEvent) -> None:
             event.app.exit()
 
-        @self.bindings.add("up", filter=on_results)
+        @self.bindings.add("up", filter=on_results & ~has_focus(self.search))
         def previous_schema(event: KeyPressEvent) -> None:
             self.state.selected -= 1
             self.state.clamp_selection()
             event.app.invalidate()
 
-        @self.bindings.add("down", filter=on_results)
+        @self.bindings.add("down", filter=on_results & ~has_focus(self.search))
         def next_schema(event: KeyPressEvent) -> None:
             self.state.selected += 1
             self.state.clamp_selection()
             event.app.invalidate()
+
+        @self.bindings.add("/", filter=on_results & ~has_focus(self.search))
+        def focus_search(event: KeyPressEvent) -> None:
+            event.app.layout.focus(self.search)
+
+        @self.bindings.add("escape", filter=has_focus(self.search))
+        def leave_search(event: KeyPressEvent) -> None:
+            event.app.layout.focus(self.results_control)
 
         @self.bindings.add("tab")
         def focus_next(event: KeyPressEvent) -> None:
@@ -210,7 +227,7 @@ class TuiApplication:
         def focus_previous(event: KeyPressEvent) -> None:
             event.app.layout.focus_previous()
 
-        @self.bindings.add("escape", filter=~on_home)
+        @self.bindings.add("escape", filter=~on_home & ~has_focus(self.search))
         def go_back(event: KeyPressEvent) -> None:
             self._show_home()
 
