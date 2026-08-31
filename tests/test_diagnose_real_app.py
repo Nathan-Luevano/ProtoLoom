@@ -100,6 +100,14 @@ def test_recovered_json_scores_top_level_and_message_local_enums(
                                         "values": [{"name": "NONE", "number": 0}],
                                     }
                                 ],
+                                "messages": [
+                                    {
+                                        "name": "Nested",
+                                        "fields": [],
+                                        "enums": [],
+                                        "messages": [],
+                                    }
+                                ],
                             }
                         ],
                     }
@@ -115,3 +123,5 @@ def test_recovered_json_scores_top_level_and_message_local_enums(
     assert schema.messages[0].enums[0].name == "Kind"
     assert schema.messages[0].fields[0].proto_type == "example.State"
     assert [field.wire_type for field in schema.messages[0].fields] == [0, 0]
+    assert schema.messages[1].name == "example.Nested"
+    assert schema.messages[1].parent == "example.Record"
