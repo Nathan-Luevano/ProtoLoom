@@ -4,6 +4,8 @@ from protoloom.extract.lite import (
     LiteObject,
     extract_lite,
     recover_enum_evidence,
+    recover_enum_evidence_from_field,
+    recover_enum_evidence_from_owner,
     recover_enum_evidence_from_verifier,
     recover_map_evidence,
 )
@@ -587,6 +589,35 @@ def test_enum_values_survive_obfuscated_static_field_names() -> None:
 
     assert evidence is not None
     assert evidence.values == (("MODE_UNSPECIFIED", 0), ("MODE_ACTIVE", 1))
+
+
+def test_enum_accessor_links_obfuscated_field_and_type() -> None:
+    dex = EnumFakeDex()
+    dex.types += ("I",)
+    dex.strings += ("mode", "forNumber")
+    dex.fields += (DexField(0, 2, 5),)
+    dex.methods += (DexMethod(0, 0, 5), DexMethod(1, 0, 6))
+    accessor = (0x0052, 2, 0x1071, 4, 0, 0x0C, 0x11)
+    dex._items += ((EncodedMethod(3, 0, 300), CodeItem(300, 2, 0, 1, 0, 0, accessor)),)
+    original_parameters = dex.method_parameter_types
+    dex.method_parameter_types = lambda method: (  # type: ignore[method-assign]
+        ()
+        if method.name_index == 5
+        else ("I",)
+        if method.name_index == 6
+        else original_parameters(method)
+    )
+
+    evidence = recover_enum_evidence_from_field(dex, 2)  # type: ignore[arg-type]
+
+    assert evidence is not None
+    assert (
+        recover_enum_evidence_from_owner(
+            dex,  # type: ignore[arg-type]
+            "Lmatrix/MatrixProto$Everything;",
+        )
+        == evidence
+    )
 
 
 def test_recover_enum_evidence_from_verifier_reads_enclosing_enum() -> None:
