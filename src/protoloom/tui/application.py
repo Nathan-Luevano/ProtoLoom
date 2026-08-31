@@ -4,10 +4,12 @@ from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.filters import Condition, has_focus
 from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted_text
+from prompt_toolkit.input import Input
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.layout import DynamicContainer, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.containers import Container
 from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.output import Output
 from prompt_toolkit.widgets import Button, Checkbox, TextArea
 
 from protoloom.tui.jobs import ExtractionJob, ExtractionRequest
@@ -17,7 +19,9 @@ from protoloom.tui.state import AppState, Screen
 
 
 class TuiApplication:
-    def __init__(self) -> None:
+    def __init__(
+        self, app_input: Input | None = None, app_output: Output | None = None
+    ) -> None:
         self.state = AppState()
         self.home_selection = 0
         self.bindings = KeyBindings()
@@ -85,6 +89,8 @@ class TuiApplication:
             key_bindings=self.bindings,
             full_screen=True,
             mouse_support=False,
+            input=app_input,
+            output=app_output,
         )
 
     def _header_text(self) -> str:
