@@ -16,14 +16,19 @@ influence metric design.
 | Type fidelity | 50.00% | 50.00% | 50.00% |
 | Name recovery rate | 100.00% | 100.00% | 100.00% |
 | Label accuracy | 100.00% | 100.00% | 100.00% |
-| Structural fidelity | 100.00% | 100.00% | 100.00% |
-| Enum recovery | 100.00% | 100.00% | 100.00% |
+| Structural fidelity | n/a | n/a | n/a |
+| Enum recovery | n/a | n/a | n/a |
 | Compile rate | 100.00% | 100.00% | 100.00% |
 | Round-trip rate | 0.00% | 0.00% | 0.00% |
 
 Corpus: `tier-a-small` local calibration fixture. Targets: 1. Reproduce it with
 `protoloom bench --corpus tier-a-small --per-target`. The manifest hash-pins
 both inputs.
+
+The calibration schema has no nesting, oneofs, or enums, so those denominators
+are zero and are reported as unmeasured. The harness now excludes every
+zero-denominator metric from macro and micro aggregation, rather than treating
+the empty ratio as a vacuous 100%; per-target output uses `n/a` consistently.
 
 ## Tier A pinned upstream corpus
 
