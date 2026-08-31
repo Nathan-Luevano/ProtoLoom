@@ -2,13 +2,14 @@ from pathlib import Path
 
 from prompt_toolkit import Application
 from prompt_toolkit.filters import Condition
-from prompt_toolkit.formatted_text import StyleAndTextTuples
+from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted_text
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.layout import DynamicContainer, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.widgets import Button, Checkbox, TextArea
 
 from protoloom.tui.jobs import ExtractionJob, ExtractionRequest
+from protoloom.tui.render import render_summary
 from protoloom.tui.results import OutputError, load_output
 from protoloom.tui.state import AppState, Screen
 
@@ -42,6 +43,8 @@ class TuiApplication:
             padding=1,
         )
         self.running = Window(FormattedTextControl(self._running_text), wrap_lines=True)
+        self.results_control = FormattedTextControl(self._results_text, focusable=True)
+        self.results = Window(self.results_control, wrap_lines=True)
         self.job = ExtractionJob()
         self.screen = DynamicContainer(self._screen_container)
         root = HSplit(
@@ -82,7 +85,9 @@ class TuiApplication:
             return self.home
         if self.state.screen is Screen.SETUP:
             return self.setup
-        return self.running
+        if self.state.screen is Screen.RUNNING:
+            return self.running
+        return self.results
 
     def _show_home(self) -> None:
         self.state.show(Screen.HOME)
@@ -93,6 +98,18 @@ class TuiApplication:
             f"\n  {self.state.error}\n" if self.state.error else "\n  Extracting…\n"
         )
         return status + "\n".join(f"  {line}" for line in self.state.log)
+
+    def _results_text(self) -> StyleAndTextTuples:
+        output = self.state.output
+        if output is None:
+            return [("", "\n  Choose an output directory from Home.")]
+        result = list(to_formatted_text(ANSI(render_summary(output))))
+        result.append(("bold", "\n Schemas\n"))
+        for index, schema in enumerate(self.state.visible_schemas()):
+            marker = ">" if index == self.state.selected else " "
+            style = "reverse" if index == self.state.selected else ""
+            result.append((style, f" {marker} {schema.name}\n"))
+        return result
 
     def _start(self) -> None:
         source = Path(self.source.text).expanduser()
