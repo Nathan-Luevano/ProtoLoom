@@ -310,7 +310,7 @@ def recover_map_evidence(dex: DexFile, field_index: int) -> LiteMapEvidence | No
     if field_index < 0 or field_index >= len(dex.fields):
         return None
     target = dex.fields[field_index]
-    registers: dict[int, tuple[str, int]] = {}
+    registers: dict[int, Any] = {}
     pending: LiteMapEvidence | None = None
     ready_to_store: tuple[int, LiteMapEvidence] | None = None
     scalar_names = {
@@ -365,6 +365,48 @@ def recover_map_evidence(dex: DexFile, field_index: int) -> LiteMapEvidence | No
                 registers.pop(destination, None)
             if instruction.opcode == 0x62 and units[1] < len(dex.fields):
                 registers[units[0] >> 8] = ("field", units[1])
+            elif instruction.opcode == 0x22 and units[1] < len(dex.types):
+                registers[(units[0] >> 8) & 0xF] = (
+                    "instance",
+                    dex.types[units[1]],
+                )
+            elif instruction.opcode == 0x70 and units[1] < len(dex.methods):
+                arguments = _invoke_registers(instruction)
+                called = dex.methods[units[1]]
+                parameters = dex.method_parameter_types(called)
+                values = [registers.get(register) for register in arguments]
+                field_values = values[1:]
+                if (
+                    len(values) == 3
+                    and values[0] == ("instance", dex.types[called.class_index])
+                    and all(
+                        isinstance(value, tuple) and value[0] == "field"
+                        for value in field_values
+                    )
+                    and dex.method_name(called) == "<init>"
+                ):
+                    field_indexes = [
+                        int(value[1])
+                        for value in field_values
+                        if isinstance(value, tuple)
+                    ]
+                    fields = [dex.fields[index] for index in field_indexes]
+                    if (
+                        tuple(dex.types[field.type_index] for field in fields)
+                        != parameters
+                    ):
+                        continue
+                    names = tuple(
+                        _static_constructor_name(dex, index) for index in field_indexes
+                    )
+                    if names[0] in key_scalar_names and names[1] in scalar_names:
+                        ready_to_store = (
+                            arguments[0],
+                            LiteMapEvidence(
+                                scalar_names[str(names[0])],
+                                scalar_names[str(names[1])],
+                            ),
+                        )
             elif instruction.opcode == 0x71:
                 pending = None
                 if units[1] >= len(dex.methods):
