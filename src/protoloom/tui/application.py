@@ -211,6 +211,7 @@ class TuiApplication:
             self.application.invalidate()
 
         result = await self.job.run(request, append)
+        self.state.cancel_pending = False
         if result.cancelled:
             self.state.fail("Extraction cancelled")
         elif result.returncode:
@@ -232,6 +233,9 @@ class TuiApplication:
         )
         on_results = Condition(
             lambda: self.state.screen is Screen.RESULTS and not self.state.help_visible
+        )
+        on_running = Condition(
+            lambda: self.state.screen is Screen.RUNNING and not self.state.help_visible
         )
 
         @self.bindings.add("up", filter=on_home)
@@ -301,8 +305,24 @@ class TuiApplication:
             self.state.help_visible = False
             self._restore_focus()
 
+        @self.bindings.add("c-c", filter=on_running)
+        def cancel_job(event: KeyPressEvent) -> None:
+            if not self.job.running:
+                self._show_home()
+            elif self.state.cancel_pending:
+                event.app.create_background_task(self.job.cancel())
+            else:
+                self.state.cancel_pending = True
+                event.app.invalidate()
+
+        @self.bindings.add("escape", filter=on_running)
+        def keep_running(event: KeyPressEvent) -> None:
+            self.state.cancel_pending = False
+            event.app.invalidate()
+
         @self.bindings.add(
-            "escape", filter=~on_home & ~has_focus(self.search) & ~help_visible
+            "escape",
+            filter=~on_home & ~on_running & ~has_focus(self.search) & ~help_visible,
         )
         def go_back(event: KeyPressEvent) -> None:
             self._show_home()
