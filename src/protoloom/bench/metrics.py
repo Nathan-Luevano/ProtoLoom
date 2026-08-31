@@ -174,12 +174,17 @@ def aggregate_reports(reports: list[MetricReport]) -> AggregateReport:
     ceiling_denominator = sum(
         report.type_fidelity_ceiling.denominator for report in reports
     )
+    measured_ceilings = [
+        report.type_fidelity_ceiling.value
+        for report in reports
+        if report.type_fidelity_ceiling.denominator > 0
+    ]
     return AggregateReport(
         MappingProxyType(macro),
         MappingProxyType(micro),
         tuple(reports),
-        fmean(report.type_fidelity_ceiling.value for report in reports),
-        Score(ceiling_numerator, ceiling_denominator).value,
+        fmean(measured_ceilings) if measured_ceilings else nan,
+        ceiling_numerator / ceiling_denominator if ceiling_denominator else nan,
     )
 
 

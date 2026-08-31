@@ -84,6 +84,9 @@ def render_report(report: AggregateReport, per_target: bool = False) -> str:
             f"{metric:25} {report.macro[metric]:9.2%} "
             f"{report.micro[metric]:9.2%} {label} {value:.2%}"
         )
+    if isnan(report.type_fidelity_ceiling_macro):
+        lines.append(f"{'type_fidelity_ceiling':25} {'n/a':>9} {'n/a':>9} {'n/a':>12}")
+        return _render_targets(lines, report) if per_target else "\n".join(lines)
     ceiling_lead = min(
         report.type_fidelity_ceiling_macro, report.type_fidelity_ceiling_micro
     )
@@ -98,19 +101,20 @@ def render_report(report: AggregateReport, per_target: bool = False) -> str:
         f"{report.type_fidelity_ceiling_micro:9.2%} "
         f"{ceiling_label} {ceiling_lead:.2%}"
     )
-    if per_target:
-        lines.extend(("", "per target"))
-        for target in report.targets:
-            lines.append(_target_line(target))
+    return _render_targets(lines, report) if per_target else "\n".join(lines)
+
+
+def _render_targets(lines: list[str], report: AggregateReport) -> str:
+    lines.extend(("", "per target"))
+    lines.extend(_target_line(target) for target in report.targets)
     return "\n".join(lines)
 
 
 def _target_line(report: MetricReport) -> str:
     values = " ".join(_target_metric(report, metric) for metric in METRIC_NAMES)
-    return (
-        f"{report.target}: {values} "
-        f"type_fidelity_ceiling={report.type_fidelity_ceiling.value:.2%}"
-    )
+    ceiling = report.type_fidelity_ceiling
+    ceiling_value = "n/a" if ceiling.denominator == 0 else f"{ceiling.value:.2%}"
+    return f"{report.target}: {values} type_fidelity_ceiling={ceiling_value}"
 
 
 def _target_metric(report: MetricReport, metric: str) -> str:
