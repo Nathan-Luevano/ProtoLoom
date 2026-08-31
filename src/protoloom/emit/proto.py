@@ -35,14 +35,19 @@ def _name(value: str, fallback: str) -> str:
 
 
 def _enum(item: EnumType, indent: str) -> list[str]:
-    lines = [f"{indent}enum {_name(item.name, 'RecoveredEnum')} {{"]
+    enum_name = _name(item.name, "RecoveredEnum")
+    lines = [f"{indent}enum {enum_name} {{"]
     values = item.values or []
     numbers = [value.number for value in values]
     needs_synthetic_zero = bool(values and values[0].number != 0)
-    if needs_synthetic_zero or len(numbers) != len(set(numbers)):
+    if len(numbers) != len(set(numbers)):
         lines.append(f"{indent}  option allow_alias = true;")
     if needs_synthetic_zero:
-        lines.append(f"{indent}  UNSPECIFIED = 0;")
+        # C++ enum-value scoping makes every value a sibling of its
+        # message, not just its enum -- an unqualified UNSPECIFIED can
+        # collide with another enum in the same package, so scope it to
+        # this enum's own name.
+        lines.append(f"{indent}  {enum_name.upper()}_UNSPECIFIED = 0;")
     for value in values:
         lines.append(f"{indent}  {_name(value.name, 'VALUE')} = {value.number};")
     lines.append(f"{indent}}}")

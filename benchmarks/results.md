@@ -189,7 +189,7 @@ no recovery compile denominator.
 | Meshtastic, three selected files | 0% (0/483) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/132) | 0% (0/449) | 100% (3/3) |
 | Flipper, three selected schema groups | 0% (0/36) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/2) | 0% (0/20) | 100% (3/3) |
 | Gadgetbridge, three selected files | 0% (0/115) | n/a (0 matched) | n/a | n/a | n/a | 0% (0/16) | 0% (0/27) | 100% (3/3) |
-| Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 83.78% (31/37) | 100% (37/37) | 100% (7/7) | 0% (0/27) | 100% (1/1) |
+| Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 86.49% (32/37) | 100% (37/37) | 100% (7/7) | 7.41% (2/27) | 100% (1/1) |
 
 Bitwarden's first manifest entry mistakenly paired the Authenticator schema
 with the Password Manager APK. The manifest now pins the matching Authenticator
@@ -240,18 +240,35 @@ the same redundant-prefix rename applied (`MigrationPayload_OtpType` ->
 `OtpType`) once that parent is known.
 
 Smartspacer's enum recovery (0/27) was investigated directly rather than
-assumed: its enum classes are ordinary generated Java enums — not a proto2
-Verifier-specific shape — but `SmartspaceCard`'s own class has *no getter
-method at all* for `card_type` (nor does its `Builder` retain a setter with
-the enum parameter type), so the getter-return-type technique that proves
-Mullvad's enums has no accessor to read in the first place. This is the same
-failure mode the javalite matrix's aggressive-R8 leg already documents
-(getter inlining/removal drops enum recovery to 0/2 there); Smartspacer's
-build evidently strips accessors just as aggressively. Recovering these
-enums would need a genuinely different, accessor-independent evidence
-source — not yet identified — rather than a variant of the existing
-technique. Treated as a confirmed information-limit finding, not a bug
-sitting unfixed.
+assumed: `SmartspaceCard`'s own class has *no getter method at all* for
+`card_type` (nor does its `Builder` retain a setter with the enum parameter
+type), so the getter-return-type technique that proves Mullvad's and
+Bitwarden's enums has no accessor to read in the first place — the same
+failure mode the javalite matrix's aggressive-R8 leg already documents.
+
+An accessor-independent source does exist, though: `newMessageInfo`'s
+objects array carries a reference to the field's generated
+`Internal.EnumVerifier` singleton (`CardTypeVerifier.INSTANCE`) even for
+enum fields with no getter, and that Verifier class is always compiled as a
+nested class of the real enum (`CardType$CardTypeVerifier`) — its own
+enclosing class *is* the enum, independent of any accessor. Reading that
+reference now recovers `card_type` (moving enum recovery to **7.41%,
+2/27**) with the same constructor/static-field-store proof already used for
+getter-based recovery, just handed a different starting descriptor.
+
+It stops at 2/27, not more, because R8 merges several distinct `Verifier`
+classes into one physical DEX class in this build, keeping their singletons
+apart only by field name (`INSTANCE`, `INSTANCE$1`, `INSTANCE$2`, ...) —
+`card_priority`'s own `CardPriorityVerifier` was absorbed into the same
+class that still carries `CardTypeVerifier`'s name, so its `enclosing class
+== enum` equivalence no longer holds once merged. Only the unqualified
+`INSTANCE` field is trusted as evidence for exactly this reason: it is the
+one singleton that still names the class it actually lives in; the numbered
+siblings belong to an absorbed verifier and would misattribute the enum if
+trusted, so those fields are left unresolved rather than guessed. The
+remaining 25/27 need a way to disambiguate a merged Verifier class's
+absorbed singletons — a genuinely further, currently-unidentified
+information limit, not a bug sitting unfixed.
 
 As a separate container-layer oracle, all 35,762 strings in Mullvad's primary
 DEX matched androguard 4.x in order and value. Reproduce that check with

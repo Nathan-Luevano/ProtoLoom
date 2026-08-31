@@ -10,6 +10,7 @@ from protoloom.decode.names import java_to_proto_name, names_are_obfuscated
 from protoloom.extract.lite import (
     LiteFinding,
     recover_enum_evidence,
+    recover_enum_evidence_from_verifier,
     recover_map_evidence,
 )
 from protoloom.model import (
@@ -92,19 +93,21 @@ def _resolve_message_type(descriptor: str) -> tuple[str, str | None]:
 
 
 def _field_objects(
-    finding: LiteFinding,
-) -> tuple[list[str | None], list[str | None], list[int | None]]:
+    dex: DexFile, finding: LiteFinding
+) -> tuple[list[str | None], list[str | None], list[int | None], list[str | None]]:
     info = decode_info_string(finding.info_string)
     cursor = info.header.oneof_count * 2 + info.header.hasbits_count
     names: list[str | None] = []
     classes: list[str | None] = []
     map_fields: list[int | None] = []
+    enum_verifiers: list[str | None] = []
     objects = finding.objects
     for field in info.fields:
         kind = field_type(field.type_id)
         name: str | None = None
         class_name: str | None = None
         map_field: int | None = None
+        enum_verifier: str | None = None
         if (
             field.oneof_index is None
             and cursor < len(objects)
@@ -117,7 +120,28 @@ def _field_objects(
                 class_name = str(objects[cursor].value)
                 cursor += 1
         elif kind.proto_type == "enum" and cursor < len(objects):
-            if objects[cursor].kind in {"class", "static_field", "call_result"}:
+            enum_object = objects[cursor]
+            if enum_object.kind == "class":
+                enum_verifier = str(enum_object.value)
+                cursor += 1
+            elif enum_object.kind == "static_field":
+                # newMessageInfo carries the field's EnumVerifier.INSTANCE
+                # singleton here, not the enum type -- its declaring class
+                # is the verifier, a proof-of-nesting signal that survives
+                # even when getters and setters are both stripped. R8 can
+                # merge several distinct Verifier classes into one physical
+                # class, keeping their singletons apart as INSTANCE,
+                # INSTANCE$1, INSTANCE$2... -- once merged, only the plain
+                # "INSTANCE" field still names the class it actually lives
+                # in; the numbered ones belong to a different, absorbed
+                # verifier and would misattribute the enum if trusted.
+                field_index = int(enum_object.value)
+                if field_index < len(dex.fields):
+                    static_field = dex.fields[field_index]
+                    if dex.field_name(static_field) == "INSTANCE":
+                        enum_verifier = dex.types[static_field.class_index]
+                cursor += 1
+            elif enum_object.kind == "call_result":
                 cursor += 1
         elif kind.proto_type == "map" and cursor < len(objects):
             if objects[cursor].kind == "static_field":
@@ -126,7 +150,8 @@ def _field_objects(
         names.append(name)
         classes.append(class_name)
         map_fields.append(map_field)
-    return names, classes, map_fields
+        enum_verifiers.append(enum_verifier)
+    return names, classes, map_fields, enum_verifiers
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,7 +223,9 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                 field_number_names[value] = static_name.removesuffix(
                     "_FIELD_NUMBER"
                 ).lower()
-    java_names, auxiliary_classes, map_fields = _field_objects(finding)
+    java_names, auxiliary_classes, map_fields, enum_verifiers = _field_objects(
+        dex, finding
+    )
     visible_names = [name for name in java_names if name is not None]
     obfuscated = names_are_obfuscated(visible_names)
     normalized_names = [
@@ -214,12 +241,20 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
     enum_enclosing: dict[str, str | None] = {}
     dependencies: set[str] = set()
     resolved_fields: list[tuple[str, bool, str | None, bool]] = []
-    for item, java_name, normalized_name, auxiliary_class, map_field in zip(
+    for (
+        item,
+        java_name,
+        normalized_name,
+        auxiliary_class,
+        map_field,
+        enum_verifier,
+    ) in zip(
         info.fields,
         java_names,
         normalized_names,
         auxiliary_classes,
         map_fields,
+        enum_verifiers,
         strict=True,
     ):
         kind = field_type(item.type_id)
@@ -285,6 +320,8 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                 if java_name is not None
                 else None
             )
+            if enum_evidence is None and enum_verifier is not None:
+                enum_evidence = recover_enum_evidence_from_verifier(dex, enum_verifier)
             if enum_evidence is None:
                 type_name = "int32"
             else:

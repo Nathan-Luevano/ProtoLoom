@@ -1,6 +1,6 @@
 from protoloom.container.dex import DexClass, DexField, DexMethod
 from protoloom.decode.infostring import HAS_HAS_BIT, InfoField
-from protoloom.decode.lite import _field_oneof, decode_lite_finding
+from protoloom.decode.lite import _field_objects, _field_oneof, decode_lite_finding
 from protoloom.extract.lite import LiteFinding, LiteObject
 
 
@@ -253,3 +253,40 @@ def test_authoritative_name_is_not_treated_as_obfuscated() -> None:
     field = decoded.schema.messages[0].fields[0]
     assert field.name == "id"
     assert field.confidence.value == "high"
+
+
+class _FakeVerifierDex(_FakeDex):
+    def __init__(self, *, singleton_name: str) -> None:
+        super().__init__()
+        self.types = ("LOwner;", "LOwner$Mode;", "LOwner$Mode$ModeVerifier;")
+        self.strings = ("newMessageInfo", "mode_", singleton_name)
+        self.fields = (DexField(2, 2, 2),)
+
+
+def _enum_field_objects(dex: object) -> list[str | None]:
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 12)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(
+            LiteObject("string", "mode_"),
+            LiteObject("static_field", 0),
+        ),
+    )
+    return _field_objects(dex, finding)[3]  # type: ignore[arg-type]
+
+
+def test_unqualified_instance_singleton_names_the_verifier() -> None:
+    verifiers = _enum_field_objects(_FakeVerifierDex(singleton_name="INSTANCE"))
+    assert verifiers == ["LOwner$Mode$ModeVerifier;"]
+
+
+def test_numbered_instance_singleton_is_not_trusted() -> None:
+    # R8 can merge several distinct Verifier classes into one physical
+    # class, telling their singletons apart only by field name (INSTANCE,
+    # INSTANCE$1, ...); once merged, a numbered singleton's declaring class
+    # no longer names the enum it actually belongs to.
+    verifiers = _enum_field_objects(_FakeVerifierDex(singleton_name="INSTANCE$1"))
+    assert verifiers == [None]

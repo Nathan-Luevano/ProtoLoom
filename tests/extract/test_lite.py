@@ -3,6 +3,7 @@ from protoloom.extract.lite import (
     LiteObject,
     extract_lite,
     recover_enum_evidence,
+    recover_enum_evidence_from_verifier,
     recover_map_evidence,
 )
 
@@ -356,7 +357,7 @@ class EnumFakeDex:
         constructor_index: int = 1,
         constructor_parameters: tuple[str, ...] = ("Ljava/lang/String;", "I", "I"),
     ) -> None:
-        self.types = (
+        self.types: tuple[str, ...] = (
             "Lmatrix/MatrixProto$Everything;",
             "Lmatrix/MatrixProto$Mode;",
         )
@@ -502,6 +503,56 @@ def test_enum_registers_do_not_leak_between_clinit_candidates() -> None:
     )
 
     assert evidence is None
+
+
+def test_enum_evidence_accepts_first_value_not_zero() -> None:
+    # proto2 (unlike proto3) doesn't require a zero-numbered enum value --
+    # a closed enum genuinely can start at 1, and that's not grounds to
+    # distrust otherwise-solid constructor/static-field-store evidence.
+    dex = EnumFakeDex()
+    _, complete = dex._items[0]
+    shifted = tuple(
+        unit if unit not in {0x0212, 0x1212} else unit + 0x1000
+        for unit in complete.instructions
+    )
+    dex._items = ((EncodedMethod(2, 0, 200), CodeItem(200, 3, 0, 4, 0, 0, shifted)),)
+
+    evidence = recover_enum_evidence(
+        dex,  # type: ignore[arg-type]
+        "Lmatrix/MatrixProto$Everything;",
+        "mode_",
+    )
+
+    assert evidence is not None
+    assert evidence.values == (("MODE_UNSPECIFIED", 1), ("MODE_ACTIVE", 2))
+
+
+def test_recover_enum_evidence_from_verifier_reads_enclosing_enum() -> None:
+    dex = EnumFakeDex()
+    dex.types = (
+        "Lmatrix/MatrixProto$Everything;",
+        "Lmatrix/MatrixProto$Mode;",
+        "Lmatrix/MatrixProto$Mode$ModeVerifier;",
+    )
+
+    evidence = recover_enum_evidence_from_verifier(
+        dex,  # type: ignore[arg-type]
+        "Lmatrix/MatrixProto$Mode$ModeVerifier;",
+    )
+
+    assert evidence is not None
+    assert evidence.descriptor == "Lmatrix/MatrixProto$Mode;"
+    assert evidence.values == (("MODE_UNSPECIFIED", 0), ("MODE_ACTIVE", 1))
+
+
+def test_recover_enum_evidence_from_verifier_rejects_unnested_descriptor() -> None:
+    assert (
+        recover_enum_evidence_from_verifier(
+            EnumFakeDex(),  # type: ignore[arg-type]
+            "LTopLevelVerifier;",
+        )
+        is None
+    )
 
 
 class MapFakeDex:

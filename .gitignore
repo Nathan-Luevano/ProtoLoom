@@ -12,3 +12,5 @@ htmlcov/
 out/
 *.apk
 PROTOLOOM-ROADMAP.md
+docs/
+NEXT.md
