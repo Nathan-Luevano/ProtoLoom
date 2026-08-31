@@ -165,7 +165,10 @@ def load_truth(
 
 
 def _recovered_message(
-    raw: dict[str, Any], package: str, enum_names: set[str]
+    raw: dict[str, Any],
+    package: str,
+    enum_names: set[str],
+    parent: str | None = None,
 ) -> BenchmarkMessage:
     local_enums = tuple(
         BenchmarkEnum(
@@ -195,8 +198,22 @@ def _recovered_message(
     return BenchmarkMessage(
         f"{package}.{raw['name']}" if package else raw["name"],
         fields,
+        parent,
         enums=local_enums,
     )
+
+
+def _recovered_messages(
+    raw: dict[str, Any],
+    package: str,
+    enum_names: set[str],
+    parent: str | None = None,
+) -> list[BenchmarkMessage]:
+    message = _recovered_message(raw, package, enum_names, parent)
+    messages = [message]
+    for nested in raw.get("messages", []):
+        messages.extend(_recovered_messages(nested, package, enum_names, message.name))
+    return messages
 
 
 def load_recovered(
@@ -232,10 +249,13 @@ def load_recovered(
     )
     enum_names = {enum.name for enum in enums}
     messages = tuple(
-        _recovered_message(message, schema["package"], enum_names)
+        recovered_message
         for schema in schemas
         for message in schema["messages"]
         if roots is None or message["name"] in roots
+        for recovered_message in _recovered_messages(
+            message, schema["package"], enum_names
+        )
     )
     return BenchmarkSchema(messages, enums=enums, compiled=True)
 
