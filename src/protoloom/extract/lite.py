@@ -464,6 +464,19 @@ def _scan_method(
             if opcode == 0x2B:
                 for target in _packed_switch_targets(code.instructions, instruction):
                     branch_states[target] = registers.copy()
+            else:
+                branch_target = _branch_target(instruction)
+                if branch_target is not None:
+                    current = branch_states.get(branch_target)
+                    branch_states[branch_target] = (
+                        registers.copy()
+                        if current is None
+                        else {
+                            key: value
+                            for key, value in current.items()
+                            if registers.get(key) == value
+                        }
+                    )
             pending_result = None
             continue
         if opcode == 0x12:
@@ -608,6 +621,24 @@ def _packed_switch_targets(
             target -= 0x100000000
         targets.append(instruction.offset + target)
     return tuple(targets)
+
+
+def _branch_target(instruction: _Instruction) -> int | None:
+    if instruction.opcode == 0x28:
+        delta = instruction.units[0] >> 8
+        if delta & 0x80:
+            delta -= 0x100
+    elif instruction.opcode in {0x29, *range(0x32, 0x3E)}:
+        delta = instruction.units[1]
+        if delta & 0x8000:
+            delta -= 0x10000
+    elif instruction.opcode == 0x2A:
+        delta = instruction.units[1] | instruction.units[2] << 16
+        if delta & 0x80000000:
+            delta -= 0x100000000
+    else:
+        return None
+    return instruction.offset + delta
 
 
 def _resolve_call(
