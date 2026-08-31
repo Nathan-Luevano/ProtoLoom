@@ -36,7 +36,10 @@ def _objects(value: object) -> tuple[dict[str, object], ...]:
     return tuple(item for item in value if isinstance(item, dict))
 
 
-def _add_messages(parent: Tree, value: object) -> None:
+def _add_messages(parent: Tree, value: object, depth: int = 0) -> None:
+    if depth == 16:
+        parent.add("Further nesting omitted")
+        return
     for message in _objects(value):
         name = message.get("name", "unnamed")
         confidence = message.get("confidence", "unknown")
@@ -51,7 +54,7 @@ def _add_messages(parent: Tree, value: object) -> None:
                     f"{field.get('type_name', 'unknown')} [{field_confidence}]"
                 )
             )
-        _add_messages(branch, message.get("messages"))
+        _add_messages(branch, message.get("messages"), depth + 1)
 
 
 def render_schema(schema: SchemaRecord, width: int = 80) -> str:
