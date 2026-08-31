@@ -210,6 +210,43 @@ def recover_enum_evidence(
     return _enum_evidence_from_descriptor(dex, return_types.pop())
 
 
+def recover_enum_evidence_from_field(
+    dex: DexFile, field_index: int
+) -> LiteEnumEvidence | None:
+    if field_index < 0 or field_index >= len(dex.fields):
+        return None
+    field = dex.fields[field_index]
+    for method, code in dex.iter_code_items():
+        raw_method = dex.methods[method.method_index]
+        if raw_method.class_index != field.class_index:
+            continue
+        evidence = _enum_accessor_evidence(dex, raw_method, code, field_index)
+        if evidence is not None:
+            return evidence
+    return None
+
+
+def _enum_accessor_evidence(
+    dex: DexFile, method: Any, code: CodeItem, field_index: int
+) -> LiteEnumEvidence | None:
+    instructions = _instructions(code.instructions)
+    if dex.method_parameter_types(method) or len(instructions) < 2:
+        return None
+    read, call = instructions[:2]
+    if read.opcode != 0x52 or call.opcode != 0x71 or read.units[1] != field_index:
+        return None
+    called = dex.methods[call.units[1]]
+    return_type = dex.method_return_type(method)
+    if (
+        _invoke_registers(call) != ((read.units[0] >> 8) & 0xF,)
+        or dex.method_parameter_types(called) != ("I",)
+        or dex.method_return_type(called) != return_type
+    ):
+        return None
+    values, offset, stores = _enum_values(dex, return_type)
+    return LiteEnumEvidence(return_type, values, offset, stores) if values else None
+
+
 def recover_enum_evidence_from_verifier(
     dex: DexFile, verifier_descriptor: str
 ) -> LiteEnumEvidence | None:
