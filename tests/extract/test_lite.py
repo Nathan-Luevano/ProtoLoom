@@ -415,12 +415,12 @@ class EnumFakeDex:
             "MODE_UNSPECIFIED",
             "MODE_ACTIVE",
         )
-        self.methods = (
+        self.methods: tuple[DexMethod, ...] = (
             DexMethod(0, 0, 0),
             DexMethod(1, 0, 1),
             DexMethod(1, 0, 2),
         )
-        self.fields = (
+        self.fields: tuple[DexField, ...] = (
             DexField(1, 1, 3),
             DexField(1, 1, 4),
         )
@@ -572,6 +572,21 @@ def test_enum_evidence_accepts_first_value_not_zero() -> None:
 
     assert evidence is not None
     assert evidence.values == (("MODE_UNSPECIFIED", 1), ("MODE_ACTIVE", 2))
+
+
+def test_enum_values_survive_obfuscated_static_field_names() -> None:
+    dex = EnumFakeDex()
+    dex.strings += ("a", "b")
+    dex.fields = (DexField(1, 1, 5), DexField(1, 1, 6))
+
+    evidence = recover_enum_evidence(
+        dex,  # type: ignore[arg-type]
+        "Lmatrix/MatrixProto$Everything;",
+        "mode_",
+    )
+
+    assert evidence is not None
+    assert evidence.values == (("MODE_UNSPECIFIED", 0), ("MODE_ACTIVE", 1))
 
 
 def test_recover_enum_evidence_from_verifier_reads_enclosing_enum() -> None:
