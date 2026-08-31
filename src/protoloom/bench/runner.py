@@ -115,7 +115,7 @@ def _target_line(report: MetricReport) -> str:
 
 def _target_metric(report: MetricReport, metric: str) -> str:
     score = report.scores[metric]
-    if metric == "round_trip_rate" and score.denominator == 0:
+    if score.denominator == 0:
         return f"{metric}=n/a"
     return f"{metric}={score.value:.2%}"
 
