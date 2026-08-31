@@ -256,6 +256,12 @@ class TuiApplication:
 
     def _bind_keys(self) -> None:
         help_visible = Condition(lambda: self.state.help_visible)
+        text_input = (
+            has_focus(self.source)
+            | has_focus(self.output)
+            | has_focus(self.open_path)
+            | has_focus(self.search)
+        )
         on_home = Condition(
             lambda: self.state.screen is Screen.HOME and not self.state.help_visible
         )
@@ -319,7 +325,7 @@ class TuiApplication:
         def focus_previous(event: KeyPressEvent) -> None:
             event.app.layout.focus_previous()
 
-        @self.bindings.add("?", eager=True)
+        @self.bindings.add("?", filter=help_visible | ~text_input, eager=True)
         def toggle_help(event: KeyPressEvent) -> None:
             self.state.help_visible = not self.state.help_visible
             if self.state.help_visible:
