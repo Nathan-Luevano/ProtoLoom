@@ -192,15 +192,27 @@ no recovery compile denominator.
 | App and selected truth | Field recall | Precision | Wire accuracy | Type fidelity | Names | Structure | Enums | Truth source compile |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Bitwarden Authenticator, `google_authenticator.proto` | 100% (12/12) | 100% (12/12) | 100% (12/12) | 75% (9/12) | 100% (12/12) | 0% (0/1) | 100% (5/5) | 100% (1/1) |
+| Bitwarden, package-normalized | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (1/1) | 100% (5/5) | 100% (1/1) |
 | Meshtastic, three selected files | 0% (0/486) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/134) | 0% (0/453) | 100% (3/3) |
 | Flipper, three selected schema groups | 0% (0/36) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/2) | 0% (0/20) | 100% (3/3) |
-| Gadgetbridge, three selected files | 100% (115/115) | 100% (115/115) | 100% (115/115) | 100% (115/115) | 63.48% (73/115) | 100% (16/16) | 100% (27/27) | 100% (3/3) |
+| Gadgetbridge, three selected files, package-normalized | 100% (115/115) | 100% (115/115) | 100% (115/115) | 100% (115/115) | 63.48% (73/115) | 100% (16/16) | 100% (27/27) | 100% (3/3) |
 | Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 86.49% (32/37) | 100% (37/37) | 100% (7/7) | 7.41% (2/27) | 100% (1/1) |
 
 Bitwarden's first manifest entry mistakenly paired the Authenticator schema
 with the Password Manager APK. The manifest now pins the matching Authenticator
 release; this is why its current strict run has 104 output files rather than the
 unrelated Password Manager run's 37.
+
+The two Bitwarden rows separate exact source-package identity from schema
+recovery under the compiled Java namespace. The first retains the source's
+absent proto package and therefore includes the confirmed package-information
+limit described below. The second explicitly normalizes that package and
+scopes recovery to `MigrationPayload`. It moved from 91.67% (11/12) to 100%
+type fidelity when repeated-message resolution stopped trusting an
+R8-obfuscated Java list-wrapper type (`Lxy2;`) over the exact
+`OtpParameters.class` literal retained in the objects array. Mullvad's
+descriptor remained byte-identical, and Smartspacer's selected metrics did not
+change.
 
 Meshtastic's retired `v2.8.1-internal.3` asset, release API entry, and Git tag
 all return 404 upstream, so the corpus now pins the available stable `v2.8.1`
@@ -244,6 +256,11 @@ classes use `nodomain.freeyourgadget.gadgetbridge.proto.garmin`, and
 of their fields are matched by compiled class identity; the original proto
 package remains the same lite-runtime information limit described for
 Bitwarden below.
+
+Both normalized views are directly reproducible with
+`scripts/diagnose_real_app.py --normalize-truth-package
+--scope-to-truth-roots`; they no longer require temporary descriptor rewriting
+or manual recovered-message filtering.
 
 Smartspacer and Bitwarden show perfect wire accuracy on matched fields.
 Smartspacer's nested-message
