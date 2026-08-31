@@ -454,10 +454,16 @@ def _scan_method(
     pending_result: Any = None
     findings: list[LiteFinding] = []
     bailouts: list[LiteBailout] = []
+    branch_states: dict[int, dict[int, Any]] = {}
     for instruction in _instructions(code.instructions):
+        if instruction.offset in branch_states:
+            registers = branch_states[instruction.offset].copy()
         opcode = instruction.opcode
         units = instruction.units
         if opcode in _BRANCHES:
+            if opcode == 0x2B:
+                for target in _packed_switch_targets(code.instructions, instruction):
+                    branch_states[target] = registers.copy()
             pending_result = None
             continue
         if opcode == 0x12:
@@ -581,6 +587,27 @@ def _scan_method(
                 )
             registers.clear()
     return findings, bailouts
+
+
+def _packed_switch_targets(
+    code: tuple[int, ...], instruction: _Instruction
+) -> tuple[int, ...]:
+    delta = instruction.units[1] | instruction.units[2] << 16
+    if delta & 0x80000000:
+        delta -= 0x100000000
+    payload = instruction.offset + delta
+    if payload < 0 or payload + 4 > len(code) or code[payload] != 0x0100:
+        return ()
+    size = code[payload + 1]
+    if payload + 4 + size * 2 > len(code):
+        return ()
+    targets = []
+    for offset in range(payload + 4, payload + 4 + size * 2, 2):
+        target = code[offset] | code[offset + 1] << 16
+        if target & 0x80000000:
+            target -= 0x100000000
+        targets.append(instruction.offset + target)
+    return tuple(targets)
 
 
 def _resolve_call(
