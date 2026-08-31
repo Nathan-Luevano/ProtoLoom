@@ -159,6 +159,23 @@ def test_help_toggles_without_mouse_input() -> None:
     asyncio.run(exercise())
 
 
+def test_question_mark_remains_typable_in_paths() -> None:
+    async def exercise() -> None:
+        with create_pipe_input() as app_input:
+            tui = TuiApplication(app_input, DummyOutput())
+            task = asyncio.create_task(tui.application.run_async())
+            await asyncio.sleep(0.05)
+            app_input.send_text("\r?")
+            await asyncio.sleep(0.05)
+
+            assert tui.source.text == "?"
+            assert tui.state.help_visible is False
+            tui.application.exit()
+            await task
+
+    asyncio.run(exercise())
+
+
 def test_large_results_survive_rapid_input_and_tiny_resize() -> None:
     async def exercise() -> None:
         with create_pipe_input() as app_input:
