@@ -60,3 +60,15 @@ class ExtractionJob:
             on_line(line.decode(errors="replace").rstrip())
         returncode = await self._process.wait()
         return JobResult(returncode, self._cancelled)
+
+    async def cancel(self) -> None:
+        process = self._process
+        if process is None or process.returncode is not None:
+            return
+        self._cancelled = True
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=2)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
