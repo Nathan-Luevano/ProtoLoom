@@ -117,10 +117,10 @@ instead of disappearing behind a medium-confidence finding:
 
 | Leg | Recovered schemas | Name recovery | Type fidelity | Enum recovery |
 |---|---:|---:|---:|---:|
-| javalite 3.21.12 + D8 | 28 | 100% (13 / 13) | 76.92% (10 / 13) | 100% (2 / 2) |
-| javalite 4.29.3 + D8 | 62 | 100% (13 / 13) | 76.92% (10 / 13) | 100% (2 / 2) |
-| javalite 4.35.1 + D8 | 64 | 100% (13 / 13) | 76.92% (10 / 13) | 100% (2 / 2) |
-| javalite 4.35.1 + default R8 | 2 | 100% (13 / 13) | 69.23% (9 / 13) | 100% (2 / 2) |
+| javalite 3.21.12 + D8 | 28 | 100% (13 / 13) | 100% (13 / 13) | 100% (2 / 2) |
+| javalite 4.29.3 + D8 | 62 | 100% (13 / 13) | 100% (13 / 13) | 100% (2 / 2) |
+| javalite 4.35.1 + D8 | 64 | 100% (13 / 13) | 100% (13 / 13) | 100% (2 / 2) |
+| javalite 4.35.1 + default R8 | 2 | 100% (13 / 13) | 92.31% (12 / 13) | 100% (2 / 2) |
 | javalite 4.35.1 + aggressive R8 | 2 | 84.62% (11 / 13) | 61.54% (8 / 13) | 0% (0 / 2) |
 
 Heuristic lite recovery is disabled by default. The matrix opts in with
@@ -128,10 +128,11 @@ Heuristic lite recovery is disabled by default. The matrix opts in with
 counts each emitted heuristic call. Without the flag those calls bail out and
 emit no guessed schema.
 
-These numbers were refreshed after the JSON evaluator learned to recurse into
-nested recovered messages. The round-trip checker now isolates the selected
-matrix package, so unrelated recovered runtime descriptors with unresolved
-imports cannot replace or prevent validation of the intended payload schema.
+These numbers score the emitted descriptor set, like the real-app rows, rather
+than the intermediate recovery JSON. The JSON evaluator now recurses into
+nested messages, but it does not represent the emitter's final qualified type
+resolution. The round-trip checker isolates the selected matrix package, so
+unrelated runtime descriptors cannot prevent validation of the payload schema.
 
 The aggressive R8 leg inlines and renames `newMessageInfo`; recovery succeeds
 by recognizing the validated `RawMessageInfo` constructor shape. Message class
@@ -145,16 +146,16 @@ and matching static-field stores. That moves enum recovery from 0/2 to 2/2 on
 all D8 legs and default R8. Aggressive R8 renames the getter and removes that
 field-to-enum association, so it honestly remains 0/2. D8 also retains the
 `MapEntryLite.newDefaultInstance` call and exact `WireFormat.FieldType` static
-fields, recovering `map<string, int32>`. Qualified enum scoring brings the D8
-legs to 10/13 and default R8 to 9/13. Both R8 modes reshape the map initializer
-beyond this exact proof, and aggressive R8 also lacks the enum association, so
-it remains 8/13. Original nesting is not invented when evidence is absent;
-structural fidelity remains 1/2 on this fixture.
+fields, recovering `map<string, int32>`. Final descriptor emission resolves all
+qualified message and enum references, bringing every D8 leg to 13/13. Default
+R8 remains 12/13 because it reshapes the map initializer beyond exact proof;
+aggressive R8 also loses nested class and enum associations and remains 8/13.
+Both original nesting relationships are recovered, for 2/2 structure.
 The ceiling applies the roadmap's declared ambiguity between the
 `int32`/`sint32`/`uint32` and `int64`/`sint64`/`uint64` families. The remaining
-23.08-point D8 gap and 30.77-point R8 gap are implementation loss, chiefly
-message-reference and optimizer-sensitive map reconstruction; neither is
-presented as an information limit.
+default/aggressive R8 gaps are implementation loss from optimizer-sensitive
+map, nested-class, and enum evidence; neither is presented as an information
+limit. D8 exceeds the wire-only ceiling using retained declared-type evidence.
 
 ## Tier B real-app runs
 
