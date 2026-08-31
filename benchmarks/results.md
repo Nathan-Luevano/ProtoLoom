@@ -155,8 +155,8 @@ change; their rows below contain those newer results.
 
 | App | Output schemas | Bail-outs | Strict-default result |
 |---|---:|---:|---|
-| Signal 8.22.2 | 9 | 404 | unresolved-order guesses refused |
-| Molly 8.19.2-4 | 3 | 206 | partial recovery |
+| Signal 8.22.2 | 186 | 0 | dependency schemas; selected Wire runtime unsupported |
+| Molly 8.19.2-4 | 3 | 0 | dependency schemas; selected Wire runtime unsupported |
 | Mullvad 2026.8 | 129 | 0 | recovered |
 | Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
 | Meshtastic 2.8.1-internal.3 | 52 | 1 | recovered; separately pinned schema repository |
@@ -164,10 +164,16 @@ change; their rows below contain those newer results.
 | Gadgetbridge 0.93.0 | 646 | 0 | recovered |
 | Smartspacer 1.11.2 | 70 | 0 | recovered with explicit enum uncertainty |
 
-An opt-in rerun increases Signal output from 9 to 183 schemas while still
-reporting 404 other bail-outs. That run is evidence of the recoverable floor,
-not strict behavior; the table above is the current default and refuses the
-visible-order guesses.
+Signal's strict output moved from 9 files and 404 bail-outs to 175 files and 11
+bail-outs with packed-switch state restoration, then to 186 files and zero
+bail-outs when the same exact-state handling was applied to ordinary branch
+targets. The remaining 11 were Play Billing dependency messages whose array
+indexes were constants established before an `if` chain. Molly's fresh run is
+also at zero bail-outs, but its output remains three files. Neither result is a
+ground-truth recovery claim for Signal's selected schemas: both apps build the
+selected `protowire` sources with Square Wire (`com.squareup.wire` and its
+`wire { protoLibrary = true }` build configuration), not protobuf-lite, so the
+recovered files are dependency schemas outside the selected truth set.
 
 These are coverage smoke results, not accuracy figures. Ground-truth scoring
 requires matching recovered messages to each selected source schema and is not
