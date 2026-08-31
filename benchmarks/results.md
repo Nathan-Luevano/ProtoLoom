@@ -159,7 +159,7 @@ change; their rows below contain those newer results.
 | Molly 8.19.2-4 | 3 | 0 | dependency schemas; selected Wire runtime unsupported |
 | Mullvad 2026.8 | 129 | 0 | recovered |
 | Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
-| Meshtastic 2.8.1-internal.3 | 52 | 1 | recovered; separately pinned schema repository |
+| Meshtastic 2.8.1 | 52 | 0 | dependency schemas; selected Wire runtime unsupported |
 | Flipper 1.8.1.1890 | 0 | 0 | no recoverable evidence |
 | Gadgetbridge 0.93.0 | 646 | 0 | recovered |
 | Smartspacer 1.11.2 | 70 | 0 | recovered with explicit enum uncertainty |
@@ -192,7 +192,7 @@ no recovery compile denominator.
 | App and selected truth | Field recall | Precision | Wire accuracy | Type fidelity | Names | Structure | Enums | Truth source compile |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Bitwarden Authenticator, `google_authenticator.proto` | 100% (12/12) | 100% (12/12) | 100% (12/12) | 75% (9/12) | 100% (12/12) | 0% (0/1) | 100% (5/5) | 100% (1/1) |
-| Meshtastic, three selected files | 0% (0/483) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/132) | 0% (0/449) | 100% (3/3) |
+| Meshtastic, three selected files | 0% (0/486) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/134) | 0% (0/453) | 100% (3/3) |
 | Flipper, three selected schema groups | 0% (0/36) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/2) | 0% (0/20) | 100% (3/3) |
 | Gadgetbridge, three selected files | 100% (115/115) | 100% (115/115) | 100% (115/115) | 100% (115/115) | 63.48% (73/115) | 100% (16/16) | 100% (27/27) | 100% (3/3) |
 | Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 86.49% (32/37) | 100% (37/37) | 100% (7/7) | 7.41% (2/27) | 100% (1/1) |
@@ -202,10 +202,21 @@ with the Password Manager APK. The manifest now pins the matching Authenticator
 release; this is why its current strict run has 104 output files rather than the
 unrelated Password Manager run's 37.
 
-Meshtastic's pinned Android dependency identifies its schema library as
-Wire-generated Kotlin multiplatform models. Those selected messages therefore
-do not expose the Java-lite `newMessageInfo` path that ProtoLoom v0.1 targets;
-the 52 recovered files belong to unrelated lite dependencies. Flipper likewise
+Meshtastic's retired `v2.8.1-internal.3` asset, release API entry, and Git tag
+all return 404 upstream, so the corpus now pins the available stable `v2.8.1`
+universal APK instead. The downloaded 20,794,130-byte artifact independently
+hashes to `e7ff1c1f9bd59142efd37a47ddb3ac9b05b0e65788f31478a5823b658d66fa0f`.
+Its release commit pins `org.meshtastic:protobufs` version
+`2.7.26.151-gef0ae57-SNAPSHOT`, resolved to full schema commit
+`ef0ae579e9de937f7fae25f9fdc5dbfe24a2fe2b`; the refreshed truth denominators
+come from that exact tree.
+
+That Android dependency identifies its schema library as Wire-generated Kotlin
+multiplatform models. The selected messages therefore do not expose the
+Java-lite `newMessageInfo` path that ProtoLoom v0.1 targets; the 52 recovered
+files belong to unrelated lite dependencies. The fresh stable run has zero
+bail-outs, and descriptor-to-descriptor diagnosis still matches none of the
+selected `meshtastic` package. Flipper likewise
 contains none of the selected messages as recoverable lite metadata or embedded
 descriptors. A fresh run finds no lite calls and no bail-outs, making its zero a
 measured unsupported-runtime result rather than a missing comparison.
