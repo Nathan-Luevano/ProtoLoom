@@ -120,8 +120,8 @@ instead of disappearing behind a medium-confidence finding:
 | javalite 3.21.12 + D8 | 28 | 100% (13 / 13) | 100% (13 / 13) | 100% (2 / 2) |
 | javalite 4.29.3 + D8 | 62 | 100% (13 / 13) | 100% (13 / 13) | 100% (2 / 2) |
 | javalite 4.35.1 + D8 | 64 | 100% (13 / 13) | 100% (13 / 13) | 100% (2 / 2) |
-| javalite 4.35.1 + default R8 | 2 | 100% (13 / 13) | 92.31% (12 / 13) | 100% (2 / 2) |
-| javalite 4.35.1 + aggressive R8 | 2 | 84.62% (11 / 13) | 61.54% (8 / 13) | 0% (0 / 2) |
+| javalite 4.35.1 + default R8 | 2 | 100% (13 / 13) | 100% (13 / 13) | 100% (2 / 2) |
+| javalite 4.35.1 + aggressive R8 | 2 | 84.62% (11 / 13) | 69.23% (9 / 13) | 0% (0 / 2) |
 
 Heuristic lite recovery is disabled by default. The matrix opts in with
 `--allow-heuristic-lite` to measure the recoverable floor, and the report still
@@ -147,15 +147,19 @@ all D8 legs and default R8. Aggressive R8 renames the getter and removes that
 field-to-enum association, so it honestly remains 0/2. D8 also retains the
 `MapEntryLite.newDefaultInstance` call and exact `WireFormat.FieldType` static
 fields, recovering `map<string, int32>`. Final descriptor emission resolves all
-qualified message and enum references, bringing every D8 leg to 13/13. Default
-R8 remains 12/13 because it reshapes the map initializer beyond exact proof;
-aggressive R8 also loses nested class and enum associations and remains 8/13.
-Both original nesting relationships are recovered, for 2/2 structure.
+qualified message and enum references. R8 inlines the map factory into a
+two-argument constructor, but each argument is a static field whose initializer
+still proves the canonical `STRING` and `INT32` names. Following that exact
+constructor/store chain brings default R8 to 13/13 and aggressive R8 to 9/13.
+Aggressive R8 still loses nested-class and enum associations. Both original
+nesting relationships are recovered, for 2/2 structure.
+The required Mullvad, Bitwarden, and Smartspacer reruns stayed byte-identical
+at 129/0, 104/0, and 70/0 respectively after this map change.
 The ceiling applies the roadmap's declared ambiguity between the
 `int32`/`sint32`/`uint32` and `int64`/`sint64`/`uint64` families. The remaining
-default/aggressive R8 gaps are implementation loss from optimizer-sensitive
-map, nested-class, and enum evidence; neither is presented as an information
-limit. D8 exceeds the wire-only ceiling using retained declared-type evidence.
+aggressive R8 gap is implementation loss from optimizer-sensitive nested-class
+and enum evidence, not an information limit. D8 and default R8 exceed the
+wire-only ceiling using retained declared-type evidence.
 
 ## Tier B real-app runs
 
