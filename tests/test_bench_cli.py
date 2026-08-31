@@ -50,3 +50,18 @@ def test_bench_resolves_bundled_corpus_name(
     result = runner.invoke(app, ["bench", "--corpus", "tier-a-small"])
     assert result.exit_code == 0, result.output
     assert "compile_rate" in result.output
+
+
+def test_tui_command_starts_terminal_application(monkeypatch: MonkeyPatch) -> None:
+    called = False
+
+    def run() -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr("protoloom.tui.application.run", run)
+
+    result = runner.invoke(app, ["tui"])
+
+    assert result.exit_code == 0
+    assert called is True
