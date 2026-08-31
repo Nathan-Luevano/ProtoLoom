@@ -59,11 +59,13 @@ def test_hash_mismatch_removes_bad_download(tmp_path: Path) -> None:
     assert not (tmp_path / "cache" / "target" / "truth.json").exists()
 
 
-def test_report_renders_unmeasured_round_trips_as_na() -> None:
+def test_report_renders_unmeasured_metrics_as_na() -> None:
     schema = BenchmarkSchema((BenchmarkMessage("Empty", ()),))
     report = aggregate_reports([score_target("empty", schema, schema)])
     rendered = render_report(report, per_target=True)
 
+    assert "type_fidelity                   n/a       n/a" in rendered
+    assert "type_fidelity=n/a" in rendered
     assert "round_trip_rate                 n/a       n/a" in rendered
     assert "round_trip_rate=n/a" in rendered
 
