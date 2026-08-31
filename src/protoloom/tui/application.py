@@ -128,6 +128,16 @@ class TuiApplication:
         self.state.show(Screen.HOME)
         self.application.layout.focus(self.body)
 
+    def _restore_focus(self) -> None:
+        if self.state.screen is Screen.OPEN:
+            self.application.layout.focus(self.open_path)
+        elif self.state.screen is Screen.SETUP:
+            self.application.layout.focus(self.source)
+        elif self.state.screen is Screen.RESULTS:
+            self.application.layout.focus(self.results_control)
+        else:
+            self.application.layout.focus(self.body)
+
     def _running_text(self) -> str:
         status = (
             f"\n  {self.state.error}\n" if self.state.error else "\n  Extracting…\n"
@@ -216,8 +226,13 @@ class TuiApplication:
         self.application.invalidate()
 
     def _bind_keys(self) -> None:
-        on_home = Condition(lambda: self.state.screen is Screen.HOME)
-        on_results = Condition(lambda: self.state.screen is Screen.RESULTS)
+        help_visible = Condition(lambda: self.state.help_visible)
+        on_home = Condition(
+            lambda: self.state.screen is Screen.HOME and not self.state.help_visible
+        )
+        on_results = Condition(
+            lambda: self.state.screen is Screen.RESULTS and not self.state.help_visible
+        )
 
         @self.bindings.add("up", filter=on_home)
         def move_up(event: KeyPressEvent) -> None:
@@ -264,15 +279,31 @@ class TuiApplication:
         def leave_search(event: KeyPressEvent) -> None:
             event.app.layout.focus(self.results_control)
 
-        @self.bindings.add("tab")
+        @self.bindings.add("tab", filter=~help_visible)
         def focus_next(event: KeyPressEvent) -> None:
             event.app.layout.focus_next()
 
-        @self.bindings.add("s-tab")
+        @self.bindings.add("s-tab", filter=~help_visible)
         def focus_previous(event: KeyPressEvent) -> None:
             event.app.layout.focus_previous()
 
-        @self.bindings.add("escape", filter=~on_home & ~has_focus(self.search))
+        @self.bindings.add("?", eager=True)
+        def toggle_help(event: KeyPressEvent) -> None:
+            self.state.help_visible = not self.state.help_visible
+            if self.state.help_visible:
+                event.app.layout.focus(self.help_control)
+            else:
+                self._restore_focus()
+            event.app.invalidate()
+
+        @self.bindings.add("escape", filter=help_visible, eager=True)
+        def close_help(event: KeyPressEvent) -> None:
+            self.state.help_visible = False
+            self._restore_focus()
+
+        @self.bindings.add(
+            "escape", filter=~on_home & ~has_focus(self.search) & ~help_visible
+        )
         def go_back(event: KeyPressEvent) -> None:
             self._show_home()
 
