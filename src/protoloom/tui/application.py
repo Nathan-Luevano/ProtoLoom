@@ -58,6 +58,8 @@ class TuiApplication:
             padding=1,
         )
         self.running = Window(FormattedTextControl(self._running_text), wrap_lines=True)
+        self.help_control = FormattedTextControl(self._help_text, focusable=True)
+        self.help = Window(self.help_control, wrap_lines=True)
         self.results_control = FormattedTextControl(self._results_text, focusable=True)
         self.detail_control = FormattedTextControl(self._detail_text)
         self.search = TextArea(height=1, prompt=" Search: ", multiline=False)
@@ -110,6 +112,8 @@ class TuiApplication:
         return " ↑/↓ move  Enter select  ? help  q quit "
 
     def _screen_container(self) -> Container:
+        if self.state.help_visible:
+            return self.help
         if self.state.screen is Screen.HOME:
             return self.home
         if self.state.screen is Screen.SETUP:
@@ -128,7 +132,22 @@ class TuiApplication:
         status = (
             f"\n  {self.state.error}\n" if self.state.error else "\n  Extracting…\n"
         )
+        if self.state.cancel_pending:
+            status = "\n  Cancel extraction? Press Ctrl-C again; Esc keeps running.\n"
         return status + "\n".join(f"  {line}" for line in self.state.log)
+
+    def _help_text(self) -> str:
+        return (
+            "\n  Keyboard help\n\n"
+            "  ↑/↓          Move selection\n"
+            "  Enter        Select or activate\n"
+            "  Tab/Shift-Tab Move between form controls\n"
+            "  /            Search schemas\n"
+            "  Esc          Back or close\n"
+            "  Ctrl-C       Cancel a running extraction\n"
+            "  ?            Open or close this help\n"
+            "  q            Quit from Home\n"
+        )
 
     def _open_output(self) -> None:
         try:

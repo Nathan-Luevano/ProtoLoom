@@ -18,6 +18,8 @@ class AppState:
     screen: Screen = Screen.HOME
     output: RecoveryOutput | None = None
     error: str | None = None
+    help_visible: bool = False
+    cancel_pending: bool = False
     query: str = ""
     selected: int = 0
     log: deque[str] = field(default_factory=lambda: deque(maxlen=1000))
