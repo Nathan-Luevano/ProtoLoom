@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,7 @@ class RecoveryOutput:
     root: Path
     schemas: tuple[SchemaRecord, ...]
     conflicts: tuple[dict[str, object], ...]
+    bailouts: int | None = None
 
 
 def _records(value: object, label: str) -> tuple[dict[str, object], ...]:
@@ -53,4 +55,13 @@ def load_output(root: Path) -> RecoveryOutput:
         if not isinstance(name, str) or not isinstance(package, str):
             raise OutputError("each schema requires string name and package values")
         items.append(SchemaRecord(name, package, schema))
-    return RecoveryOutput(root, tuple(items), conflicts)
+    return RecoveryOutput(root, tuple(items), conflicts, _bailout_count(root))
+
+
+def _bailout_count(root: Path) -> int | None:
+    try:
+        report = (root / "report.md").read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    match = re.search(r"^Bail-outs: (\d+)$", report, re.MULTILINE)
+    return int(match.group(1)) if match else None
