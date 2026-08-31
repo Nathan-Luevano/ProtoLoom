@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 from types import ModuleType
 
+from google.protobuf.descriptor_pb2 import FieldDescriptorProto, FileDescriptorSet
+
 
 def load_diagnostics() -> ModuleType:
     path = Path(__file__).parents[1] / "scripts" / "diagnose_real_app.py"
@@ -14,7 +16,33 @@ def load_diagnostics() -> ModuleType:
     return module
 
 
-load_recovered = load_diagnostics().load_recovered
+diagnostics = load_diagnostics()
+load_recovered = diagnostics.load_recovered
+load_truth = diagnostics.load_truth
+
+
+def test_truth_package_override_rewrites_message_types(tmp_path: Path) -> None:
+    descriptors = FileDescriptorSet()
+    schema = descriptors.file.add(name="schema.proto", package="source")
+    parent = schema.message_type.add(name="Parent")
+    schema.message_type.add(name="Child")
+    field = parent.field.add(
+        name="child",
+        number=1,
+        type=FieldDescriptorProto.TYPE_MESSAGE,
+        type_name=".source.Child",
+    )
+    field.label = FieldDescriptorProto.LABEL_OPTIONAL
+    truth = tmp_path / "truth.desc"
+    truth.write_bytes(descriptors.SerializeToString())
+
+    recovered = load_truth(truth, "schema.proto", "runtime")
+
+    assert [message.name for message in recovered.messages] == [
+        "runtime.Parent",
+        "runtime.Child",
+    ]
+    assert recovered.messages[0].fields[0].proto_type == "runtime.Child"
 
 
 def test_recovered_json_scores_top_level_and_message_local_enums(
