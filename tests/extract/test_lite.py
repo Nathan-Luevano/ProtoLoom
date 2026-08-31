@@ -205,6 +205,24 @@ def test_packed_switch_target_restores_prologue_constants() -> None:
     assert not result.findings[0].heuristic
 
 
+def test_conditional_target_restores_prologue_constants() -> None:
+    base = list(complete_instructions())
+    base.remove(0x0412)
+    instructions = (
+        *const_number(4, 0),
+        0x38,
+        4,
+        *const_string(4, 3),
+        *base,
+    )
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert not result.findings[0].heuristic
+
+
 def test_unresolved_array_index_bails_out_instead_of_guessing_order() -> None:
     base = list(complete_instructions())
     index_constant = base.index(0x0412)
