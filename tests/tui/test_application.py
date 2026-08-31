@@ -2,6 +2,7 @@ import asyncio
 import json
 from pathlib import Path
 
+from google.protobuf.descriptor_pb2 import FileDescriptorProto, FileDescriptorSet
 from prompt_toolkit.data_structures import Size
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
@@ -53,6 +54,36 @@ def test_keyboard_loads_existing_output(tmp_path: Path) -> None:
             await asyncio.sleep(0.05)
             app_input.send_text("\r")
             await asyncio.sleep(0.05)
+
+            assert tui.state.screen is Screen.RESULTS
+            assert tui.state.output is not None
+            assert tui.state.output.schemas[0].name == "sample.proto"
+            tui.application.exit()
+            await task
+
+    asyncio.run(exercise())
+
+
+def test_keyboard_runs_extraction_to_results(tmp_path: Path) -> None:
+    descriptor = FileDescriptorProto(name="sample.proto", syntax="proto3")
+    descriptor.message_type.add(name="Sample")
+    source = tmp_path / "sample.desc"
+    source.write_bytes(FileDescriptorSet(file=[descriptor]).SerializeToString())
+
+    async def exercise() -> None:
+        with create_pipe_input() as app_input:
+            tui = TuiApplication(app_input, DummyOutput())
+            tui.source.text = str(source)
+            tui.output.text = str(tmp_path / "out")
+            task = asyncio.create_task(tui.application.run_async())
+            await asyncio.sleep(0.05)
+            app_input.send_text("\r")
+            await asyncio.sleep(0.05)
+            app_input.send_text("\t\t\t\t\r")
+            for _ in range(100):
+                if tui.state.screen is Screen.RESULTS:
+                    break
+                await asyncio.sleep(0.02)
 
             assert tui.state.screen is Screen.RESULTS
             assert tui.state.output is not None
