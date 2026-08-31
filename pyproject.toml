@@ -96,6 +96,12 @@ type = "forbidden"
 source_modules = ["protoloom.reconcile"]
 forbidden_modules = ["protoloom.container", "protoloom.extract", "protoloom.decode", "protoloom.emit", "protoloom.validate", "protoloom.bench", "protoloom.cli"]
 
+[[tool.importlinter.contracts]]
+name = "Recovery layers do not depend on the terminal interface"
+type = "forbidden"
+source_modules = ["protoloom.model", "protoloom.container", "protoloom.extract", "protoloom.decode", "protoloom.emit", "protoloom.reconcile", "protoloom.validate", "protoloom.bench"]
+forbidden_modules = ["protoloom.tui"]
+
 [dependency-groups]
 dev = [
     "grpcio-tools>=1.66",
