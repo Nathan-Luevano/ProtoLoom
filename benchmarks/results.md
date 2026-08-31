@@ -89,37 +89,41 @@ is SHA-256 pinned. The same generated payload exercises scalars, packed values,
 nested messages, repeated messages, a map, an enum, a oneof, and proto3
 optional presence.
 
-All five legs share the metrics in the first table. Optimizer-sensitive type
-and enum fidelity are shown per leg in the second table. Bail-outs differ because
-the D8 archives include the complete javalite runtime, and every unresolved or
-opt-in heuristic call is now counted instead of disappearing behind a
-medium-confidence finding:
+All five legs share the metrics in the first table. Optimizer-sensitive name,
+type, and enum fidelity are shown per leg in the second table. Schema counts
+differ because the D8 archives include the complete javalite runtime. Every
+unresolved or opt-in heuristic call is counted as a bail-out or emitted schema
+instead of disappearing behind a medium-confidence finding:
 
 | Metric | Result | Count |
 |---|---:|---:|
 | Field recall | 100.00% | 13 / 13 |
 | Field precision | 100.00% | 13 / 13 |
 | Wire-type accuracy | 100.00% | 13 / 13 |
-| Name recovery | 84.62% | 11 / 13 |
 | Label accuracy | 100.00% | 13 / 13 |
-| Structural fidelity | 50.00% | 1 / 2 |
+| Structural fidelity | 100.00% | 2 / 2 |
 | Compile rate | 100.00% | 1 / 1 target |
 | Round-trip rate | 100.00% | 1 / 1 payload |
 | Type-fidelity ceiling | 92.31% | 12 / 13 fields |
 | Counted uncertainty | see below | every unresolved or heuristic call |
 
-| Leg | Counted calls | Type fidelity | Enum recovery |
-|---|---:|---:|---:|
-| javalite 3.21.12 + D8 | 27 | 76.92% (10 / 13) | 100.00% (2 / 2) |
-| javalite 4.29.3 + D8 | 61 | 76.92% (10 / 13) | 100.00% (2 / 2) |
-| javalite 4.35.1 + D8 | 61 | 76.92% (10 / 13) | 100.00% (2 / 2) |
-| javalite 4.35.1 + default R8 | 2 | 69.23% (9 / 13) | 100.00% (2 / 2) |
-| javalite 4.35.1 + aggressive R8 | 2 | 61.54% (8 / 13) | 0.00% (0 / 2) |
+| Leg | Recovered schemas | Name recovery | Type fidelity | Enum recovery |
+|---|---:|---:|---:|---:|
+| javalite 3.21.12 + D8 | 28 | 100% (13 / 13) | 76.92% (10 / 13) | 100% (2 / 2) |
+| javalite 4.29.3 + D8 | 62 | 100% (13 / 13) | 76.92% (10 / 13) | 100% (2 / 2) |
+| javalite 4.35.1 + D8 | 64 | 100% (13 / 13) | 76.92% (10 / 13) | 100% (2 / 2) |
+| javalite 4.35.1 + default R8 | 2 | 100% (13 / 13) | 69.23% (9 / 13) | 100% (2 / 2) |
+| javalite 4.35.1 + aggressive R8 | 2 | 84.62% (11 / 13) | 61.54% (8 / 13) | 0% (0 / 2) |
 
 Heuristic lite recovery is disabled by default. The matrix opts in with
 `--allow-heuristic-lite` to measure the recoverable floor, and the report still
 counts each emitted heuristic call. Without the flag those calls bail out and
 emit no guessed schema.
+
+These numbers were refreshed after the JSON evaluator learned to recurse into
+nested recovered messages. The round-trip checker now isolates the selected
+matrix package, so unrelated recovered runtime descriptors with unresolved
+imports cannot replace or prevent validation of the intended payload schema.
 
 The aggressive R8 leg inlines and renames `newMessageInfo`; recovery succeeds
 by recognizing the validated `RawMessageInfo` constructor shape. Message class
