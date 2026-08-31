@@ -50,15 +50,15 @@
       }
     },
     {
-      "id": "meshtastic-android-2-8-1-internal-3",
+      "id": "meshtastic-android-2-8-1",
       "license": "GPL-3.0-only",
-      "source_commit": "f3c374d773bf969d3294f2ead1993337c2e07bba",
-      "schema_tree_url": "https://github.com/meshtastic/protobufs/tree/f3c374d773bf969d3294f2ead1993337c2e07bba",
+      "source_commit": "ef0ae579e9de937f7fae25f9fdc5dbfe24a2fe2b",
+      "schema_tree_url": "https://github.com/meshtastic/protobufs/tree/ef0ae579e9de937f7fae25f9fdc5dbfe24a2fe2b",
       "schema_paths": ["meshtastic/config.proto", "meshtastic/mesh.proto", "meshtastic/telemetry.proto"],
       "artifact": {
-        "url": "https://github.com/meshtastic/Meshtastic-Android/releases/download/v2.8.1-internal.3/androidApp-fdroid-universal-release.apk",
-        "sha256": "bd3d1d93e6a062cb1f7714fbbe5f8c9e2c7d5d4e252742c199b7b0f13a7f6156",
-        "size": 20589868
+        "url": "https://github.com/meshtastic/Meshtastic-Android/releases/download/v2.8.1/androidApp-fdroid-universal-release.apk",
+        "sha256": "e7ff1c1f9bd59142efd37a47ddb3ac9b05b0e65788f31478a5823b658d66fa0f",
+        "size": 20794130
       }
     },
     {
