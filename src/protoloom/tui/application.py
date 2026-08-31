@@ -128,6 +128,8 @@ class TuiApplication:
         if self.state.screen is Screen.RESULTS:
             return " ↑/↓ move  / search  Esc back  ? help "
         if self.state.screen is Screen.RUNNING:
+            if not self.job.running:
+                return " Esc back  ? help "
             return " Ctrl-C cancel  ? help "
         return " ↑/↓ move  Enter select  ? help  q quit "
 
@@ -343,7 +345,10 @@ class TuiApplication:
 
         @self.bindings.add("escape", filter=on_running)
         def keep_running(event: KeyPressEvent) -> None:
-            self.state.cancel_pending = False
+            if self.job.running:
+                self.state.cancel_pending = False
+            else:
+                self._show_home()
             event.app.invalidate()
 
         @self.bindings.add(
