@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from prompt_toolkit import Application
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import StyleAndTextTuples
@@ -6,6 +8,7 @@ from prompt_toolkit.layout import DynamicContainer, HSplit, Layout, VSplit, Wind
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.widgets import Button, Checkbox, TextArea
 
+from protoloom.tui.jobs import ExtractionJob, ExtractionRequest
 from protoloom.tui.state import AppState, Screen
 
 
@@ -30,7 +33,7 @@ class TuiApplication:
                 self.jadx,
                 VSplit(
                     [
-                        Button("Start", handler=self._start_placeholder),
+                        Button("Start", handler=self._start),
                         Button("Back", handler=self._show_home),
                     ]
                 ),
@@ -38,6 +41,7 @@ class TuiApplication:
             padding=1,
         )
         self.running = Window(FormattedTextControl(self._running_text), wrap_lines=True)
+        self.job = ExtractionJob()
         self.screen = DynamicContainer(self._screen_container)
         root = HSplit(
             [
@@ -89,8 +93,32 @@ class TuiApplication:
         )
         return status + "\n".join(f"  {line}" for line in self.state.log)
 
-    def _start_placeholder(self) -> None:
-        self.state.fail("Extraction runner is not connected yet")
+    def _start(self) -> None:
+        source = Path(self.source.text).expanduser()
+        output = Path(self.output.text).expanduser()
+        if not source.is_file():
+            self.state.fail(f"Input file does not exist: {source}")
+            return
+        self.state.log.clear()
+        self.state.show(Screen.RUNNING)
+        request = ExtractionRequest(
+            source, output, self.heuristic.checked, self.jadx.checked
+        )
+        self.application.create_background_task(self._run_job(request))
+
+    async def _run_job(self, request: ExtractionRequest) -> None:
+        def append(line: str) -> None:
+            self.state.append_log(line)
+            self.application.invalidate()
+
+        result = await self.job.run(request, append)
+        if result.cancelled:
+            self.state.fail("Extraction cancelled")
+        elif result.returncode:
+            self.state.fail(f"Extraction failed with status {result.returncode}")
+        else:
+            self.state.fail("Extraction completed")
+        self.application.invalidate()
 
     def _bind_keys(self) -> None:
         on_home = Condition(lambda: self.state.screen is Screen.HOME)
