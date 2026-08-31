@@ -49,3 +49,10 @@ def test_reports_missing_and_malformed_files(tmp_path: Path) -> None:
     (tmp_path / "recovery.json").write_text("{", encoding="utf-8")
     with pytest.raises(OutputError, match="line 1, column 2"):
         load_output(tmp_path)
+
+
+def test_reports_invalid_utf8(tmp_path: Path) -> None:
+    (tmp_path / "recovery.json").write_bytes(b"\xff")
+
+    with pytest.raises(OutputError, match="invalid UTF-8 at byte 0"):
+        load_output(tmp_path)

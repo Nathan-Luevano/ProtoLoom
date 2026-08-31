@@ -37,6 +37,12 @@ def load_output(root: Path) -> RecoveryOutput:
         raise OutputError(
             f"malformed {path}: line {error.lineno}, column {error.colno}"
         ) from error
+    except UnicodeDecodeError as error:
+        raise OutputError(
+            f"malformed {path}: invalid UTF-8 at byte {error.start}"
+        ) from error
+    except RecursionError as error:
+        raise OutputError(f"malformed {path}: nesting is too deep") from error
     if not isinstance(value, dict):
         raise OutputError("recovery.json root must be an object")
     schemas = _records(value.get("schemas"), "schemas")
