@@ -16,7 +16,7 @@ from prompt_toolkit.widgets import Button, Checkbox, TextArea
 
 from protoloom.tui.jobs import ExtractionJob, ExtractionRequest
 from protoloom.tui.render import render_schema, render_summary
-from protoloom.tui.results import OutputError, load_output
+from protoloom.tui.results import OutputError, RecoveryOutput, load_output
 from protoloom.tui.state import AppState, Screen
 
 
@@ -186,10 +186,16 @@ class TuiApplication:
 
     def _open_output(self) -> None:
         try:
-            self.state.output = load_output(Path(self.open_path.text).expanduser())
+            output = load_output(Path(self.open_path.text).expanduser())
         except OutputError as error:
             self.state.fail(str(error))
             return
+        self._show_results(output)
+
+    def _show_results(self, output: RecoveryOutput) -> None:
+        self.state.output = output
+        self.state.selected = 0
+        self.search.text = ""
         self.state.show(Screen.RESULTS)
         self.application.layout.focus(self.results_control)
 
@@ -246,12 +252,11 @@ class TuiApplication:
             self.state.fail(f"Extraction failed with status {result.returncode}")
         else:
             try:
-                self.state.output = load_output(request.output)
+                output = load_output(request.output)
             except OutputError as error:
                 self.state.fail(str(error))
             else:
-                self.state.show(Screen.RESULTS)
-                self.application.layout.focus(self.results_control)
+                self._show_results(output)
         self.application.invalidate()
 
     def _bind_keys(self) -> None:
