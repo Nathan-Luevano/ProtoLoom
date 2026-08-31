@@ -18,6 +18,7 @@ def test_loads_recovery_output(tmp_path: Path) -> None:
             "conflicts": [{"reason": "different field types"}],
         },
     )
+    (tmp_path / "report.md").write_text("Bail-outs: 7\n", encoding="utf-8")
 
     output = load_output(tmp_path)
 
@@ -26,6 +27,7 @@ def test_loads_recovery_output(tmp_path: Path) -> None:
         ("sample.proto", "demo")
     ]
     assert output.conflicts == ({"reason": "different field types"},)
+    assert output.bailouts == 7
 
 
 @pytest.mark.parametrize(

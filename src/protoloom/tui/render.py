@@ -26,6 +26,9 @@ def render_summary(output: RecoveryOutput, width: int = 80) -> str:
     table.add_column()
     table.add_row("Directory", str(output.root))
     table.add_row("Schemas", str(len(output.schemas)))
+    table.add_row(
+        "Bail-outs", str(output.bailouts) if output.bailouts is not None else "n/a"
+    )
     table.add_row("Conflicts", str(len(output.conflicts)))
     return _render(table, width)
 
