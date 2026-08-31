@@ -137,9 +137,10 @@ unrelated runtime descriptors cannot prevent validation of the payload schema.
 The aggressive R8 leg inlines and renames `newMessageInfo`; recovery succeeds
 by recognizing the validated `RawMessageInfo` constructor shape. Message class
 names are obfuscated, while this configuration leaves the field-name strings
-intact. Default and aggressive R8 therefore have the same 84.62% field-name
-score: this matrix did not demonstrate a field-name cliff. The result measures
-call-shape and class-name damage, not loss of metadata field-name strings.
+intact. Default R8 recovers 13/13 names; aggressive R8 recovers 11/13 because
+two names depend on class identity that its configuration removes. The result
+measures call-shape and class-name damage, not a general loss of metadata
+field-name strings.
 Unobfuscated getter return types now identify the enum class, and its static
 initializer proves both value names and numbers through constructor arguments
 and matching static-field stores. That moves enum recovery from 0/2 to 2/2 on
@@ -155,11 +156,26 @@ Aggressive R8 still loses nested-class and enum associations. Both original
 nesting relationships are recovered, for 2/2 structure.
 The required Mullvad, Bitwarden, and Smartspacer reruns stayed byte-identical
 at 129/0, 104/0, and 70/0 respectively after this map change.
+
+A further aggressive-R8 inspection found an exact accessor chain from the
+message's integer storage field through the enum's `forNumber` equivalent.
+The enum initializer also retains constructor literals and numbers even though
+R8 renames its static fields. ProtoLoom now emits `MODE_UNSPECIFIED = 0` and
+`MODE_ACTIVE = 1` under the surviving obfuscated type name `z0`. The source
+type identity `Mode` does not survive, so type fidelity remains 9/13 and enum
+recovery remains 0/2; deriving `Mode` from the `MODE_` value prefix would be a
+guess. The other accessor candidate is a oneof-case enum and is rejected by
+its retained `_NOT_SET` value. A fresh five-leg run reproduced every table
+value above. Mullvad and Smartspacer remained descriptor-identical at 129/0
+and 70/0. Bitwarden remained 104/0; its combined dependency descriptor gained
+obfuscated enum values, while its selected normalized schema stayed at 100%
+on all nine extraction metrics.
 The ceiling applies the roadmap's declared ambiguity between the
 `int32`/`sint32`/`uint32` and `int64`/`sint64`/`uint64` families. The remaining
-aggressive R8 gap is implementation loss from optimizer-sensitive nested-class
-and enum evidence, not an information limit. D8 and default R8 exceed the
-wire-only ceiling using retained declared-type evidence.
+aggressive R8 gap combines optimizer-sensitive recovery loss with a confirmed
+identity limit: the enum's values and field association survive, but its source
+type name does not. D8 and default R8 exceed the wire-only ceiling using
+retained declared-type evidence.
 
 ## Tier B real-app runs
 
