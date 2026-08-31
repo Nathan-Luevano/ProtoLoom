@@ -33,7 +33,7 @@ class AppState:
         self.error = message
 
     def append_log(self, line: str) -> None:
-        self.log.append(line)
+        self.log.append(line if len(line) <= 4096 else f"{line[:4093]}...")
 
     def visible_schemas(self) -> tuple[SchemaRecord, ...]:
         if self.output is None:
