@@ -129,12 +129,13 @@ def test_large_results_survive_rapid_input_and_tiny_resize() -> None:
             task = asyncio.create_task(tui.application.run_async())
             await asyncio.sleep(0.05)
 
-            output.size = Size(rows=3, columns=10)
+            output.size = Size(rows=10, columns=20)
             tui.application.invalidate()
             app_input.send_text("\x1b[B" * 1000)
             await asyncio.sleep(0.2)
 
             assert tui.state.selected == 645
+            assert tui.results_control.create_content(20, 10).cursor_position.y == 646
             tui.application.exit()
             await task
 
