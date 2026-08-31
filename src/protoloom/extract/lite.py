@@ -178,6 +178,18 @@ def _raw_info_wrappers(dex: DexFile) -> set[int]:
     return wrappers
 
 
+def _enum_evidence_from_descriptor(
+    dex: DexFile, descriptor: str
+) -> LiteEnumEvidence | None:
+    class_name = descriptor.removeprefix("L").removesuffix(";").rsplit("/", 1)[-1]
+    if "$" not in class_name or any(not part for part in class_name.split("$")):
+        return None
+    values, code_offset, instruction_offsets = _enum_values(dex, descriptor)
+    if not values:
+        return None
+    return LiteEnumEvidence(descriptor, values, code_offset, instruction_offsets)
+
+
 def recover_enum_evidence(
     dex: DexFile, owner_descriptor: str, java_field_name: str
 ) -> LiteEnumEvidence | None:
@@ -195,14 +207,23 @@ def recover_enum_evidence(
     }
     if len(return_types) != 1:
         return None
-    descriptor = return_types.pop()
-    class_name = descriptor.removeprefix("L").removesuffix(";").rsplit("/", 1)[-1]
-    if "$" not in class_name or any(not part for part in class_name.split("$")):
+    return _enum_evidence_from_descriptor(dex, return_types.pop())
+
+
+def recover_enum_evidence_from_verifier(
+    dex: DexFile, verifier_descriptor: str
+) -> LiteEnumEvidence | None:
+    # newMessageInfo's objects array carries a reference to the field's
+    # EnumVerifier.INSTANCE singleton, not the enum type itself -- but the
+    # verifier is always a nested class of the real enum
+    # (CardType$CardTypeVerifier), so its enclosing class *is* the enum.
+    # This survives even when R8 strips the getter/setter accessors that
+    # recover_enum_evidence needs.
+    normalized = verifier_descriptor.removeprefix("L").removesuffix(";")
+    if "$" not in normalized:
         return None
-    values, code_offset, instruction_offsets = _enum_values(dex, descriptor)
-    if not values or values[0][1] != 0:
-        return None
-    return LiteEnumEvidence(descriptor, values, code_offset, instruction_offsets)
+    enum_descriptor = f"L{normalized.rsplit('$', 1)[0]};"
+    return _enum_evidence_from_descriptor(dex, enum_descriptor)
 
 
 def _enum_values(
