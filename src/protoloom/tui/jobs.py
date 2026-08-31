@@ -1,4 +1,6 @@
 import asyncio
+import os
+import signal
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -54,6 +56,7 @@ class ExtractionJob:
             *request.command(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            start_new_session=os.name == "posix",
         )
         assert self._process.stdout is not None
         while line := await self._process.stdout.readline():
@@ -66,9 +69,21 @@ class ExtractionJob:
         if process is None or process.returncode is not None:
             return
         self._cancelled = True
-        process.terminate()
+        self._signal(process, signal.SIGTERM)
         try:
             await asyncio.wait_for(process.wait(), timeout=2)
         except TimeoutError:
-            process.kill()
+            self._signal(process, signal.SIGKILL)
             await process.wait()
+
+    @staticmethod
+    def _signal(process: asyncio.subprocess.Process, value: signal.Signals) -> None:
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, value)
+            elif value is signal.SIGTERM:
+                process.terminate()
+            else:
+                process.kill()
+        except ProcessLookupError:
+            pass
