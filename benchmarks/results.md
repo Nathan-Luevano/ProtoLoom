@@ -29,6 +29,9 @@ The calibration schema has no nesting, oneofs, or enums, so those denominators
 are zero and are reported as unmeasured. The harness now excludes every
 zero-denominator metric from macro and micro aggregation, rather than treating
 the empty ratio as a vacuous 100%; per-target output uses `n/a` consistently.
+The same rule applies to the type-fidelity ceiling: for example, Tier A's
+enum-only `googleapis-month` target has no field ceiling to measure, while the
+aggregate remains 100% across the twelve targets that do have fields.
 
 ## Tier A pinned upstream corpus
 
