@@ -176,6 +176,33 @@ def test_question_mark_remains_typable_in_paths() -> None:
     asyncio.run(exercise())
 
 
+def test_slash_focuses_search_and_escape_returns_to_results() -> None:
+    async def exercise() -> None:
+        with create_pipe_input() as app_input:
+            tui = TuiApplication(app_input, DummyOutput())
+            tui.state.output = RecoveryOutput(
+                Path("out"),
+                (SchemaRecord("Alpha.proto", "pkg", {}),),
+                (),
+            )
+            tui.state.show(Screen.RESULTS)
+            tui.application.layout.focus(tui.results_control)
+            task = asyncio.create_task(tui.application.run_async())
+            await asyncio.sleep(0.05)
+
+            app_input.send_text("/alpha")
+            await asyncio.sleep(0.05)
+            assert tui.application.layout.has_focus(tui.search)
+            assert tui.state.query == "alpha"
+            app_input.send_text("\x1b\r")
+            await asyncio.sleep(0.05)
+            assert tui.application.layout.has_focus(tui.results_control)
+            tui.application.exit()
+            await task
+
+    asyncio.run(exercise())
+
+
 def test_large_results_survive_rapid_input_and_tiny_resize() -> None:
     async def exercise() -> None:
         with create_pipe_input() as app_input:
