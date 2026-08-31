@@ -1,5 +1,6 @@
 from protoloom.container.dex import CodeItem, DexField, DexMethod, EncodedMethod
 from protoloom.extract.lite import (
+    LiteMapEvidence,
     LiteObject,
     extract_lite,
     recover_enum_evidence,
@@ -616,7 +617,7 @@ class MapFakeDex:
             "defaultEntry",
             "noop",
         )
-        self.methods = (
+        self.methods: tuple[DexMethod, ...] = (
             DexMethod(0, 0, 0),
             DexMethod(1, 0, 1),
             DexMethod(0, 0, 5),
@@ -647,7 +648,9 @@ class MapFakeDex:
                 0x0E,
             ),
         )
-        self._items = ((EncodedMethod(0, 0, 300), code),)
+        self._items: tuple[tuple[EncodedMethod, CodeItem], ...] = (
+            (EncodedMethod(0, 0, 300), code),
+        )
 
     def method_name(self, method: DexMethod) -> str:
         return self.strings[method.name_index]
@@ -660,6 +663,8 @@ class MapFakeDex:
                 "Lcom/google/protobuf/WireFormat$FieldType;",
                 "Ljava/lang/Object;",
             )
+        if self.method_name(method) == "<init>":
+            return (self.types[2], self.types[2])
         return ()
 
     def method_return_type(self, method: DexMethod) -> str:
@@ -678,6 +683,49 @@ def test_map_types_require_default_entry_constructor_and_field_store() -> None:
     assert evidence is not None
     assert evidence.key_type == "string"
     assert evidence.value_type == "int32"
+
+
+def test_map_types_survive_inlined_factory_call() -> None:
+    dex = MapFakeDex()
+    dex.types = ("LHolder;", "LEntry;", "LFieldType;")
+    dex.strings += ("<init>", "STRING", "INT32", "key", "value")
+    dex.methods = (
+        DexMethod(0, 0, 0),
+        DexMethod(1, 0, 6),
+        DexMethod(2, 0, 0),
+        DexMethod(2, 0, 6),
+    )
+    dex.fields = (DexField(2, 2, 9), DexField(2, 2, 10), DexField(0, 1, 4))
+    holder = (0x0062, 0, 0x0162, 1, 0x0222, 1, 0x3070, 1, 0x0102, 0x0269, 2, 0x0E)
+    constants = (
+        0x0022,
+        2,
+        0x011A,
+        7,
+        0x2070,
+        3,
+        0x0010,
+        0x0069,
+        0,
+        0x0022,
+        2,
+        0x011A,
+        8,
+        0x2070,
+        3,
+        0x0010,
+        0x0069,
+        1,
+        0x0E,
+    )
+    dex._items = (
+        (EncodedMethod(0, 0, 300), CodeItem(300, 3, 0, 4, 0, 0, holder)),
+        (EncodedMethod(2, 0, 400), CodeItem(400, 2, 0, 2, 0, 0, constants)),
+    )
+
+    evidence = recover_map_evidence(dex, 2)  # type: ignore[arg-type]
+
+    assert evidence == LiteMapEvidence("string", "int32")
 
 
 def test_map_recovery_rejects_hostile_field_index() -> None:
