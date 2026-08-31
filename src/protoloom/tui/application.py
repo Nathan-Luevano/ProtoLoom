@@ -85,6 +85,10 @@ class TuiApplication:
     def _footer_text(self) -> str:
         if self.state.screen is Screen.SETUP:
             return " Tab/Shift-Tab move  Space toggle  Enter activate  Esc back "
+        if self.state.screen is Screen.RESULTS:
+            return " ↑/↓ move  / search  Esc back  ? help "
+        if self.state.screen is Screen.RUNNING:
+            return " Ctrl-C cancel  ? help "
         return " ↑/↓ move  Enter select  ? help  q quit "
 
     def _screen_container(self) -> Container:
@@ -155,10 +159,12 @@ class TuiApplication:
                 self.state.fail(str(error))
             else:
                 self.state.show(Screen.RESULTS)
+                self.application.layout.focus(self.results_control)
         self.application.invalidate()
 
     def _bind_keys(self) -> None:
         on_home = Condition(lambda: self.state.screen is Screen.HOME)
+        on_results = Condition(lambda: self.state.screen is Screen.RESULTS)
 
         @self.bindings.add("up", filter=on_home)
         def move_up(event: KeyPressEvent) -> None:
@@ -183,6 +189,18 @@ class TuiApplication:
         @self.bindings.add("q", filter=on_home)
         def quit_application(event: KeyPressEvent) -> None:
             event.app.exit()
+
+        @self.bindings.add("up", filter=on_results)
+        def previous_schema(event: KeyPressEvent) -> None:
+            self.state.selected -= 1
+            self.state.clamp_selection()
+            event.app.invalidate()
+
+        @self.bindings.add("down", filter=on_results)
+        def next_schema(event: KeyPressEvent) -> None:
+            self.state.selected += 1
+            self.state.clamp_selection()
+            event.app.invalidate()
 
         @self.bindings.add("tab")
         def focus_next(event: KeyPressEvent) -> None:
