@@ -13,6 +13,8 @@ def test_log_stays_bounded_under_rapid_output() -> None:
     assert len(state.log) == 1000
     assert state.log[0] == "line 99000"
     assert state.log[-1] == "line 99999"
+    state.append_log("x" * 1_000_000)
+    assert len(state.log[-1]) == 4096
 
 
 def test_filters_large_schema_collection() -> None:
