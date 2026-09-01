@@ -103,7 +103,7 @@ def wire_dex_type(dex: DexFile, field_index: int, adapter_index: int) -> str | N
     if (
         adapter_name == "ADAPTER" or adapter.class_index == field.type_index
     ) and adapter_owner.startswith("L"):
-        return adapter_owner[1:-1].rsplit("/", 1)[-1].replace("$", "_")
+        return adapter_owner[1:-1].rsplit("/", 1)[-1].replace("$", ".")
     scalar = wire_adapter_type(f"adapter#{adapter_name}")
     if scalar is not None:
         return scalar
