@@ -186,9 +186,9 @@ def test_nests_a_file_scope_enum_under_its_true_owning_message() -> None:
     )
     _apply_nested_renames(messages, enum_renames)
     assert top_level_enums == []
-    assert enum_renames == {"MigrationPayload_OtpType": "OtpType"}
+    assert enum_renames == {"MigrationPayload_OtpType": "MigrationPayload.OtpType"}
     assert [e.name for e in owner.enums] == ["OtpType"]
-    assert field_owner.fields[0].type_name == "OtpType"
+    assert field_owner.fields[0].type_name == "MigrationPayload.OtpType"
     assert messages == [owner]
 
 
