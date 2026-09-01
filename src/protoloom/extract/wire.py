@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from typing import TypeVar
 
@@ -68,6 +69,40 @@ class WireEnumFinding:
     descriptor: str
     values: tuple[tuple[str, int], ...]
     method_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class WireOneofFinding:
+    owner: str
+    fields: tuple[str, ...]
+    method_index: int
+
+
+_ONEOF_MESSAGE = re.compile(r"^At most one of (.+) may be non-null$")
+
+
+def extract_wire_oneofs(dex: DexFile, owners: set[str]) -> tuple[WireOneofFinding, ...]:
+    result = []
+    for item in dex.classes:
+        owner = dex.types[item.class_index]
+        if owner not in owners:
+            continue
+        for method in dex.class_methods(item):
+            if dex.method_name(method) != "<init>" or not method.code_offset:
+                continue
+            for instruction in _instructions(
+                dex.code_item(method.code_offset).instructions
+            ):
+                if instruction.opcode != 0x1A:
+                    continue
+                match = _ONEOF_MESSAGE.fullmatch(dex.strings[instruction.units[1]])
+                if match is not None:
+                    fields = tuple(match.group(1).split(", "))
+                    if len(fields) > 1:
+                        result.append(
+                            WireOneofFinding(owner, fields, method.method_index)
+                        )
+    return tuple(result)
 
 
 def _move_register(
