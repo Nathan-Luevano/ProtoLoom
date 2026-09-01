@@ -256,10 +256,12 @@ no recovery compile denominator.
 
 | App and selected truth | Field recall | Precision | Wire accuracy | Type fidelity | Names | Structure | Enums | Truth source compile |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Signal, two `protowire` files | 100% (551/551) | 100% (551/551) | 100% (551/551) | 99.64% (549/551) | 98.91% (545/551) | 94.55% (104/110) | 100% (160/160) | 100% (2/2) |
+| Molly, two `protowire` files | 100% (546/546) | 100% (546/546) | 100% (546/546) | 99.63% (544/546) | 98.90% (540/546) | 94.55% (104/110) | 100% (159/159) | 100% (2/2) |
 | Bitwarden Authenticator, `google_authenticator.proto` | 100% (12/12) | 100% (12/12) | 100% (12/12) | 75% (9/12) | 100% (12/12) | 0% (0/1) | 100% (5/5) | 100% (1/1) |
 | Bitwarden, package-normalized | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (1/1) | 100% (5/5) | 100% (1/1) |
-| Meshtastic, three selected files | 0% (0/486) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/134) | 0% (0/453) | 100% (3/3) |
-| Flipper, three selected schema groups | 0% (0/36) | n/a (0 recovered) | n/a | n/a | n/a | 0% (0/2) | 0% (0/20) | 100% (3/3) |
+| Meshtastic, three selected files | 91.77% (446/486) | 100% (446/446) | 98.43% (439/446) | 95.74% (427/446) | 99.33% (443/446) | 12.69% (17/134) | 77.70% (352/453) | 100% (3/3) |
+| Flipper, three selected schema groups | 66.67% (24/36) | 100% (24/24) | 75% (18/24) | 75% (18/24) | 100% (24/24) | 0% (0/2) | 0% (0/20) | 100% (3/3) |
 | Gadgetbridge, three selected files, package-normalized | 100% (115/115) | 100% (115/115) | 100% (115/115) | 100% (115/115) | 63.48% (73/115) | 100% (16/16) | 100% (27/27) | 100% (3/3) |
 | Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 86.49% (32/37) | 100% (37/37) | 100% (7/7) | 7.41% (2/27) | 100% (1/1) |
 
@@ -279,6 +281,17 @@ R8-obfuscated Java list-wrapper type (`Lxy2;`) over the exact
 descriptor remained byte-identical, and Smartspacer's selected metrics did not
 change.
 
+Signal and Molly were scored separately against the exact schema trees pinned
+for their releases. Signal recovers 551/551 selected fields and Molly 546/546,
+both with 100% precision, wire accuracy, labels, and enum values. Six source
+names and two exact field types in each APK retain only their compiled spelling
+or identity. Each fork scores 104/110 structural relationships; empty containers
+and presence relationships without a surviving compiled association are not
+invented. Both emitted selected descriptor groups compile 2/2. Molly's
+`SignalService.proto` is byte-identical to Signal's pinned source, while its
+different `StorageService.proto` was fetched and compiled from Molly commit
+`0e202dda90785771ff8c87526eaaf30c655f54f3` rather than reused from Signal.
+
 Meshtastic's retired `v2.8.1-internal.3` asset, release API entry, and Git tag
 all return 404 upstream, so the corpus now pins the available stable `v2.8.1`
 universal APK instead. The downloaded 20,794,130-byte artifact independently
@@ -288,15 +301,22 @@ Its release commit pins `org.meshtastic:protobufs` version
 `ef0ae579e9de937f7fae25f9fdc5dbfe24a2fe2b`; the refreshed truth denominators
 come from that exact tree.
 
-That Android dependency identifies its schema library as Wire-generated Kotlin
-multiplatform models. The selected messages therefore do not expose the
-Java-lite `newMessageInfo` path that ProtoLoom v0.1 targets; the 52 recovered
-files belong to unrelated lite dependencies. The fresh stable run has zero
-bail-outs, and descriptor-to-descriptor diagnosis still matches none of the
-selected `meshtastic` package. Flipper likewise
-contains none of the selected messages as recoverable lite metadata or embedded
-descriptors. A fresh run finds no lite calls and no bail-outs, making its zero a
-measured unsupported-runtime result rather than a missing comparison.
+Meshtastic strips `WireField` annotations, so recovery follows its generated
+adapter bytecode. The selected files recover 446/486 fields with no extras.
+The 40 missing fields belong to ten source messages with no corresponding
+generated class in the pinned APK; similarly named generated classes are not
+renamed to them. Exact type identity remains absent for some scalar-family and
+enum references, and the adapter writes do not encode most source nesting or
+proto3 synthetic-oneof structure. Those gaps stay explicit rather than being
+filled from the source truth used for scoring.
+
+Flipper's obfuscated `Settings` model retains all 24 source field strings and
+tagged writes. Six enum-typed fields recover only their surviving obfuscated
+types, because the source enum type names and value identities are absent;
+this yields 18/24 exact types and 0/20 enum values. The selected wearable
+`MainRequest`, `MainResponse`, and `WearableSyncItemData` classes and source
+names are absent from the release DEX, so their 12 fields remain unrecovered.
+The combined 24/36 result does not infer them from related RPC classes.
 
 Gadgetbridge's field-bearing calls used explicit array sizes and indexes, but
 the indexes `0` and `1` were constants established before `dynamicMethod`'s
