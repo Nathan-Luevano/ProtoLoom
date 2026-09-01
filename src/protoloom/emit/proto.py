@@ -102,6 +102,15 @@ def _message(item: Message, syntax: str, indent: str = "") -> list[str]:
     return lines
 
 
+def _declared_types(message: Message, prefix: str = "") -> set[str]:
+    qualified = f"{prefix}.{message.name}" if prefix else message.name
+    declared = {qualified}
+    declared.update(f"{qualified}.{enum.name}" for enum in message.enums)
+    for nested in message.messages:
+        declared.update(_declared_types(nested, qualified))
+    return declared
+
+
 def emit_proto(schema: RecoveredSchema) -> str:
     lines = [f'syntax = "{schema.syntax}";', ""]
     if schema.package:
@@ -116,9 +125,9 @@ def emit_proto(schema: RecoveredSchema) -> str:
     for message in schema.messages:
         lines.extend(_message(message, schema.syntax))
         lines.append("")
-    declared = {message.name for message in schema.messages} | {
-        enum.name for enum in schema.enums
-    }
+    declared = {enum.name for enum in schema.enums}
+    for message in schema.messages:
+        declared.update(_declared_types(message))
     referenced: set[str] = set()
     pending = list(schema.messages)
     while pending:
