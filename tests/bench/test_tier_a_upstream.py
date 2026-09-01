@@ -127,3 +127,31 @@ def test_extract_refuses_traversal_and_links(tmp_path: Path) -> None:
             bundle.addfile(member, io.BytesIO())
         with pytest.raises(ValueError, match=r"unsafe|non-file"):
             extract(archive, tmp_path / f"out-{kind!s}")
+
+
+def test_extract_materializes_one_root_tree(tmp_path: Path) -> None:
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        directory = tarfile.TarInfo("source/protos")
+        directory.type = tarfile.DIRTYPE
+        bundle.addfile(directory)
+        payload = b'syntax = "proto3";\n'
+        member = tarfile.TarInfo("source/protos/sample.proto")
+        member.size = len(payload)
+        bundle.addfile(member, io.BytesIO(payload))
+
+    root = extract(archive, tmp_path / "unpacked")
+
+    assert root == tmp_path / "unpacked/source"
+    assert (root / "protos/sample.proto").read_bytes() == payload
+
+
+def test_extract_refuses_multiple_roots(tmp_path: Path) -> None:
+    archive = tmp_path / "multiple.tar.gz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        for name in ("first/a.proto", "second/b.proto"):
+            member = tarfile.TarInfo(name)
+            member.size = 1
+            bundle.addfile(member, io.BytesIO(b"x"))
+    with pytest.raises(ValueError, match="one root directory"):
+        extract(archive, tmp_path / "multiple")
