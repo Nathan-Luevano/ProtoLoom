@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from protoloom.container.dex import AnnotationItem, DexClass, DexField
+from protoloom.extract.wire import extract_wire_annotations
 
 
 def _wire_dex() -> SimpleNamespace:
@@ -42,3 +43,14 @@ def _wire_dex() -> SimpleNamespace:
         field_annotations=lambda _: ((field, (annotation,)),),
         field_name=lambda item: "REPEATED" if item is label else "title",
     )
+
+
+def test_extracts_retained_wire_field_annotation() -> None:
+    finding = extract_wire_annotations(_wire_dex())[0]
+
+    assert (finding.owner, finding.number, finding.adapter) == (
+        "Lexample/Record;",
+        7,
+        "x#STRING",
+    )
+    assert (finding.label, finding.oneof) == ("repeated", "choice")
