@@ -167,6 +167,15 @@ def decode_wire_enums(
         package, _, class_name = path.rpartition("/")
         enum_name = class_name.replace("$", "_")
         parent = f"L{path.rsplit('$', 1)[0]};" if "$" in path else None
+        package_prefix = f"L{package}/"
+        package_syntaxes = {
+            syntax
+            for owner, syntax in (syntaxes or {}).items()
+            if owner.startswith(package_prefix)
+        }
+        fallback_syntax = (
+            package_syntaxes.pop() if len(package_syntaxes) == 1 else "proto2"
+        )
         evidence = Evidence(source, item.descriptor, "Wire enum initializer")
         enum = EnumType(
             enum_name,
@@ -177,7 +186,7 @@ def decode_wire_enums(
         schema = RecoveredSchema(
             f"{enum_name}.proto",
             package.replace("/", "."),
-            syntax=(syntaxes or {}).get(parent or item.descriptor, "proto2"),
+            syntax=(syntaxes or {}).get(parent or item.descriptor, fallback_syntax),
             enums=[enum],
             evidence=[evidence],
         )
