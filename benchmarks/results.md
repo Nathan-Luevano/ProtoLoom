@@ -256,8 +256,8 @@ no recovery compile denominator.
 
 | App and selected truth | Field recall | Precision | Wire accuracy | Type fidelity | Names | Structure | Enums | Truth source compile |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Signal, two `protowire` files | 100% (551/551) | 100% (551/551) | 100% (551/551) | 100% (551/551) | 98.91% (545/551) | 96.36% (106/110) | 100% (160/160) | 100% (2/2) |
-| Molly, two `protowire` files | 100% (546/546) | 100% (546/546) | 100% (546/546) | 100% (546/546) | 98.90% (540/546) | 96.36% (106/110) | 100% (159/159) | 100% (2/2) |
+| Signal, two `protowire` files | 100% (551/551) | 100% (551/551) | 100% (551/551) | 100% (551/551) | 98.91% (545/551) | 100% (110/110) | 100% (160/160) | 100% (2/2) |
+| Molly, two `protowire` files | 100% (546/546) | 100% (546/546) | 100% (546/546) | 100% (546/546) | 98.90% (540/546) | 100% (110/110) | 100% (159/159) | 100% (2/2) |
 | Bitwarden Authenticator, `google_authenticator.proto` | 100% (12/12) | 100% (12/12) | 100% (12/12) | 75% (9/12) | 100% (12/12) | 0% (0/1) | 100% (5/5) | 100% (1/1) |
 | Bitwarden, package-normalized | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (1/1) | 100% (5/5) | 100% (1/1) |
 | Meshtastic, three selected files | 91.77% (446/486) | 100% (446/446) | 98.43% (439/446) | 95.96% (428/446) | 99.33% (443/446) | 13.43% (18/134) | 77.70% (352/453) | 100% (3/3) |
@@ -285,9 +285,8 @@ Signal and Molly were scored separately against the exact schema trees pinned
 for their releases. Signal recovers 551/551 selected fields and Molly 546/546,
 both with 100% precision, wire accuracy, exact types, labels, and enum values.
 Six source names in each APK retain only their compiled spelling. Each fork
-scores 106/110 structural relationships; presence relationships without a
-surviving compiled association are not invented. Both emitted selected
-descriptor groups compile 2/2. Molly's
+scores 110/110 structural relationships. Both emitted selected descriptor
+groups compile 2/2. Molly's
 `SignalService.proto` is byte-identical to Signal's pinned source, while its
 different `StorageService.proto` was fetched and compiled from Molly commit
 `0e202dda90785771ff8c87526eaaf30c655f54f3` rather than reused from Signal.
@@ -296,6 +295,12 @@ The two recovered relationships are empty nested messages referenced by exact
 field adapters. Both APKs retain the child classes as direct Wire `Message`
 subclasses and retain their exact DEX `EnclosingClass` parents. This closes the
 two prior type misses without inferring a container from source truth.
+
+The four remaining relationships were proto3 optional presence. Their retained
+`schemaIndex` values identify exact constructor parameters, and Kotlin's
+synthetic default constructors set those parameters to literal null under the
+corresponding mask bits. ProtoLoom evaluates that compiled default path and
+accepts only scalar or enum fields; nullable message fields are not relabeled.
 
 Meshtastic's retired `v2.8.1-internal.3` asset, release API entry, and Git tag
 all return 404 upstream, so the corpus now pins the available stable `v2.8.1`
