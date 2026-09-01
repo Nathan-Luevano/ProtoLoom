@@ -225,3 +225,22 @@ def test_extract_compiles_lite_schema_and_honors_heuristic_flag(
     assert flags == [True]
     assert "string value = 1;" in (output / "lite.proto").read_text()
     assert FileDescriptorSet.FromString((output / "classes.desc").read_bytes()).file
+
+
+def test_doctor_reports_required_and_optional_tools() -> None:
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 0, result.output
+    tools = json.loads(result.output)
+    assert set(tools) == {"protoc", "jadx (optional)", "docker (optional)"}
+    assert all(isinstance(value, str) for value in tools.values())
+
+
+def test_bench_reports_invalid_manifest(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+
+    result = runner.invoke(app, ["bench", "--corpus", str(manifest)])
+
+    assert result.exit_code == 2
+    assert "benchmark failed:" in result.output
