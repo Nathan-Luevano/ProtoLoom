@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from protoloom.container.dex import AnnotationItem, DexField, DexFile
+from protoloom.extract.lite import _Instruction
 
 _MESSAGE = "Lcom/squareup/wire/Message;"
 _WIRE_FIELD = "Lcom/squareup/wire/WireField;"
@@ -31,6 +32,32 @@ class WireFieldFinding:
     adapter: str
     label: str
     oneof: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class WireAdapterFinding:
+    owner: str
+    field: DexField
+    number: int
+    adapter: DexField
+    method_index: int
+    instruction_offset: int
+
+
+def _constant(instruction: _Instruction) -> tuple[int, int] | None:
+    opcode = instruction.opcode
+    units = instruction.units
+    if opcode == 0x12:
+        register = (units[0] >> 8) & 0xF
+        value = units[0] >> 12
+        return register, value - 16 if value & 8 else value
+    if opcode == 0x13:
+        value = units[1]
+        return units[0] >> 8, value - 65536 if value & 0x8000 else value
+    if opcode == 0x14:
+        value = units[1] | units[2] << 16
+        return units[0] >> 8, value - 2**32 if value & 0x80000000 else value
+    return None
 
 
 def _elements(dex: DexFile, annotation: AnnotationItem) -> dict[str, object]:
