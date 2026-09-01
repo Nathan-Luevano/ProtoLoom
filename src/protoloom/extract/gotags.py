@@ -221,16 +221,18 @@ def scan_go_struct_tags(elf: GoElf, source: str) -> GoTagExtraction:
         return GoTagExtraction((), ())
     if b"go1.24." not in build_info:
         return GoTagExtraction((), ("unsupported Go metadata version",))
+    if len(typelinks) % 4:
+        return GoTagExtraction((), ("malformed Go type-link table",))
     schemas: list[RecoveredSchema] = []
     bailouts: list[str] = []
     for (relative,) in struct.iter_unpack("<i", typelinks):
-        pointer = memory.rodata.address + relative
-        if memory.kind(pointer) != 22:
-            continue
-        target = memory.pointer(pointer + 48)
-        if memory.kind(target) != 25:
-            continue
         try:
+            pointer = memory.rodata.address + relative
+            if memory.kind(pointer) != 22:
+                continue
+            target = memory.pointer(pointer + 48)
+            if memory.kind(target) != 25:
+                continue
             schema, reasons = _struct_schema(memory, target, source)
         except (UnicodeDecodeError, ValueError):
             continue
