@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from protoloom.cli import _dex_inputs, _find, app
 from protoloom.container.detect import ContainerKind, Detection
 from protoloom.extract.jadx import JadxError, JadxResult
+from protoloom.model import Confidence, Field, Message, RecoveredSchema
 
 runner = CliRunner()
 
@@ -188,3 +189,39 @@ def test_dex_inputs_ignore_non_android_container(tmp_path: Path) -> None:
     binary = tmp_path / "unknown.bin"
     binary.write_bytes(b"unknown")
     assert _dex_inputs(binary) == []
+
+
+def test_extract_compiles_lite_schema_and_honors_heuristic_flag(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    binary = tmp_path / "classes.dex"
+    binary.write_bytes(b"dex")
+    schema = RecoveredSchema(
+        name="lite.proto",
+        package="demo",
+        messages=[
+            Message(
+                "Lite",
+                fields=[Field("value", 1, "string", Confidence.HIGH)],
+            )
+        ],
+    )
+    flags: list[bool] = []
+
+    def find_lite(path: Path, *, allow_heuristic: bool = False) -> object:
+        flags.append(allow_heuristic)
+        lineage = {("demo", "lite.proto"): ("Ldemo/Lite;", None)}
+        return [schema], [], lineage, {}
+
+    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr("protoloom.cli._find_lite", find_lite)
+    output = tmp_path / "output"
+    result = runner.invoke(
+        app,
+        ["extract", str(binary), "--allow-heuristic-lite", "--output", str(output)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert flags == [True]
+    assert "string value = 1;" in (output / "lite.proto").read_text()
+    assert FileDescriptorSet.FromString((output / "classes.desc").read_bytes()).file
