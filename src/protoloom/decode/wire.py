@@ -32,9 +32,7 @@ def _field(
         return None
     if type_name.startswith("."):
         type_name = type_name.rsplit(".", 1)[-1].replace("$", "_")
-    boxed_presence = _boxed_presence(
-        dex, item.field, proto3, item.label, item.oneof
-    )
+    boxed_presence = _boxed_presence(dex, item.field, proto3, item.label, item.oneof)
     default_presence = (
         proto3
         and item.oneof is None
@@ -123,6 +121,7 @@ def decode_wire_adapter_fields(
     names: tuple[WireNameFinding, ...],
     oneofs: tuple[WireOneofFinding, ...],
     source: str,
+    syntaxes: dict[str, str] | None = None,
 ) -> dict[str, list[Field]]:
     recovered_names = {(item.owner, item.field.name_index): item.name for item in names}
     indexes = {field: index for index, field in enumerate(dex.fields)}
@@ -140,6 +139,14 @@ def decode_wire_adapter_fields(
             (item.owner, item.field.name_index), dex.field_name(item.field)
         )
         location = f"method {item.method_index} @ 0x{item.instruction_offset:x}"
+        oneof = groups.get((item.owner, name))
+        presence = _boxed_presence(
+            dex,
+            item.field,
+            (syntaxes or {}).get(item.owner) == "proto3",
+            item.label,
+            oneof,
+        )
         fields[item.owner].append(
             Field(
                 name,
@@ -148,8 +155,9 @@ def decode_wire_adapter_fields(
                 Confidence.HIGH,
                 [Evidence(source, location, "Square Wire tagged adapter write")],
                 label=item.label,
-                oneof=groups.get((item.owner, name)),
+                oneof=oneof or (f"_field_{item.number}" if presence else None),
                 packed=item.packed or None,
+                proto3_optional=presence,
             )
         )
     return fields
@@ -163,7 +171,7 @@ def decode_wire_adapters(
     source: str,
     syntaxes: dict[str, str] | None = None,
 ) -> list[RecoveredSchema]:
-    fields = decode_wire_adapter_fields(dex, findings, names, oneofs, source)
+    fields = decode_wire_adapter_fields(dex, findings, names, oneofs, source, syntaxes)
     names_by_owner = {item.owner: item.message_name for item in names}
     schemas = []
     for owner, items in fields.items():
