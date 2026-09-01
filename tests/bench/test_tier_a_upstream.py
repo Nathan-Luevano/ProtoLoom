@@ -239,3 +239,34 @@ def test_materialize_source_downloads_individual_files(
     assert result == root
     assert downloads == [("https://example.test/one", root / "proto/one.proto")]
     assert (root / "proto/one.proto").read_text() == "a" * 64
+
+
+def test_materialize_source_downloads_and_extracts_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, Path]] = []
+
+    def fake_download(url: str, expected: str, size: int, output: Path) -> None:
+        calls.append((url, output))
+
+    def fake_extract(archive: Path, destination: Path) -> Path:
+        calls.append(("extract", archive))
+        return destination / "source-root"
+
+    monkeypatch.setattr("protoloom.bench.upstream.download", fake_download)
+    monkeypatch.setattr("protoloom.bench.upstream.extract", fake_extract)
+    source = {
+        "name": "protobuf",
+        "commit": "a" * 40,
+        "url": "https://example.test/source.tar.gz",
+        "sha256": "b" * 64,
+        "size": 10,
+    }
+    cache = tmp_path / "cache"
+    root = tmp_path / "sources"
+
+    result = materialize_source(source, cache, root)
+
+    archive = cache / f"protobuf-{'a' * 40}.tar.gz"
+    assert result == root / "source-root"
+    assert calls == [(source["url"], archive), ("extract", archive)]
