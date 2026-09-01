@@ -102,6 +102,47 @@ def _method_writes(dex: DexFile, method: EncodedMethod) -> list[WireAdapterFindi
     return findings
 
 
+def extract_wire_adapter_writes(dex: DexFile) -> tuple[WireAdapterFinding, ...]:
+    findings = []
+    types = dex.types
+    adapter_bases = {
+        method.class_index
+        for method in dex.methods
+        if tuple(
+            types[index]
+            for index in dex.prototypes[method.prototype_index].parameter_type_indexes
+        )[-2:]
+        == ("I", "Ljava/lang/Object;")
+        and types[dex.prototypes[method.prototype_index].return_type_index] == "V"
+    }
+    for item in dex.classes:
+        if item.superclass_index not in adapter_bases:
+            continue
+        methods = dex.class_methods(item)
+        signatures = []
+        for method in methods:
+            raw = dex.methods[method.method_index]
+            prototype = dex.prototypes[raw.prototype_index]
+            parameters = tuple(
+                types[index] for index in prototype.parameter_type_indexes
+            )
+            signatures.append((parameters, types[prototype.return_type_index]))
+        for method, (parameters, result) in zip(methods, signatures, strict=True):
+            if method.code_offset == 0:
+                continue
+            if len(parameters) != 2 or result != "V":
+                continue
+            try:
+                writes = _method_writes(dex, method)
+            except (IndexError, ValueError):
+                continue
+            findings.extend(writes)
+    unique = {
+        (item.owner, item.field.name_index, item.number): item for item in findings
+    }
+    return tuple(unique[key] for key in sorted(unique))
+
+
 def _elements(dex: DexFile, annotation: AnnotationItem) -> dict[str, object]:
     return {dex.strings[name]: value for name, value in annotation.elements}
 
