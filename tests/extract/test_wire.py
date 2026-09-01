@@ -202,6 +202,17 @@ def test_resolves_wire_dex_types() -> None:
     assert wire_dex_type(dex, 0, 1) == "bool"
 
 
+def test_preserves_nested_wire_dex_types() -> None:
+    fields = (DexField(0, 0, 0), DexField(1, 1, 1))
+    dex: Any = SimpleNamespace(
+        fields=fields,
+        types=("Lexample/Record;", "Lexample/Outer$Inner;"),
+        field_name=lambda field: "ADAPTER" if field is fields[1] else "value",
+    )
+
+    assert wire_dex_type(dex, 0, 1) == "Outer.Inner"
+
+
 def test_decodes_adapter_write_evidence() -> None:
     model = DexField(0, 1, 0)
     adapter = DexField(2, 3, 1)
