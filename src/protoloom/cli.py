@@ -317,8 +317,12 @@ def _nested_lite_enums(
             continue
         assert owner_descriptor is not None
         owner_name = owner_descriptor.removeprefix("L").removesuffix(";")
-        prefix = f"{owner_name.rsplit('/', 1)[-1].replace('$', '_')}_"
-        if enum.name.startswith(prefix) and len(enum.name) > len(prefix):
+        prefixes = (
+            f"{owner_name.rsplit('/', 1)[-1].replace('$', '_')}_",
+            f"{owner.name}_",
+        )
+        prefix = next((item for item in prefixes if enum.name.startswith(item)), None)
+        if prefix is not None and len(enum.name) > len(prefix):
             new_name = enum.name[len(prefix) :]
             enum_renames[enum.name] = new_name
             enum.name = new_name
