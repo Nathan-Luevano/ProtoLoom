@@ -287,6 +287,29 @@ class DexFile:
         offsets = self._unpack(f"<{int(size)}I", int(class_annotations_off) + 4)
         return tuple(self._annotation_item(int(offset)) for offset in offsets)
 
+    def field_annotations(
+        self, item: DexClass
+    ) -> tuple[tuple[DexField, tuple[AnnotationItem, ...]], ...]:
+        if item.annotations_offset == 0:
+            return ()
+        _, field_count, _, _ = self._unpack("<IIII", item.annotations_offset)
+        cursor = item.annotations_offset + 16
+        result = []
+        for _ in range(int(field_count)):
+            field_index, annotation_set_offset = self._unpack("<II", cursor)
+            cursor += 8
+            if field_index >= len(self.fields):
+                raise DexError("annotated field index is out of range")
+            (count,) = self._unpack("<I", int(annotation_set_offset))
+            offsets = self._unpack(
+                f"<{int(count)}I", int(annotation_set_offset) + 4
+            )
+            annotations = tuple(
+                self._annotation_item(int(offset)) for offset in offsets
+            )
+            result.append((self.fields[int(field_index)], annotations))
+        return tuple(result)
+
     def enclosing_class_index(self, item: DexClass) -> int | None:
         for annotation in self.class_annotations(item):
             if self.types[annotation.type_index] != _ENCLOSING_CLASS_TYPE:
