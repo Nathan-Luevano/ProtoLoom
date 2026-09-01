@@ -130,3 +130,29 @@ def test_scans_linked_go_struct_metadata() -> None:
     assert result.bailouts == ()
     fields = result.schemas[0].messages[0].fields
     assert [(field.name, field.type_name) for field in fields] == [("id", "uint64")]
+
+
+def test_rejects_unsupported_go_metadata_version() -> None:
+    elf = FakeElf(b"")
+    elf.payloads.update({".typelink": b"", ".go.buildinfo": b"go1.23.0"})
+    elf.sections += (
+        ElfSection(".typelink", 0, 0, 0x2000, 2, 1),
+        ElfSection(".go.buildinfo", 0, 8, 0x3000, 2, 1),
+    )
+
+    result = scan_go_struct_tags(elf, "fixture")
+
+    assert result.bailouts == ("unsupported Go metadata version",)
+
+
+def test_rejects_malformed_go_type_links() -> None:
+    elf = FakeElf(b"")
+    elf.payloads.update({".typelink": b"x", ".go.buildinfo": b"go1.24.0"})
+    elf.sections += (
+        ElfSection(".typelink", 0, 1, 0x2000, 2, 1),
+        ElfSection(".go.buildinfo", 0, 8, 0x3000, 2, 1),
+    )
+
+    result = scan_go_struct_tags(elf, "fixture")
+
+    assert result.bailouts == ("malformed Go type-link table",)
