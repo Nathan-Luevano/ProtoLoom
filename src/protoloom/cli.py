@@ -276,6 +276,7 @@ def _nested_lite_messages(
     enclosing_of: dict[str, str | None],
 ) -> list[Message]:
     attached: set[int] = set()
+    nested: list[tuple[str, str]] = []
     renames: dict[str, str] = {}
     for own_descriptor, message in by_descriptor.items():
         enclosing_descriptor = enclosing_of.get(own_descriptor)
@@ -286,6 +287,7 @@ def _nested_lite_messages(
         ):
             continue
         parent = by_descriptor[enclosing_descriptor]
+        original_name = message.name
         # Some generators name a nested class after its own enclosing class,
         # e.g. AccessMethod$AccessMethod_Bridges. Strip the redundant prefix
         # once the real parent is known, so the emitted nested message keeps
@@ -300,10 +302,27 @@ def _nested_lite_messages(
         )
         if prefix is not None and len(message.name) > len(prefix):
             new_name = message.name[len(prefix) :]
-            renames[message.name] = new_name
             message.name = new_name
+        nested.append((own_descriptor, original_name))
         parent.messages.append(message)
         attached.add(id(message))
+    for own_descriptor, original_name in nested:
+        message = by_descriptor[own_descriptor]
+        names = [message.name]
+        descriptor = enclosing_of.get(own_descriptor)
+        while descriptor in by_descriptor:
+            names.append(by_descriptor[descriptor].name)
+            descriptor = enclosing_of.get(descriptor)
+        qualified = ".".join(reversed(names))
+        flattened = (
+            own_descriptor.removeprefix("L")
+            .removesuffix(";")
+            .rsplit("/", 1)[-1]
+            .replace("$", "_")
+        )
+        renames[flattened] = qualified
+        if original_name != message.name:
+            renames[original_name] = qualified
     top_level = [
         message
         for item in items
