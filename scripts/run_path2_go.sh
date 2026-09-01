@@ -36,4 +36,27 @@ PY
 uv run protoloom extract "$work/path2go" --output "$work/out"
 protoc -I "$work/out" --descriptor_set_out="$work/recompiled.desc" \
   "$work/out/Record.proto"
+uv run python - "$work/recompiled.desc" <<'PY'
+import sys
+from pathlib import Path
+
+from google.protobuf.descriptor_pb2 import FieldDescriptorProto, FileDescriptorSet
+
+descriptor = FileDescriptorSet.FromString(Path(sys.argv[1]).read_bytes()).file[0]
+message = descriptor.message_type[0]
+actual = [
+    (field.name, field.number, field.type, field.label, field.options.packed)
+    for field in message.field
+]
+expected = [
+    ("id", 1, FieldDescriptorProto.TYPE_UINT64, FieldDescriptorProto.LABEL_OPTIONAL, False),
+    ("label", 2, FieldDescriptorProto.TYPE_STRING, FieldDescriptorProto.LABEL_OPTIONAL, False),
+    ("samples", 3, FieldDescriptorProto.TYPE_SINT32, FieldDescriptorProto.LABEL_REPEATED, True),
+]
+if actual != expected:
+    raise SystemExit(f"unexpected recovered fields: {actual}")
+print("field_recall: 100.00% (3/3)")
+print("type_fidelity: 100.00% (3/3)")
+print("label_accuracy: 100.00% (3/3)")
+PY
 echo "compile_rate: 100.00% (1/1)"
