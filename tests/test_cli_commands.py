@@ -6,7 +6,7 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 from pytest import MonkeyPatch
 from typer.testing import CliRunner
 
-from protoloom.cli import app
+from protoloom.cli import _dex_inputs, _find, app
 from protoloom.container.detect import ContainerKind, Detection
 from protoloom.extract.jadx import JadxError, JadxResult
 
@@ -161,3 +161,30 @@ def test_extract_reports_retained_jadx_context(
     assert (
         "retained 4 Java sources and indexed 2 protobuf metadata sites" in result.output
     )
+
+
+def test_archive_scanning_finds_and_deduplicates_descriptors(tmp_path: Path) -> None:
+    descriptor = FileDescriptorSet()
+    file_descriptor = descriptor.file.add(
+        name="embedded.proto", package="embedded", syntax="proto3"
+    )
+    file_descriptor.message_type.add(name="Embedded")
+    payload = file_descriptor.SerializeToString()
+    dex = b"dex\n039\x00" + payload
+    apk = tmp_path / "embedded.apk"
+    with ZipFile(apk, "w") as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+        archive.writestr("classes.dex", dex)
+        archive.writestr("assets/schema.pb", payload)
+
+    findings = _find(apk)
+
+    assert [finding.descriptor.name for finding in findings] == ["embedded.proto"]
+    assert findings[0].source in {"classes.dex", "assets/schema.pb"}
+    assert _dex_inputs(apk) == [("classes.dex", dex)]
+
+
+def test_dex_inputs_ignore_non_android_container(tmp_path: Path) -> None:
+    binary = tmp_path / "unknown.bin"
+    binary.write_bytes(b"unknown")
+    assert _dex_inputs(binary) == []
