@@ -145,14 +145,19 @@ def test_nests_a_file_scope_enum_under_its_true_owning_message() -> None:
         ),
     ]
     lineage = {
-        ("", "MigrationPayload.proto"): ("LMigrationPayload;", None),
+        ("", "MigrationPayload.proto"): (
+            "LGoogleAuthenticatorProtos$MigrationPayload;",
+            None,
+        ),
         ("", "OtpParameters.proto"): (
-            "LMigrationPayload$OtpParameters;",
-            "LMigrationPayload;",
+            "LGoogleAuthenticatorProtos$MigrationPayload$OtpParameters;",
+            "LGoogleAuthenticatorProtos$MigrationPayload;",
         ),
     }
     enum_lineage: dict[tuple[str, str], dict[str, str | None]] = {
-        ("", "OtpParameters.proto"): {"MigrationPayload_OtpType": "LMigrationPayload;"}
+        ("", "OtpParameters.proto"): {
+            "MigrationPayload_OtpType": "LGoogleAuthenticatorProtos$MigrationPayload;"
+        }
     }
     by_descriptor, enclosing_of = _lite_message_index(items, lineage)
     messages = _nested_lite_messages(items, by_descriptor, enclosing_of)
