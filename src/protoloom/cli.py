@@ -308,10 +308,9 @@ def _nested_lite_enums(
         if owner is None:
             top_level_enums.append(enum)
             continue
-        # Same redundant-prefix shape as nested messages, e.g.
-        # MigrationPayload_OtpType once MigrationPayload is the known real
-        # parent.
-        prefix = f"{owner.name}_"
+        assert owner_descriptor is not None
+        owner_name = owner_descriptor.removeprefix("L").removesuffix(";")
+        prefix = f"{owner_name.rsplit('/', 1)[-1].replace('$', '_')}_"
         if enum.name.startswith(prefix) and len(enum.name) > len(prefix):
             new_name = enum.name[len(prefix) :]
             enum_renames[enum.name] = new_name
