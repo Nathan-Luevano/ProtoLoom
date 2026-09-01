@@ -76,6 +76,8 @@ def decode_wire_adapter_fields(
                 type_name,
                 Confidence.HIGH,
                 [Evidence(source, location, "Square Wire tagged adapter write")],
+                label=item.label,
+                packed=item.packed or None,
             )
         )
     return fields
