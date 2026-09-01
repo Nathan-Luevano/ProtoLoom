@@ -384,9 +384,6 @@ def extract_wire_enums(
     type_indexes.update(
         index for index, descriptor in enumerate(dex.types) if descriptor in descriptors
     )
-    type_indexes.update(
-        field.class_index for field in dex.fields if dex.field_name(field) == "ADAPTER"
-    )
     model_packages = {item.owner.rsplit("/", 1)[0] for item in findings}
     model_packages.update(item.owner.rsplit("/", 1)[0] for item in annotations)
     for item in dex.classes:
