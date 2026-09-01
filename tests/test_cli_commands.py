@@ -7,6 +7,8 @@ from pytest import MonkeyPatch
 from typer.testing import CliRunner
 
 from protoloom.cli import app
+from protoloom.container.detect import ContainerKind, Detection
+from protoloom.extract.jadx import JadxError
 
 runner = CliRunner()
 
@@ -96,3 +98,35 @@ def test_inspect_reports_real_elf_shape() -> None:
     assert "sections:" in result.output
     assert "segments:" in result.output
     assert "go: no" in result.output
+
+
+def test_extract_refuses_jadx_for_unsupported_container(tmp_path: Path) -> None:
+    binary = tmp_path / "unknown.bin"
+    binary.write_bytes(b"unknown")
+
+    result = runner.invoke(app, ["extract", str(binary), "--jadx"])
+
+    assert result.exit_code == 2
+    assert "--jadx only supports APK, AAB, and DEX inputs" in result.output
+
+
+def test_extract_reports_jadx_failure(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    binary = tmp_path / "classes.dex"
+    binary.write_bytes(b"dex")
+    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr(
+        "protoloom.cli._find_lite",
+        lambda path, allow_heuristic: ([], [], {}, {}),
+    )
+    monkeypatch.setattr(
+        "protoloom.cli.detect", lambda path: Detection(ContainerKind.DEX)
+    )
+
+    def fail_jadx(path: Path, output: Path, timeout_seconds: float) -> None:
+        raise JadxError("jadx unavailable")
+
+    monkeypatch.setattr("protoloom.cli.decompile_with_jadx", fail_jadx)
+    result = runner.invoke(app, ["extract", str(binary), "--jadx"])
+
+    assert result.exit_code == 2
+    assert "jadx fallback failed: jadx unavailable" in result.output
