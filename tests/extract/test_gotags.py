@@ -1,7 +1,12 @@
 from typing import Literal
 
 from protoloom.container.elf import ElfSection
-from protoloom.extract.gotags import GoProtobufTag, _Memory, parse_protobuf_tag
+from protoloom.extract.gotags import (
+    GoProtobufTag,
+    _Memory,
+    _protobuf_type,
+    parse_protobuf_tag,
+)
 
 
 class FakeElf:
@@ -26,7 +31,7 @@ def test_parses_go_protobuf_struct_tag() -> None:
     tag = parse_protobuf_tag(
         'protobuf:"zigzag32,3,rep,packed,name=samples,proto3" json:"samples,omitempty"'
     )
-    assert tag == GoProtobufTag("zigzag32", 3, "repeated", "samples", True, True)
+    assert tag == GoProtobufTag("zigzag32", 3, "repeated", "samples", True, True, None)
 
 
 def test_rejects_missing_or_malformed_protobuf_tag() -> None:
@@ -56,3 +61,15 @@ def test_reads_go_runtime_type_name_and_kind() -> None:
 
     assert memory.type_name(0x1040) == "main.Record"
     assert memory.kind(0x1040) == 25
+
+
+def test_resolves_repeated_zigzag_field_type() -> None:
+    data = bytearray(192)
+    data[64 + 23] = 23
+    data[64 + 48 : 64 + 56] = (0x1080).to_bytes(8, "little")
+    data[128 + 23] = 5
+    memory = _Memory(FakeElf(bytes(data)))
+    tag = parse_protobuf_tag('protobuf:"zigzag32,3,rep,packed,name=samples,proto3"')
+
+    assert tag is not None
+    assert _protobuf_type(memory, 0x1040, tag) == "sint32"

@@ -16,6 +16,7 @@ class GoProtobufTag:
     name: str
     packed: bool
     proto3: bool
+    enum_name: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,4 +110,38 @@ def parse_protobuf_tag(value: str) -> GoProtobufTag | None:
         name,
         "packed" in options,
         "proto3" in options,
+        options.get("enum", "enum=").removeprefix("enum=") or None,
     )
+
+
+def _protobuf_type(memory: _Memory, address: int, tag: GoProtobufTag) -> str | None:
+    kind = memory.kind(address)
+    if tag.label == "repeated":
+        if kind != 23:
+            return None
+        address = memory.pointer(address + 48)
+        kind = memory.kind(address)
+    if tag.enum_name is not None and tag.encoding == "varint":
+        return tag.enum_name.rsplit(".", 1)[-1]
+    scalar = {
+        ("varint", 1): "bool",
+        ("varint", 10): "uint32",
+        ("varint", 11): "uint64",
+        ("zigzag32", 5): "sint32",
+        ("zigzag64", 6): "sint64",
+        ("fixed32", 10): "fixed32",
+        ("fixed32", 14): "float",
+        ("fixed64", 11): "fixed64",
+        ("fixed64", 15): "double",
+    }.get((tag.encoding, kind))
+    if scalar is not None:
+        return scalar
+    if tag.encoding == "bytes" and kind == 24:
+        return "string"
+    if tag.encoding == "bytes" and kind == 23:
+        element = memory.pointer(address + 48)
+        return "bytes" if memory.kind(element) == 8 else None
+    if tag.encoding == "bytes" and kind == 22:
+        message = memory.pointer(address + 48)
+        return memory.type_name(message).rsplit(".", 1)[-1]
+    return None
