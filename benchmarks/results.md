@@ -217,11 +217,11 @@ change; their rows below contain those newer results.
 
 | App | Output schemas | Bail-outs | Strict-default result |
 |---|---:|---:|---|
-| Signal 8.22.2 | 776 | 0 | selected Wire schemas recovered |
-| Molly 8.19.2-4 | 577 | 0 | selected Wire schemas recovered |
+| Signal 8.22.2 | 787 | 0 | selected Wire schemas recovered |
+| Molly 8.19.2-4 | 589 | 0 | selected Wire schemas recovered |
 | Mullvad 2026.8 | 129 | 0 | recovered |
 | Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
-| Meshtastic 2.8.1 | 253 | 0 | selected Wire schemas partially recovered |
+| Meshtastic 2.8.1 | 288 | 0 | selected Wire schemas partially recovered |
 | Flipper 1.8.1.1890 | 61 | 0 | selected Wire `Settings` recovered |
 | Gadgetbridge 0.93.0 | 646 | 0 | recovered |
 | Smartspacer 1.11.2 | 70 | 0 | recovered with explicit enum uncertainty |
@@ -256,11 +256,11 @@ no recovery compile denominator.
 
 | App and selected truth | Field recall | Precision | Wire accuracy | Type fidelity | Names | Structure | Enums | Truth source compile |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Signal, two `protowire` files | 100% (551/551) | 100% (551/551) | 100% (551/551) | 99.64% (549/551) | 98.91% (545/551) | 94.55% (104/110) | 100% (160/160) | 100% (2/2) |
-| Molly, two `protowire` files | 100% (546/546) | 100% (546/546) | 100% (546/546) | 99.63% (544/546) | 98.90% (540/546) | 94.55% (104/110) | 100% (159/159) | 100% (2/2) |
+| Signal, two `protowire` files | 100% (551/551) | 100% (551/551) | 100% (551/551) | 100% (551/551) | 98.91% (545/551) | 96.36% (106/110) | 100% (160/160) | 100% (2/2) |
+| Molly, two `protowire` files | 100% (546/546) | 100% (546/546) | 100% (546/546) | 100% (546/546) | 98.90% (540/546) | 96.36% (106/110) | 100% (159/159) | 100% (2/2) |
 | Bitwarden Authenticator, `google_authenticator.proto` | 100% (12/12) | 100% (12/12) | 100% (12/12) | 75% (9/12) | 100% (12/12) | 0% (0/1) | 100% (5/5) | 100% (1/1) |
 | Bitwarden, package-normalized | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (1/1) | 100% (5/5) | 100% (1/1) |
-| Meshtastic, three selected files | 91.77% (446/486) | 100% (446/446) | 98.43% (439/446) | 95.74% (427/446) | 99.33% (443/446) | 12.69% (17/134) | 77.70% (352/453) | 100% (3/3) |
+| Meshtastic, three selected files | 91.77% (446/486) | 100% (446/446) | 98.43% (439/446) | 95.96% (428/446) | 99.33% (443/446) | 13.43% (18/134) | 77.70% (352/453) | 100% (3/3) |
 | Flipper, three selected schema groups | 66.67% (24/36) | 100% (24/24) | 75% (18/24) | 75% (18/24) | 100% (24/24) | 0% (0/2) | 0% (0/20) | 100% (3/3) |
 | Gadgetbridge, three selected files, package-normalized | 100% (115/115) | 100% (115/115) | 100% (115/115) | 100% (115/115) | 63.48% (73/115) | 100% (16/16) | 100% (27/27) | 100% (3/3) |
 | Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 86.49% (32/37) | 100% (37/37) | 100% (7/7) | 7.41% (2/27) | 100% (1/1) |
@@ -283,14 +283,19 @@ change.
 
 Signal and Molly were scored separately against the exact schema trees pinned
 for their releases. Signal recovers 551/551 selected fields and Molly 546/546,
-both with 100% precision, wire accuracy, labels, and enum values. Six source
-names and two exact field types in each APK retain only their compiled spelling
-or identity. Each fork scores 104/110 structural relationships; empty containers
-and presence relationships without a surviving compiled association are not
-invented. Both emitted selected descriptor groups compile 2/2. Molly's
+both with 100% precision, wire accuracy, exact types, labels, and enum values.
+Six source names in each APK retain only their compiled spelling. Each fork
+scores 106/110 structural relationships; presence relationships without a
+surviving compiled association are not invented. Both emitted selected
+descriptor groups compile 2/2. Molly's
 `SignalService.proto` is byte-identical to Signal's pinned source, while its
 different `StorageService.proto` was fetched and compiled from Molly commit
 `0e202dda90785771ff8c87526eaaf30c655f54f3` rather than reused from Signal.
+
+The two recovered relationships are empty nested messages referenced by exact
+field adapters. Both APKs retain the child classes as direct Wire `Message`
+subclasses and retain their exact DEX `EnclosingClass` parents. This closes the
+two prior type misses without inferring a container from source truth.
 
 Meshtastic's retired `v2.8.1-internal.3` asset, release API entry, and Git tag
 all return 404 upstream, so the corpus now pins the available stable `v2.8.1`
@@ -617,8 +622,8 @@ matches it exactly, while additionally reporting per-field confidence and
 evidence that pbtk does not. The honest caveat is scope, not accuracy on this
 target: this is one app, one ground-truth file, unobfuscated Java-lite —
 Bitwarden and Smartspacer confirm several of these fixes generalize, but
-Signal, Molly, Gadgetbridge, and aggressively obfuscated builds still show
-real, separate gaps (bail-outs, the R8-stripped structural cases) that this
-session did not touch. The pinned adapter is
+Other corpus rows still expose separately documented optimizer and information
+limits; this one-app differential does not characterize them. The pinned
+adapter is
 `scripts/pbtk_1_1_2_adapter.sh`; `scripts/compare_pbtk.sh` records isolated
 tool logs and statuses for a directory of artifacts.
