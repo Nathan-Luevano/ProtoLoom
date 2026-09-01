@@ -18,6 +18,7 @@ from protoloom.extract.wire import (
     _constructor_arguments,
     _constructor_move,
     _constructor_value,
+    _default_constructor_state,
     _parameter_registers,
     extract_wire_annotations,
     extract_wire_messages,
@@ -155,6 +156,21 @@ def test_reads_null_constructor_arguments() -> None:
     invoke = _Instruction(0, 0x70, (0x3070, 0, 0x0210))
 
     assert _constructor_arguments(dex, invoke, {1: 0}) == (0,)
+
+
+def test_seeds_default_constructor_masks() -> None:
+    method: Any = SimpleNamespace(code_offset=1)
+    dex: Any = SimpleNamespace(
+        method_parameter_types=lambda _: (
+            "I",
+            "Lkotlin/jvm/internal/DefaultConstructorMarker;",
+        ),
+        code_item=lambda _: SimpleNamespace(
+            registers_size=4, ins_size=3, instructions=()
+        ),
+    )
+
+    assert _default_constructor_state(dex, method) == ((), {2: -1})
 
 
 def test_resolves_wire_dex_types() -> None:

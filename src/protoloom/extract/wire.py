@@ -179,6 +179,24 @@ def _constructor_arguments(
     return tuple(nulls)
 
 
+def _default_constructor_state(
+    dex: DexFile, method: EncodedMethod
+) -> tuple[tuple[_Instruction, ...], dict[int, object]] | None:
+    parameters = dex.method_parameter_types(method)
+    if parameters[-1:] != (_DEFAULT_MARKER,):
+        return None
+    code = dex.code_item(method.code_offset)
+    parameter_registers = _parameter_registers(
+        code.registers_size, code.ins_size, parameters
+    )
+    registers: dict[int, object] = {}
+    for index in range(len(parameters) - 2, -1, -1):
+        if parameters[index] != "I":
+            break
+        registers[parameter_registers[index]] = -1
+    return _instructions(code.instructions), registers
+
+
 def extract_wire_messages(dex: DexFile) -> tuple[str, ...]:
     return tuple(
         dex.types[item.class_index]
