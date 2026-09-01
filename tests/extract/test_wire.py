@@ -5,6 +5,7 @@ from protoloom.container.dex import AnnotationItem, DexClass, DexField
 from protoloom.decode.wire import (
     decode_wire_adapter_fields,
     decode_wire_annotations,
+    decode_wire_messages,
     wire_dex_type,
 )
 from protoloom.extract.lite import _Instruction
@@ -92,6 +93,14 @@ def test_decodes_annotated_wire_message() -> None:
     ]
     field = schemas[0].messages[0].fields[0]
     assert (field.name, field.number, field.type_name) == ("title", 7, "string")
+
+
+def test_decodes_empty_wire_message() -> None:
+    schema = decode_wire_messages(("Lexample/Outer$Empty;",), "classes.dex")[0]
+
+    assert (schema.package, schema.name) == ("example", "Outer_Empty.proto")
+    assert schema.messages[0].name == "Outer_Empty"
+    assert schema.messages[0].fields == []
 
 
 def test_decodes_wire_constants() -> None:

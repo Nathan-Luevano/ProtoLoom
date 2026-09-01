@@ -26,6 +26,7 @@ from protoloom.decode.wire import (
     decode_wire_adapters,
     decode_wire_annotations,
     decode_wire_enums,
+    decode_wire_messages,
 )
 from protoloom.emit.dashboard import emit_dashboard
 from protoloom.emit.descset import emit_descriptor_set
@@ -42,6 +43,7 @@ from protoloom.extract.wire import (
     extract_wire_adapter_writes,
     extract_wire_annotations,
     extract_wire_enums,
+    extract_wire_messages,
     extract_wire_names,
     extract_wire_oneofs,
     extract_wire_syntaxes,
@@ -139,13 +141,26 @@ def _find_wire(
     enum_lineage = {}
     for source, data in _dex_inputs(path):
         dex = DexFile(data)
+        message_types = set(extract_wire_messages(dex))
         annotations = extract_wire_annotations(dex)
         writes: tuple[WireAdapterFinding, ...] = ()
         if not annotations:
             writes = extract_wire_adapter_writes(dex)
-        owners = {item.owner for item in annotations} | {item.owner for item in writes}
+        references = {
+            f"L{item.adapter.partition('#')[0].replace('.', '/')};"
+            for item in annotations
+            if item.adapter.endswith("#ADAPTER")
+        }
+        references.update(dex.types[item.adapter.class_index] for item in writes)
+        message_owners = tuple(
+            sorted(owner for owner in message_types & references if "$" in owner)
+        )
+        owners = set(message_owners)
+        owners.update(item.owner for item in annotations)
+        owners.update(item.owner for item in writes)
         syntaxes = extract_wire_syntaxes(dex, owners)
-        decoded = decode_wire_annotations(dex, annotations, source, syntaxes)
+        decoded = decode_wire_messages(message_owners, source, syntaxes)
+        decoded.extend(decode_wire_annotations(dex, annotations, source, syntaxes))
         if writes:
             names = extract_wire_names(dex)
             oneofs = extract_wire_oneofs(dex, owners)
