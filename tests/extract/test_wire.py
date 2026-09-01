@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from protoloom.container.dex import AnnotationItem, DexClass, DexField
+from protoloom.decode.wire import decode_wire_annotations
 from protoloom.extract.wire import extract_wire_annotations, wire_adapter_type
 
 
@@ -60,3 +61,14 @@ def test_resolves_wire_adapter_types() -> None:
     assert wire_adapter_type("com.squareup.wire.ProtoAdapter#SINT64") == "sint64"
     assert wire_adapter_type("example.Outer$Inner#ADAPTER") == ".example.Outer.Inner"
     assert wire_adapter_type("example.Custom#OTHER") is None
+
+
+def test_decodes_annotated_wire_message() -> None:
+    dex = _wire_dex()
+    schemas = decode_wire_annotations(dex, extract_wire_annotations(dex), "classes.dex")
+
+    assert [(item.package, item.name) for item in schemas] == [
+        ("example", "Record.proto")
+    ]
+    field = schemas[0].messages[0].fields[0]
+    assert (field.name, field.number, field.type_name) == ("title", 7, "string")
