@@ -64,11 +64,14 @@ def test_strips_redundant_parent_prefix_and_rewrites_field_references() -> None:
     top_level = _nest(items, lineage)
     assert top_level == [outer]
     assert [child.name for child in outer.messages] == ["Bridges"]
-    assert outer.fields[0].type_name == "Bridges"
+    assert outer.fields[0].type_name == "AccessMethod.Bridges"
 
 
 def test_strips_deep_prefix_after_parent_rename() -> None:
-    outer = Message(name="Outer")
+    outer = Message(
+        name="Outer",
+        fields=[Field("child", 1, "Outer_Parent_Child", Confidence.HIGH)],
+    )
     parent = Message(name="Outer_Parent")
     child = Message(name="Outer_Parent_Child")
     items = [
@@ -85,6 +88,7 @@ def test_strips_deep_prefix_after_parent_rename() -> None:
     assert _nest(items, lineage) == [outer]
     assert parent.name == "Parent"
     assert child.name == "Child"
+    assert outer.fields[0].type_name == "Outer.Parent.Child"
 
 
 def test_leaves_message_top_level_without_lineage() -> None:
