@@ -156,7 +156,9 @@ def decode_wire_adapters(
 
 
 def decode_wire_enums(
-    findings: tuple[WireEnumFinding, ...], source: str
+    findings: tuple[WireEnumFinding, ...],
+    source: str,
+    syntaxes: dict[str, str] | None = None,
 ) -> tuple[list[RecoveredSchema], dict[tuple[str, str], dict[str, str | None]]]:
     schemas = []
     lineage = {}
@@ -175,6 +177,7 @@ def decode_wire_enums(
         schema = RecoveredSchema(
             f"{enum_name}.proto",
             package.replace("/", "."),
+            syntax=(syntaxes or {}).get(parent or item.descriptor, "proto2"),
             enums=[enum],
             evidence=[evidence],
         )

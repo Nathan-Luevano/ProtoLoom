@@ -153,7 +153,7 @@ def _find_wire(
                 decode_wire_adapters(dex, writes, names, oneofs, source, syntaxes)
             )
         enum_schemas, decoded_enum_lineage = decode_wire_enums(
-            extract_wire_enums(dex, writes, annotations), source
+            extract_wire_enums(dex, writes, annotations), source, syntaxes
         )
         decoded.extend(enum_schemas)
         enum_lineage.update(decoded_enum_lineage)
