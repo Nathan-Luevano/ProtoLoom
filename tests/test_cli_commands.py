@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from zipfile import ZipFile
 
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 from pytest import MonkeyPatch
@@ -64,3 +65,34 @@ def test_demo_uses_temporary_output_by_default(
     assert result.exit_code == 0, result.output
     assert str(output) in result.output
     assert (output / "demo.proto").is_file()
+
+
+def test_inspect_reports_android_archive_inventory(tmp_path: Path) -> None:
+    apk = tmp_path / "sample.apk"
+    with ZipFile(apk, "w") as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+        archive.writestr("classes.dex", b"dex\n039\x00")
+        archive.writestr("lib/arm64-v8a/libsample.so", b"\x7fELF")
+
+    result = runner.invoke(app, ["inspect", str(apk)])
+
+    assert result.exit_code == 0, result.output
+    assert "kind: apk" in result.output
+    assert "entries: 3" in result.output
+    assert "dex: 1" in result.output
+    assert "native: 1" in result.output
+
+
+def test_inspect_reports_real_elf_shape() -> None:
+    binary = next(
+        path for path in (Path("/bin/sh"), Path("/usr/bin/env")) if path.exists()
+    )
+
+    result = runner.invoke(app, ["inspect", str(binary)])
+
+    assert result.exit_code == 0, result.output
+    assert "kind: elf" in result.output
+    assert "bits:" in result.output
+    assert "sections:" in result.output
+    assert "segments:" in result.output
+    assert "go: no" in result.output
