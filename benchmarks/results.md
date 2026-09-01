@@ -88,6 +88,35 @@ that `protoc --descriptor_set_out` materializes, so identity is measured against
 the actual descriptor bytes in the binary rather than a differently normalized
 descriptor-set rendering of the same source schema.
 
+## Descriptor-free Path-2 evidence
+
+`scripts/run_path2_go.sh` builds a Go 1.24 binary with `-trimpath` and
+`-ldflags='-s -w'` from a runtime-compatible legacy tagged message. The scanner
+first proves that the binary contains zero serialized descriptors. Go's linked
+runtime type table still associates `Record` with each field's exact Go type,
+source field name, offset, and protobuf struct tag. ProtoLoom follows those
+links rather than scanning loose strings and recovers all three fields exactly:
+
+| Target | Embedded descriptors | Field recall | Type fidelity | Labels | Compile |
+|---|---:|---:|---:|---:|---:|
+| Go 1.24 tagged ELF | 0 | 100% (3/3) | 100% (3/3) | 100% (3/3) | 100% (1/1) |
+
+The reader is intentionally gated to little-endian 64-bit Go 1.24 metadata.
+Unsupported versions and malformed type-link tables bail out; ambiguous tagged
+fields prevent that message from being emitted. The fixture reports one honest
+bail-out for the legacy runtime's unrelated `MessageSet` type while recovering
+the selected message. Modern `protoc-gen-go` 1.36.6 binaries still retain a
+gzip descriptor and therefore remain Path-1.
+
+`scripts/run_path2_cpp.sh` establishes the C++ lite boundary with two optimized,
+LTO-linked, section-GC'd, fully stripped binaries. Both have zero descriptors.
+Their schemas differ in two scalar source-field names, but after removing build
+IDs and normalizing generated source paths the binaries are byte-identical.
+Only the string field's UTF-8 diagnostic name survives. Exact recovery of the
+two differing scalar names is therefore a confirmed information limit, and no
+C++ lite schema is emitted rather than inventing names. Ordinary full-runtime
+protoc 29.3 C++ objects are the 3/3 Path-1 cases above, not Path-2 inputs.
+
 ## Pinned javalite matrix
 
 `scripts/run_lite_matrix.sh` compiles the hostile local schema with protoc and
