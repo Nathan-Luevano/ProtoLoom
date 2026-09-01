@@ -5,6 +5,7 @@ from protoloom.extract.gotags import (
     GoProtobufTag,
     _Memory,
     _protobuf_type,
+    _tagged_field,
     parse_protobuf_tag,
 )
 
@@ -14,17 +15,17 @@ class FakeElf:
     endian: Literal["little", "big"] = "little"
 
     def __init__(self, data: bytes) -> None:
-        self.data = data
+        self.payloads = {".rodata": data}
         self.sections: tuple[ElfSection, ...] = (
             ElfSection(".rodata", 0, len(data), 0x1000, 2, 1),
         )
 
     def get_section(self, name: str) -> ElfSection:
-        assert name == ".rodata"
-        return self.sections[0]
+        return next(section for section in self.sections if section.name == name)
 
     def section_data(self, section: str | ElfSection) -> memoryview:
-        return memoryview(self.data)
+        name = section if isinstance(section, str) else section.name
+        return memoryview(self.payloads[name])
 
 
 def test_parses_go_protobuf_struct_tag() -> None:
@@ -73,3 +74,22 @@ def test_resolves_repeated_zigzag_field_type() -> None:
 
     assert tag is not None
     assert _protobuf_type(memory, 0x1040, tag) == "sint32"
+
+
+def test_builds_field_from_linked_go_metadata() -> None:
+    data = bytearray(256)
+    name = b"Id"
+    tag = b'protobuf:"varint,1,opt,name=id,proto3"'
+    encoded = bytes((3, len(name))) + name + bytes((len(tag),)) + tag
+    data[128 : 128 + len(encoded)] = encoded
+    data[32:40] = (0x1080).to_bytes(8, "little")
+    data[40:48] = (0x1040).to_bytes(8, "little")
+    data[64 + 23] = 11
+
+    field, bailout, proto3 = _tagged_field(
+        _Memory(FakeElf(bytes(data))), 0x1020, "fixture", "main.Record"
+    )
+
+    assert bailout is None and proto3
+    assert field is not None
+    assert (field.name, field.number, field.type_name) == ("id", 1, "uint64")
