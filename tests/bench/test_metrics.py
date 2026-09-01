@@ -98,6 +98,20 @@ def test_ambiguous_structural_signature_is_not_guessed() -> None:
     assert score_target("ambiguous", truth, recovered).value("field_recall") == 0
 
 
+def test_exact_names_are_reserved_before_signature_fallback() -> None:
+    truth = BenchmarkSchema(
+        (
+            BenchmarkMessage("missing", (field(1, "wrong"),)),
+            BenchmarkMessage("exact", (field(1, "right"),)),
+        )
+    )
+    recovered = BenchmarkSchema((BenchmarkMessage("exact", (field(1, "right"),)),))
+
+    report = score_target("collision", truth, recovered)
+
+    assert report.value("name_recovery_rate") == 1
+
+
 def test_macro_and_micro_are_both_reported() -> None:
     large_truth = BenchmarkSchema(
         (BenchmarkMessage("large", tuple(field(i, f"f{i}") for i in range(1, 10))),)

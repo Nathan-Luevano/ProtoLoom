@@ -206,13 +206,21 @@ def _match_messages(
 ) -> list[tuple[BenchmarkMessage, BenchmarkMessage]]:
     matches: list[tuple[BenchmarkMessage, BenchmarkMessage]] = []
     unused = list(recovered)
+    fallback = []
     for expected in truth:
         named = [
             item
             for item in unused
             if expected.name is not None and item.name == expected.name
         ]
-        candidates = named or [
+        if len(named) == 1:
+            actual = named[0]
+            matches.append((expected, actual))
+            unused.remove(actual)
+        elif not named:
+            fallback.append(expected)
+    for expected in fallback:
+        candidates = [
             item for item in unused if _signature(item) == _signature(expected)
         ]
         if len(candidates) == 1:
