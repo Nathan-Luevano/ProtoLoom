@@ -163,6 +163,22 @@ nested messages, but it does not represent the emitter's final qualified type
 resolution. The round-trip checker isolates the selected matrix package, so
 unrelated runtime descriptors cannot prevent validation of the payload schema.
 
+The JSON evaluator's nested-message qualified names were also wrong until
+directly caught: `_recovered_message` named every message `package.BareName`
+regardless of nesting depth, instead of building on its parent's name the
+way `_truth_messages` and the `.desc` path already do. Two same-named
+messages nested under different parents collided, and a truth message
+qualified by its real ancestry (e.g. `pkg.Outer.Inner`) never matched a
+same-named recovered message even when the content was fully correct — this
+depressed field recall and, more visibly, structural fidelity on schemas
+with deep or broad nesting (Signal's real numbers looked as low as 73%/33%
+through this path before the fix, against the true, `.desc`-verified
+100%/100%). The `.desc` path was never affected; this only ever hit the
+JSON fallback, which is why every published real-app row in this document
+was scored `.desc`-to-`.desc` rather than JSON. Fixed to build the same
+parent-qualified name, with a regression test covering the exact collision
+case.
+
 The aggressive R8 leg inlines and renames `newMessageInfo`; recovery succeeds
 by recognizing the validated `RawMessageInfo` constructor shape. Message class
 names are obfuscated, while this configuration leaves the field-name strings

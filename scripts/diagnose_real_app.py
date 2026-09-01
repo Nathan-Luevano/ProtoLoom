@@ -195,8 +195,20 @@ def _recovered_message(
         )
         for field in raw["fields"]
     )
+    # Match _truth_messages' convention: a nested message's qualified name
+    # builds on its parent's, not just the package -- two same-named
+    # messages nested under different parents must not collide, and a
+    # nested truth name (e.g. "pkg.DataMessage.Contact") must be
+    # reachable at all.
+    name = (
+        f"{parent}.{raw['name']}"
+        if parent
+        else f"{package}.{raw['name']}"
+        if package
+        else raw["name"]
+    )
     return BenchmarkMessage(
-        f"{package}.{raw['name']}" if package else raw["name"],
+        name,
         fields,
         parent,
         enums=local_enums,

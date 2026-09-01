@@ -123,5 +123,61 @@ def test_recovered_json_scores_top_level_and_message_local_enums(
     assert schema.messages[0].enums[0].name == "Kind"
     assert schema.messages[0].fields[0].proto_type == "example.State"
     assert [field.wire_type for field in schema.messages[0].fields] == [0, 0]
-    assert schema.messages[1].name == "example.Nested"
+    assert schema.messages[1].name == "example.Record.Nested"
     assert schema.messages[1].parent == "example.Record"
+
+
+def test_recovered_json_nests_qualified_names_like_truth(tmp_path: Path) -> None:
+    # A nested message's qualified name must build on its parent's, not
+    # just the package -- otherwise two same-named messages nested under
+    # different parents collide, and a truth message qualified by its real
+    # ancestry (e.g. "pkg.Outer.Inner") never matches a same-named
+    # recovered message even when the content is correct.
+    recovery = tmp_path / "recovery.json"
+    recovery.write_text(
+        json.dumps(
+            {
+                "schemas": [
+                    {
+                        "package": "pkg",
+                        "enums": [],
+                        "messages": [
+                            {
+                                "name": "First",
+                                "fields": [],
+                                "enums": [],
+                                "messages": [
+                                    {
+                                        "name": "Shared",
+                                        "fields": [],
+                                        "enums": [],
+                                        "messages": [],
+                                    }
+                                ],
+                            },
+                            {
+                                "name": "Second",
+                                "fields": [],
+                                "enums": [],
+                                "messages": [
+                                    {
+                                        "name": "Shared",
+                                        "fields": [],
+                                        "enums": [],
+                                        "messages": [],
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    schema = load_recovered(recovery, "pkg")
+
+    names = [message.name for message in schema.messages]
+    assert names == ["pkg.First", "pkg.First.Shared", "pkg.Second", "pkg.Second.Shared"]
+    assert len(set(names)) == len(names)
