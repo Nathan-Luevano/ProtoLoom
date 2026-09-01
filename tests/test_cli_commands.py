@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 from protoloom.cli import app
 from protoloom.container.detect import ContainerKind, Detection
-from protoloom.extract.jadx import JadxError
+from protoloom.extract.jadx import JadxError, JadxResult
 
 runner = CliRunner()
 
@@ -130,3 +130,34 @@ def test_extract_reports_jadx_failure(tmp_path: Path, monkeypatch: MonkeyPatch) 
 
     assert result.exit_code == 2
     assert "jadx fallback failed: jadx unavailable" in result.output
+
+
+def test_extract_reports_retained_jadx_context(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    binary = tmp_path / "classes.dex"
+    binary.write_bytes(b"dex")
+    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr(
+        "protoloom.cli._find_lite",
+        lambda path, allow_heuristic: ([], [], {}, {}),
+    )
+    monkeypatch.setattr(
+        "protoloom.cli.detect", lambda path: Detection(ContainerKind.DEX)
+    )
+    calls: list[float] = []
+
+    def retain(path: Path, output: Path, timeout_seconds: float) -> JadxResult:
+        calls.append(timeout_seconds)
+        return JadxResult(output, 4, 2, "")
+
+    monkeypatch.setattr("protoloom.cli.decompile_with_jadx", retain)
+    result = runner.invoke(
+        app, ["extract", str(binary), "--jadx", "--jadx-timeout", "3.5"]
+    )
+
+    assert result.exit_code == 2
+    assert calls == [3.5]
+    assert (
+        "retained 4 Java sources and indexed 2 protobuf metadata sites" in result.output
+    )
