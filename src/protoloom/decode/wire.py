@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from protoloom.container.dex import DexFile
+from protoloom.container.dex import DexField, DexFile
 from protoloom.extract.wire import (
     WireAdapterFinding,
     WireEnumFinding,
@@ -32,19 +32,8 @@ def _field(
         return None
     if type_name.startswith("."):
         type_name = type_name.rsplit(".", 1)[-1].replace("$", "_")
-    raw_type = dex.types[item.field.type_index]
-    boxed_presence = (
-        proto3
-        and item.oneof is None
-        and item.label != "repeated"
-        and raw_type
-        in {
-            "Ljava/lang/Boolean;",
-            "Ljava/lang/Double;",
-            "Ljava/lang/Float;",
-            "Ljava/lang/Integer;",
-            "Ljava/lang/Long;",
-        }
+    boxed_presence = _boxed_presence(
+        dex, item.field, proto3, item.label, item.oneof
     )
     default_presence = (
         proto3
@@ -65,6 +54,24 @@ def _field(
         oneof=item.oneof or (f"_field_{item.number}" if presence else None),
         packed="PACKED" in item.adapter or None,
         proto3_optional=presence,
+    )
+
+
+def _boxed_presence(
+    dex: DexFile, field: DexField, proto3: bool, label: str, oneof: str | None
+) -> bool:
+    return (
+        proto3
+        and oneof is None
+        and label != "repeated"
+        and dex.types[field.type_index]
+        in {
+            "Ljava/lang/Boolean;",
+            "Ljava/lang/Double;",
+            "Ljava/lang/Float;",
+            "Ljava/lang/Integer;",
+            "Ljava/lang/Long;",
+        }
     )
 
 
