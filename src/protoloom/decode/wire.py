@@ -83,6 +83,37 @@ def decode_wire_adapter_fields(
     return fields
 
 
+def decode_wire_adapters(
+    dex: DexFile,
+    findings: tuple[WireAdapterFinding, ...],
+    names: tuple[WireNameFinding, ...],
+    source: str,
+) -> list[RecoveredSchema]:
+    fields = decode_wire_adapter_fields(dex, findings, names, source)
+    names_by_owner = {item.owner: item.message_name for item in names}
+    schemas = []
+    for owner, items in fields.items():
+        path = owner.removeprefix("L").removesuffix(";")
+        package, _, class_name = path.rpartition("/")
+        message_name = names_by_owner.get(owner) or class_name.replace("$", "_")
+        evidence = Evidence(source, owner, "Square Wire adapter bytecode")
+        message = Message(
+            message_name,
+            sorted(items, key=lambda item: item.number),
+            confidence=Confidence.HIGH,
+            evidence=[evidence],
+        )
+        schemas.append(
+            RecoveredSchema(
+                f"{message_name}.proto",
+                package.replace("/", "."),
+                messages=[message],
+                evidence=[evidence],
+            )
+        )
+    return schemas
+
+
 def decode_wire_annotations(
     dex: DexFile, findings: tuple[WireFieldFinding, ...], source: str
 ) -> list[RecoveredSchema]:
