@@ -22,6 +22,7 @@ from protoloom.container.elf import ElfFile
 from protoloom.container.macho import MachOFile
 from protoloom.decode.descpb import decode_file_descriptor
 from protoloom.decode.lite import decode_lite_finding
+from protoloom.decode.wire import decode_wire_adapters, decode_wire_annotations
 from protoloom.emit.dashboard import emit_dashboard
 from protoloom.emit.descset import emit_descriptor_set
 from protoloom.emit.jsonout import emit_json
@@ -32,6 +33,11 @@ from protoloom.extract.gotags import GoTagExtraction, scan_go_struct_tags
 from protoloom.extract.gozip import scan_gzip_descriptors
 from protoloom.extract.jadx import JadxError, decompile_with_jadx
 from protoloom.extract.lite import extract_lite
+from protoloom.extract.wire import (
+    extract_wire_adapter_writes,
+    extract_wire_annotations,
+    extract_wire_names,
+)
 from protoloom.model import EnumType, Message, RecoveredSchema
 from protoloom.reconcile import reconcile
 from protoloom.validate.compile import compile_proto
@@ -105,6 +111,37 @@ def _find_go_tags(path: Path) -> GoTagExtraction:
     if not elf.is_go_binary:
         return GoTagExtraction((), ())
     return scan_go_struct_tags(elf, path.name)
+
+
+def _wire_parent(owner: str) -> str | None:
+    if "$" not in owner:
+        return None
+    return f"{owner.rsplit('$', 1)[0]};"
+
+
+def _find_wire(
+    path: Path,
+) -> tuple[list[RecoveredSchema], dict[tuple[str, str], tuple[str, str | None]]]:
+    schemas = []
+    lineage = {}
+    for source, data in _dex_inputs(path):
+        dex = DexFile(data)
+        annotations = extract_wire_annotations(dex)
+        annotated_owners = {item.owner for item in annotations}
+        decoded = decode_wire_annotations(dex, annotations, source)
+        writes = tuple(
+            item
+            for item in extract_wire_adapter_writes(dex)
+            if item.owner not in annotated_owners
+        )
+        decoded.extend(
+            decode_wire_adapters(dex, writes, extract_wire_names(dex), source)
+        )
+        for schema in decoded:
+            owner = schema.evidence[0].location
+            lineage[(schema.package, schema.name)] = (owner, _wire_parent(owner))
+        schemas.extend(decoded)
+    return schemas, lineage
 
 
 def _find_lite(
