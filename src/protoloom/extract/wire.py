@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
-from protoloom.container.dex import AnnotationItem, DexField, DexFile
-from protoloom.extract.lite import _Instruction
+from protoloom.container.dex import AnnotationItem, DexField, DexFile, EncodedMethod
+from protoloom.extract.lite import _Instruction, _instructions, _invoke_registers
 
 _MESSAGE = "Lcom/squareup/wire/Message;"
 _WIRE_FIELD = "Lcom/squareup/wire/WireField;"
@@ -58,6 +58,48 @@ def _constant(instruction: _Instruction) -> tuple[int, int] | None:
         value = units[1] | units[2] << 16
         return units[0] >> 8, value - 2**32 if value & 0x80000000 else value
     return None
+
+
+def _method_writes(dex: DexFile, method: EncodedMethod) -> list[WireAdapterFinding]:
+    registers: dict[int, DexField | int] = {}
+    findings = []
+    for instruction in _instructions(dex.code_item(method.code_offset).instructions):
+        units = instruction.units
+        if 0x52 <= instruction.opcode <= 0x58 and units[1] < len(dex.fields):
+            registers[(units[0] >> 8) & 0xF] = dex.fields[units[1]]
+            continue
+        if 0x60 <= instruction.opcode <= 0x66 and units[1] < len(dex.fields):
+            registers[units[0] >> 8] = dex.fields[units[1]]
+            continue
+        constant = _constant(instruction)
+        if constant is not None:
+            registers[constant[0]] = constant[1]
+            continue
+        if instruction.opcode not in {*range(0x6E, 0x73), *range(0x74, 0x79)}:
+            continue
+        target = dex.methods[units[1]]
+        parameters = dex.method_parameter_types(target)
+        arguments = _invoke_registers(instruction)
+        if parameters[-2:] != ("I", "Ljava/lang/Object;") or len(arguments) != 4:
+            continue
+        adapter = registers.get(arguments[0])
+        number = registers.get(arguments[2])
+        field = registers.get(arguments[3])
+        if not isinstance(adapter, DexField) or not isinstance(field, DexField):
+            continue
+        if not isinstance(number, int) or adapter.class_index == field.class_index:
+            continue
+        findings.append(
+            WireAdapterFinding(
+                dex.types[field.class_index],
+                field,
+                number,
+                adapter,
+                method.method_index,
+                instruction.offset,
+            )
+        )
+    return findings
 
 
 def _elements(dex: DexFile, annotation: AnnotationItem) -> dict[str, object]:
