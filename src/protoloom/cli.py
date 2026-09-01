@@ -359,9 +359,11 @@ def extract(
     if not path.is_file():
         raise typer.BadParameter(f"file does not exist: {path}")
     findings = _find(path)
+    go_tags = _find_go_tags(path) if not findings else GoTagExtraction((), ())
     lite_schemas, bailouts, lineage, enum_lineage = _find_lite(
         path, allow_heuristic=allow_heuristic_lite
     )
+    bailouts.extend(f"{path.name}: {reason}" for reason in go_tags.bailouts)
     if jadx:
         if detect(path).kind not in {
             ContainerKind.APK,
@@ -381,7 +383,7 @@ def extract(
             f"and indexed {result.candidate_sites} protobuf metadata sites "
             f"-> {result.output}"
         )
-    if not findings and not lite_schemas:
+    if not findings and not lite_schemas and not go_tags.schemas:
         typer.echo("no recoverable schema evidence found", err=True)
         for reason in bailouts:
             typer.echo(f"bail-out: {reason}", err=True)
@@ -392,6 +394,7 @@ def extract(
             finding.descriptor, finding.source, f"0x{finding.offset:x}"
         )
         schemas.append(schema)
+    schemas.extend(go_tags.schemas)
     schemas.extend(lite_schemas)
     reconciled = reconcile(schemas)
     descriptors = [finding.descriptor for finding in findings]
