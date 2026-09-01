@@ -3,7 +3,12 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 from protoloom.container.dex import AnnotationItem, DexField, DexFile, EncodedMethod
-from protoloom.extract.lite import _Instruction, _instructions, _invoke_registers
+from protoloom.extract.lite import (
+    _branch_target,
+    _Instruction,
+    _instructions,
+    _invoke_registers,
+)
 
 _MESSAGE = "Lcom/squareup/wire/Message;"
 _WIRE_FIELD = "Lcom/squareup/wire/WireField;"
@@ -195,6 +200,26 @@ def _default_constructor_state(
             break
         registers[parameter_registers[index]] = -1
     return _instructions(code.instructions), registers
+
+
+def _constructor_next(
+    instruction: _Instruction,
+    registers: dict[int, object],
+    by_offset: dict[int, int],
+    index: int,
+) -> int | None:
+    if instruction.opcode == 0x38:
+        value = registers.get(instruction.units[0] >> 8)
+        if not isinstance(value, int):
+            return None
+        if value != 0:
+            return index + 1
+        target = _branch_target(instruction)
+        return by_offset.get(target) if target is not None else None
+    if instruction.opcode in {0x28, 0x29, 0x2A}:
+        target = _branch_target(instruction)
+        return by_offset.get(target) if target is not None else None
+    return index + 1
 
 
 def extract_wire_messages(dex: DexFile) -> tuple[str, ...]:
