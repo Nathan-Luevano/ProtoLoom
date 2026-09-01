@@ -14,6 +14,7 @@ from protoloom.extract.wire import (
     WireNameFinding,
     WireOneofFinding,
     _constant,
+    _constructor_and,
     _constructor_move,
     _parameter_registers,
     extract_wire_annotations,
@@ -127,6 +128,13 @@ def test_tracks_constructor_moves() -> None:
     registers: dict[int, object] = {9: 7}
     assert _constructor_move(registers, _Instruction(0, 0x02, (0x0102, 9)))
     assert registers == {1: 7, 9: 7}
+
+
+def test_tracks_constructor_masks() -> None:
+    registers: dict[int, object] = {3: -1}
+    instruction = _Instruction(0, 0xDD, (0x01DD, 0x0403))
+    assert _constructor_and(registers, instruction)
+    assert registers[1] == 4
 
 
 def test_resolves_wire_dex_types() -> None:
