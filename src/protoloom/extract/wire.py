@@ -112,6 +112,30 @@ def _constructor_move(registers: dict[int, object], instruction: _Instruction) -
     return True
 
 
+def _constructor_and(registers: dict[int, object], instruction: _Instruction) -> bool:
+    units = instruction.units
+    if instruction.opcode == 0x95:
+        destination = units[0] >> 8
+        left, right = units[1] & 0xFF, units[1] >> 8
+        operands = (registers.get(left), registers.get(right))
+    elif instruction.opcode in {0xD5, 0xDD}:
+        wide = instruction.opcode == 0xD5
+        destination = (units[0] >> 8) & (0xF if wide else 0xFF)
+        source = units[0] >> 12 if wide else units[1] & 0xFF
+        literal = units[1] if wide else units[1] >> 8
+        bits = 16 if wide else 8
+        literal -= 1 << bits if literal & (1 << (bits - 1)) else 0
+        operands = (registers.get(source), literal)
+    else:
+        return False
+    left_value, right_value = operands
+    if isinstance(left_value, int) and isinstance(right_value, int):
+        registers[destination] = left_value & right_value
+    else:
+        registers.pop(destination, None)
+    return True
+
+
 def extract_wire_messages(dex: DexFile) -> tuple[str, ...]:
     return tuple(
         dex.types[item.class_index]
