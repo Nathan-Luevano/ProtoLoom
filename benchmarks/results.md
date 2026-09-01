@@ -340,9 +340,14 @@ that false attribution and reports the recovered fields honestly: 446/446
 exact types and 445/446 exact names.
 The 40 missing fields belong to ten source messages with no corresponding
 generated class in the pinned APK; similarly named generated classes are not
-renamed to them. Exact type identity remains absent for some scalar-family and
-enum references. Those gaps stay explicit rather than being filled from the
-source truth used for scoring.
+renamed to them. All 446 recovered fields now have exact type identity. The
+remaining name miss retains only `data_` in both the field and `toString`
+diagnostic. Seven structural misses belong to absent messages; the other two
+are an ordinary nullable message and a string with no retained default path,
+so neither proves proto3 optional presence. The missing `CriticalErrorCode`,
+`ExcludedModules`, and `TelemetrySensorType` classes account for 88 absent
+enum values, and `RemoteShell`'s absent class accounts for the final 12. Those
+gaps stay explicit rather than being filled from source truth.
 
 Flipper's obfuscated `Settings` model retains all 24 source field strings and
 tagged writes. Six enum-typed fields recover only their surviving obfuscated
