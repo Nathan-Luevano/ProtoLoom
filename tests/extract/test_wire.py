@@ -15,6 +15,7 @@ from protoloom.extract.wire import (
     WireOneofFinding,
     _constant,
     _constructor_and,
+    _constructor_arguments,
     _constructor_move,
     _constructor_value,
     _parameter_registers,
@@ -142,6 +143,18 @@ def test_tracks_constructor_constants() -> None:
     registers: dict[int, object] = {}
     assert _constructor_value(registers, _Instruction(0, 0x12, (0x0012,)))
     assert registers[0] == 0
+
+
+def test_reads_null_constructor_arguments() -> None:
+    target = object()
+    dex: Any = SimpleNamespace(
+        methods=(target,),
+        method_name=lambda _: "<init>",
+        method_parameter_types=lambda _: ("Ljava/lang/String;", "I"),
+    )
+    invoke = _Instruction(0, 0x70, (0x3070, 0, 0x0210))
+
+    assert _constructor_arguments(dex, invoke, {1: 0}) == (0,)
 
 
 def test_resolves_wire_dex_types() -> None:
