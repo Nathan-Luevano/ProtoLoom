@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from protoloom.container.elf import ElfSection
+from protoloom.model import RecoveredSchema
 
 _PROTOBUF_TAG = re.compile(r'(?:^| )protobuf:"([^"]+)"(?: |$)')
 
@@ -15,6 +16,12 @@ class GoProtobufTag:
     name: str
     packed: bool
     proto3: bool
+
+
+@dataclass(frozen=True, slots=True)
+class GoTagExtraction:
+    schemas: tuple[RecoveredSchema, ...]
+    bailouts: tuple[str, ...]
 
 
 class GoElf(Protocol):
@@ -43,6 +50,21 @@ class _Memory:
 
     def uint(self, address: int, size: int) -> int:
         return int.from_bytes(self.bytes(address, size), self.elf.endian)
+
+    def pointer(self, address: int) -> int:
+        return self.uint(address, 8)
+
+    def type_name(self, address: int) -> str:
+        relative = int.from_bytes(
+            self.bytes(address + 40, 4), self.elf.endian, signed=True
+        )
+        name, _ = self.name(self.rodata.address + relative)
+        if self.uint(address + 20, 1) & 2 and name.startswith("*"):
+            return name[1:]
+        return name
+
+    def kind(self, address: int) -> int:
+        return self.uint(address + 23, 1) & 0x1F
 
     def name(self, address: int) -> tuple[str, str]:
         flags = self.uint(address, 1)
