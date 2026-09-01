@@ -146,6 +146,57 @@ def _constant(instruction: _Instruction) -> tuple[int, int] | None:
     return None
 
 
+def _wire_enum_method(
+    dex: DexFile, method: EncodedMethod, descriptor: str
+) -> WireEnumFinding | None:
+    registers: dict[int, object] = {}
+    recovered: dict[str, int] = {}
+    for instruction in _instructions(dex.code_item(method.code_offset).instructions):
+        units = instruction.units
+        if _move_register(registers, instruction):
+            continue
+        constant = _constant(instruction)
+        if constant is not None:
+            registers[constant[0]] = constant[1]
+        elif instruction.opcode in {0x1A, 0x1B}:
+            index = (
+                units[1] if instruction.opcode == 0x1A else units[1] | units[2] << 16
+            )
+            registers[units[0] >> 8] = dex.strings[index]
+        elif instruction.opcode == 0x22 and dex.types[units[1]] == descriptor:
+            registers[(units[0] >> 8) & 0xF] = ("instance", descriptor)
+        elif instruction.opcode == 0x70:
+            target = dex.methods[units[1]]
+            if dex.method_name(target) != "<init>":
+                continue
+            parameters = dex.method_parameter_types(target)
+            arguments = _invoke_registers(instruction)
+            if len(arguments) != 4 or registers.get(arguments[0]) != (
+                "instance",
+                descriptor,
+            ):
+                continue
+            positions = (
+                (3, 1) if parameters == ("I", "I", "Ljava/lang/String;") else (1, 3)
+            )
+            name, number = (registers.get(arguments[index]) for index in positions)
+            if isinstance(name, str) and isinstance(number, int):
+                registers[arguments[0]] = ("enum", name, number)
+        elif instruction.opcode == 0x69:
+            value = registers.get(units[0] >> 8)
+            field = dex.fields[units[1]]
+            if (
+                field.class_index == field.type_index
+                and isinstance(value, tuple)
+                and len(value) == 3
+                and value[0] == "enum"
+            ):
+                recovered[str(value[1])] = int(value[2])
+    if not recovered:
+        return None
+    return WireEnumFinding(descriptor, tuple(recovered.items()), method.method_index)
+
+
 def _method_writes(dex: DexFile, method: EncodedMethod) -> list[WireAdapterFinding]:
     registers: dict[int, DexField | int | _AdapterValue] = {}
     findings = []
