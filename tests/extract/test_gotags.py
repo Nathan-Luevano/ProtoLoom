@@ -1,4 +1,25 @@
-from protoloom.extract.gotags import GoProtobufTag, parse_protobuf_tag
+from typing import Literal
+
+from protoloom.container.elf import ElfSection
+from protoloom.extract.gotags import GoProtobufTag, _Memory, parse_protobuf_tag
+
+
+class FakeElf:
+    bits = 64
+    endian: Literal["little", "big"] = "little"
+
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+        self.sections: tuple[ElfSection, ...] = (
+            ElfSection(".rodata", 0, len(data), 0x1000, 2, 1),
+        )
+
+    def get_section(self, name: str) -> ElfSection:
+        assert name == ".rodata"
+        return self.sections[0]
+
+    def section_data(self, section: str | ElfSection) -> memoryview:
+        return memoryview(self.data)
 
 
 def test_parses_go_protobuf_struct_tag() -> None:
@@ -13,3 +34,12 @@ def test_rejects_missing_or_malformed_protobuf_tag() -> None:
     assert parse_protobuf_tag('protobuf:"varint,nope,opt,name=value"') is None
     assert parse_protobuf_tag('protobuf:"varint,1,unknown,name=value"') is None
     assert parse_protobuf_tag('protobuf:"varint,0,opt,name=value"') is None
+
+
+def test_reads_go_runtime_name_and_tag() -> None:
+    name = b"Samples"
+    tag = b'protobuf:"zigzag32,3,rep,packed,name=samples,proto3"'
+    encoded = bytes((3, len(name))) + name + bytes((len(tag),)) + tag
+    memory = _Memory(FakeElf(encoded))
+
+    assert memory.name(0x1000) == ("Samples", tag.decode())
