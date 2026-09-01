@@ -67,6 +67,26 @@ def test_strips_redundant_parent_prefix_and_rewrites_field_references() -> None:
     assert outer.fields[0].type_name == "Bridges"
 
 
+def test_strips_deep_prefix_after_parent_rename() -> None:
+    outer = Message(name="Outer")
+    parent = Message(name="Outer_Parent")
+    child = Message(name="Outer_Parent_Child")
+    items = [
+        _schema("Child", child),
+        _schema("Parent", parent),
+        _schema("Outer", outer),
+    ]
+    lineage = {
+        ("", "Outer.proto"): ("LOuter;", None),
+        ("", "Parent.proto"): ("LOuter$Parent;", "LOuter;"),
+        ("", "Child.proto"): ("LOuter$Parent$Child;", "LOuter$Parent;"),
+    }
+
+    assert _nest(items, lineage) == [outer]
+    assert parent.name == "Parent"
+    assert child.name == "Child"
+
+
 def test_leaves_message_top_level_without_lineage() -> None:
     solo = Message(name="Solo")
     items = [_schema("Solo", solo)]

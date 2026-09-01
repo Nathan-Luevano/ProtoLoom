@@ -271,8 +271,15 @@ def _nested_lite_messages(
         # e.g. AccessMethod$AccessMethod_Bridges. Strip the redundant prefix
         # once the real parent is known, so the emitted nested message keeps
         # the bare local name a ground-truth .proto would use.
-        prefix = f"{parent.name}_"
-        if message.name.startswith(prefix) and len(message.name) > len(prefix):
+        owner_name = enclosing_descriptor.removeprefix("L").removesuffix(";")
+        prefixes = (
+            f"{owner_name.rsplit('/', 1)[-1].replace('$', '_')}_",
+            f"{parent.name}_",
+        )
+        prefix = next(
+            (item for item in prefixes if message.name.startswith(item)), None
+        )
+        if prefix is not None and len(message.name) > len(prefix):
             new_name = message.name[len(prefix) :]
             renames[message.name] = new_name
             message.name = new_name
