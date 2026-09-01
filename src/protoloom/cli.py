@@ -28,6 +28,7 @@ from protoloom.emit.jsonout import emit_json
 from protoloom.emit.proto import emit_proto
 from protoloom.emit.report import emit_report
 from protoloom.extract.descriptor import DescriptorFinding, scan_descriptors
+from protoloom.extract.gotags import GoTagExtraction, scan_go_struct_tags
 from protoloom.extract.gozip import scan_gzip_descriptors
 from protoloom.extract.jadx import JadxError, decompile_with_jadx
 from protoloom.extract.lite import extract_lite
@@ -95,6 +96,15 @@ def _dex_inputs(path: Path) -> list[tuple[str, bytes]]:
         return []
     archive = AndroidArchive(path)
     return [(entry.name, data) for entry, data in archive.iter_dex()]
+
+
+def _find_go_tags(path: Path) -> GoTagExtraction:
+    if detect(path).kind is not ContainerKind.ELF:
+        return GoTagExtraction((), ())
+    elf = ElfFile.from_path(path)
+    if not elf.is_go_binary:
+        return GoTagExtraction((), ())
+    return scan_go_struct_tags(elf, path.name)
 
 
 def _find_lite(
