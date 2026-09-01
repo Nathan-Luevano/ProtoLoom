@@ -19,12 +19,27 @@ from protoloom.model import (
 )
 
 
-def _field(dex: DexFile, item: WireFieldFinding, source: str) -> Field | None:
+def _field(
+    dex: DexFile, item: WireFieldFinding, source: str, proto3: bool
+) -> Field | None:
     type_name = wire_adapter_type(item.adapter)
     if type_name is None:
         return None
     if type_name.startswith("."):
         type_name = type_name.rsplit(".", 1)[-1].replace("$", "_")
+    raw_type = dex.types[item.field.type_index]
+    presence = (
+        proto3
+        and item.oneof is None
+        and raw_type
+        in {
+            "Ljava/lang/Boolean;",
+            "Ljava/lang/Double;",
+            "Ljava/lang/Float;",
+            "Ljava/lang/Integer;",
+            "Ljava/lang/Long;",
+        }
+    )
     location = f"{item.owner}->{dex.field_name(item.field)}"
     return Field(
         dex.field_name(item.field),
@@ -33,8 +48,9 @@ def _field(dex: DexFile, item: WireFieldFinding, source: str) -> Field | None:
         Confidence.CERTAIN,
         [Evidence(source, location, item.adapter)],
         label=item.label,
-        oneof=item.oneof,
+        oneof=item.oneof or (f"_field_{item.number}" if presence else None),
         packed="PACKED" in item.adapter or None,
+        proto3_optional=presence,
     )
 
 
@@ -171,14 +187,19 @@ def decode_wire_annotations(
     for owner, items in grouped.items():
         path = owner.removeprefix("L").removesuffix(";")
         package, _, class_name = path.rpartition("/")
-        fields = [field for item in items if (field := _field(dex, item, source))]
+        syntax = (syntaxes or {}).get(owner, "proto2")
+        fields = [
+            field
+            for item in items
+            if (field := _field(dex, item, source, syntax == "proto3"))
+        ]
         evidence = Evidence(source, owner, "retained Square Wire annotations")
         message = Message(class_name.replace("$", "_"), fields, evidence=[evidence])
         schemas.append(
             RecoveredSchema(
                 f"{message.name}.proto",
                 package.replace("/", "."),
-                syntax=(syntaxes or {}).get(owner, "proto2"),
+                syntax=syntax,
                 messages=[message],
                 evidence=[evidence],
             )
