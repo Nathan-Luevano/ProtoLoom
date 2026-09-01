@@ -125,6 +125,20 @@ def _method_writes(dex: DexFile, method: EncodedMethod) -> list[WireAdapterFindi
     pending: _AdapterValue | None = None
     for instruction in _instructions(dex.code_item(method.code_offset).instructions):
         units = instruction.units
+        if instruction.opcode in {0x01, 0x04, 0x07}:
+            destination = (units[0] >> 8) & 0xF
+            source = (units[0] >> 12) & 0xF
+            if source in registers:
+                registers[destination] = registers[source]
+            continue
+        if instruction.opcode in {0x02, 0x05, 0x08}:
+            if units[1] in registers:
+                registers[units[0] >> 8] = registers[units[1]]
+            continue
+        if instruction.opcode in {0x03, 0x06, 0x09}:
+            if units[2] in registers:
+                registers[units[1]] = registers[units[2]]
+            continue
         if 0x52 <= instruction.opcode <= 0x58 and units[1] < len(dex.fields):
             registers[(units[0] >> 8) & 0xF] = dex.fields[units[1]]
             continue
