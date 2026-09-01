@@ -45,6 +45,7 @@ from protoloom.extract.wire import (
     extract_wire_enums,
     extract_wire_messages,
     extract_wire_names,
+    extract_wire_null_defaults,
     extract_wire_oneofs,
     extract_wire_syntaxes,
 )
@@ -159,8 +160,11 @@ def _find_wire(
         owners.update(item.owner for item in annotations)
         owners.update(item.owner for item in writes)
         syntaxes = extract_wire_syntaxes(dex, owners)
+        null_defaults = extract_wire_null_defaults(dex, owners)
         decoded = decode_wire_messages(message_owners, source, syntaxes)
-        decoded.extend(decode_wire_annotations(dex, annotations, source, syntaxes))
+        decoded.extend(
+            decode_wire_annotations(dex, annotations, source, syntaxes, null_defaults)
+        )
         if writes:
             names = extract_wire_names(dex)
             oneofs = extract_wire_oneofs(dex, owners)
