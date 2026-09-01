@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package path2;
+
+option optimize_for = LITE_RUNTIME;
+
+message Record {
+  uint64 account_identifier = 1;
+  string display_caption = 2;
+  repeated sint32 signed_samples = 3;
+}
