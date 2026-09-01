@@ -152,6 +152,33 @@ def _constructor_value(registers: dict[int, object], instruction: _Instruction) 
     return False
 
 
+def _constructor_arguments(
+    dex: DexFile,
+    instruction: _Instruction,
+    registers: dict[int, object],
+) -> tuple[int, ...] | None:
+    if instruction.opcode not in {0x70, 0x76}:
+        return None
+    method_index = instruction.units[1]
+    if method_index >= len(dex.methods):
+        return None
+    target = dex.methods[method_index]
+    parameters = dex.method_parameter_types(target)
+    if dex.method_name(target) != "<init>" or parameters[-1:] == (_DEFAULT_MARKER,):
+        return None
+    arguments = _invoke_registers(instruction)
+    cursor = 1
+    nulls = []
+    for index, parameter in enumerate(parameters):
+        if cursor >= len(arguments):
+            return None
+        reference = parameter.startswith("L") or parameter.startswith("[")
+        if reference and registers.get(arguments[cursor]) == 0:
+            nulls.append(index)
+        cursor += 2 if parameter in {"D", "J"} else 1
+    return tuple(nulls)
+
+
 def extract_wire_messages(dex: DexFile) -> tuple[str, ...]:
     return tuple(
         dex.types[item.class_index]
