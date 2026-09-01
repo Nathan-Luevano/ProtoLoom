@@ -14,6 +14,7 @@ from protoloom.extract.wire import (
     WireOneofFinding,
     _constant,
     extract_wire_annotations,
+    extract_wire_messages,
     wire_adapter_type,
 )
 
@@ -68,6 +69,12 @@ def test_extracts_retained_wire_field_annotation() -> None:
         "x#STRING",
     )
     assert (finding.label, finding.oneof) == ("repeated", "choice")
+
+
+def test_extracts_empty_wire_message() -> None:
+    dex = _wire_dex()
+
+    assert extract_wire_messages(dex) == ("Lexample/Record;",)
 
 
 def test_resolves_wire_adapter_types() -> None:
