@@ -44,6 +44,56 @@ class WireAdapterFinding:
     instruction_offset: int
 
 
+@dataclass(frozen=True, slots=True)
+class WireNameFinding:
+    owner: str
+    field: DexField
+    name: str
+    message_name: str | None
+
+
+def extract_wire_names(dex: DexFile) -> tuple[WireNameFinding, ...]:
+    findings = []
+    for item in dex.classes:
+        owner = dex.types[item.class_index]
+        for method in dex.class_methods(item):
+            if dex.method_name(method) != "toString" or not method.code_offset:
+                continue
+            instructions = _instructions(dex.code_item(method.code_offset).instructions)
+            message_name = next(
+                (
+                    dex.strings[instruction.units[1]].removesuffix("{")
+                    for instruction in instructions
+                    if instruction.opcode == 0x1A
+                    and dex.strings[instruction.units[1]].endswith("{")
+                ),
+                None,
+            )
+            for index, instruction in enumerate(instructions):
+                if instruction.opcode != 0x1A:
+                    continue
+                value = dex.strings[instruction.units[1]]
+                if not value.endswith("="):
+                    continue
+                nearby = (
+                    *reversed(instructions[max(0, index - 2) : index]),
+                    *instructions[index + 1 : index + 5],
+                )
+                field_instruction = next(
+                    (item for item in nearby if 0x52 <= item.opcode <= 0x58), None
+                )
+                if field_instruction is not None:
+                    findings.append(
+                        WireNameFinding(
+                            owner,
+                            dex.fields[field_instruction.units[1]],
+                            value[:-1],
+                            message_name,
+                        )
+                    )
+    return tuple(findings)
+
+
 def _constant(instruction: _Instruction) -> tuple[int, int] | None:
     opcode = instruction.opcode
     units = instruction.units
