@@ -80,6 +80,18 @@ class WireOneofFinding:
 
 
 _ONEOF_MESSAGE = re.compile(r"^At most one of (.+) may be non-null$")
+_DEFAULT_MARKER = "Lkotlin/jvm/internal/DefaultConstructorMarker;"
+
+
+def _parameter_registers(
+    registers_size: int, ins_size: int, parameters: tuple[str, ...]
+) -> tuple[int, ...]:
+    register = registers_size - ins_size + 1
+    result = []
+    for parameter in parameters:
+        result.append(register)
+        register += 2 if parameter in {"D", "J"} else 1
+    return tuple(result)
 
 
 def extract_wire_messages(dex: DexFile) -> tuple[str, ...]:

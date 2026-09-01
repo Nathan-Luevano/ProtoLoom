@@ -14,6 +14,7 @@ from protoloom.extract.wire import (
     WireNameFinding,
     WireOneofFinding,
     _constant,
+    _parameter_registers,
     extract_wire_annotations,
     extract_wire_messages,
     wire_adapter_type,
@@ -109,6 +110,15 @@ def test_decodes_empty_wire_message() -> None:
 def test_decodes_wire_constants() -> None:
     assert _constant(_Instruction(0, 0x12, (0xE312,))) == (3, -2)
     assert _constant(_Instruction(0, 0x13, (0x0213, 0xFFFE))) == (2, -2)
+
+
+def test_maps_wide_constructor_parameters_to_registers() -> None:
+    assert _parameter_registers(12, 8, ("I", "J", "Ljava/lang/String;", "I")) == (
+        5,
+        6,
+        8,
+        9,
+    )
 
 
 def test_resolves_wire_dex_types() -> None:
