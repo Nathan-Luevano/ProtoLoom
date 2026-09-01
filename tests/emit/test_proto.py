@@ -1,5 +1,5 @@
 from protoloom.emit.proto import emit_proto
-from protoloom.model import EnumType, EnumValue, Message, RecoveredSchema
+from protoloom.model import Confidence, EnumType, EnumValue, Field, Message, RecoveredSchema
 from protoloom.validate.compile import compile_proto
 
 
@@ -42,4 +42,22 @@ def test_synthetic_zero_names_are_scoped_per_enum() -> None:
 
     assert "KIND_UNSPECIFIED = 0;" in emitted
     assert "PRIORITY_UNSPECIFIED = 0;" in emitted
+    assert compile_proto(emitted).success
+
+
+def test_nested_references_do_not_create_placeholders() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        messages=[
+            Message(
+                "Outer",
+                fields=[Field("kind", 1, "Outer.Kind", Confidence.CERTAIN)],
+                enums=[EnumType("Kind", [EnumValue("UNKNOWN", 0)])],
+            )
+        ],
+    )
+
+    emitted = emit_proto(schema)
+
+    assert "message Outer_Kind" not in emitted
     assert compile_proto(emitted).success
