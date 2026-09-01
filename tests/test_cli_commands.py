@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from zipfile import ZipFile
 
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
@@ -99,6 +100,46 @@ def test_inspect_reports_real_elf_shape() -> None:
     assert "sections:" in result.output
     assert "segments:" in result.output
     assert "go: no" in result.output
+
+
+def test_inspect_reports_dex_shape(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    dex = tmp_path / "classes.dex"
+    dex.write_bytes(b"dex")
+    monkeypatch.setattr(
+        "protoloom.cli.detect", lambda path: Detection(ContainerKind.DEX, "039")
+    )
+    fake = SimpleNamespace(
+        strings=["a", "b"], type_ids=[1], methods=[1, 2], classes=[1]
+    )
+    monkeypatch.setattr("protoloom.cli.DexFile.from_path", lambda path: fake)
+
+    result = runner.invoke(app, ["inspect", str(dex)])
+
+    assert result.exit_code == 0, result.output
+    assert "detail: 039" in result.output
+    assert "strings: 2" in result.output
+    assert "types: 1" in result.output
+    assert "methods: 2" in result.output
+    assert "classes: 1" in result.output
+
+
+def test_inspect_reports_macho_sections(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    binary = tmp_path / "sample.macho"
+    binary.write_bytes(b"macho")
+    monkeypatch.setattr(
+        "protoloom.cli.detect", lambda path: Detection(ContainerKind.MACHO)
+    )
+    monkeypatch.setattr(
+        "protoloom.cli.MachOFile.from_path",
+        lambda path: SimpleNamespace(sections=[1, 2, 3]),
+    )
+
+    result = runner.invoke(app, ["inspect", str(binary)])
+
+    assert result.exit_code == 0, result.output
+    assert "sections: 3" in result.output
 
 
 def test_extract_refuses_jadx_for_unsupported_container(tmp_path: Path) -> None:
