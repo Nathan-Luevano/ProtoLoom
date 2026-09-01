@@ -50,19 +50,19 @@ fields, 64 enum values, and 32,397 serialized root-descriptor bytes.
 | Field recall and precision | 100.00% | 549 / 549 |
 | Wire and exact type fidelity | 100.00% | 549 / 549 |
 | Enum recovery | 100.00% | 64 / 64 values |
-| Generated C++ object recovery | 0.00% | 0 / 3 objects |
+| Generated C++ object recovery | 100.00% | 3 / 3 objects |
+| Generated C++ descriptor byte identity | 0.00% | 0 / 3 objects |
 | Round trip | not measured | 0 payloads |
 
-The perfect descriptor scores are Path-1 results, not a claim that stripped
-generated code is solved: each selected root descriptor is embedded directly
-for the exact scanner oracle. As a separate compiled-code check, the driver ran
-protoc's C++ generator and compiled optimized objects for protobuf conformance,
-Google Date, and gRPC Health. None exposed a standalone serialized descriptor
-accepted by the current scanner. That 0/3 result is retained in
-`measurements.json`; the existing custom-section C++ and Go carriers remain the
-positive compiled Path-1 cases below. No payloads belong to this corpus, so the
-benchmark renderer's vacuous 100% for a zero round-trip denominator is not used
-as a result.
+The perfect root scores are Path-1 results, not a claim that descriptor-free
+generated code is solved. A fresh protoc 29.3 rerun corrected the compiled C++
+classification: conformance, Google Date, and gRPC Health objects all expose a
+standalone serialized descriptor accepted by the scanner. Their generated-code
+descriptors omit redundant `json_name` fields added by
+`--descriptor_set_out`, so raw byte identity is 0/3 even though root recovery
+is 3/3. `measurements.json` now records recovery and identity separately. No
+payloads belong to this corpus, so the benchmark renderer's vacuous 100% for a
+zero round-trip denominator is not used as a result.
 
 Reproduce both generation and scoring with `scripts/run_tier_a_upstream.py`
 followed by `protoloom bench --corpus tier-a-upstream --per-target`. The source
