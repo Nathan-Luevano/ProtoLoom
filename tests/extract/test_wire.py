@@ -110,6 +110,7 @@ def test_decodes_empty_wire_message() -> None:
 def test_decodes_wire_constants() -> None:
     assert _constant(_Instruction(0, 0x12, (0xE312,))) == (3, -2)
     assert _constant(_Instruction(0, 0x13, (0x0213, 0xFFFE))) == (2, -2)
+    assert _constant(_Instruction(0, 0x15, (0x0215, 0x0080))) == (2, 0x800000)
 
 
 def test_maps_wide_constructor_parameters_to_registers() -> None:
