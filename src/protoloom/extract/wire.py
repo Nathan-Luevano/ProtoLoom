@@ -177,7 +177,7 @@ def _wire_enum_method(
             ):
                 continue
             positions = (
-                (3, 1) if parameters == ("I", "I", "Ljava/lang/String;") else (1, 3)
+                (3, 2) if parameters == ("I", "I", "Ljava/lang/String;") else (1, 3)
             )
             name, number = (registers.get(arguments[index]) for index in positions)
             if isinstance(name, str) and isinstance(number, int):
@@ -319,6 +319,22 @@ def extract_wire_enums(
     type_indexes.update(
         index for index, descriptor in enumerate(dex.types) if descriptor in descriptors
     )
+    type_indexes.update(
+        field.class_index for field in dex.fields if dex.field_name(field) == "ADAPTER"
+    )
+    model_packages = {item.owner.rsplit("/", 1)[0] for item in findings}
+    model_packages.update(item.owner.rsplit("/", 1)[0] for item in annotations)
+    for item in dex.classes:
+        descriptor = dex.types[item.class_index]
+        if descriptor.rsplit("/", 1)[0] not in model_packages:
+            continue
+        if any(
+            dex.method_name(method) == "getValue"
+            and not dex.method_parameter_types(method)
+            and dex.method_return_type(method) == "I"
+            for method in dex.class_methods(item)
+        ):
+            type_indexes.add(item.class_index)
     for type_index in sorted(type_indexes):
         enum_class = dex.class_by_type_index(type_index)
         if enum_class is None or enum_class.superclass_index == dex.NO_INDEX:
