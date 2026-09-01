@@ -22,7 +22,11 @@ from protoloom.container.elf import ElfFile
 from protoloom.container.macho import MachOFile
 from protoloom.decode.descpb import decode_file_descriptor
 from protoloom.decode.lite import decode_lite_finding
-from protoloom.decode.wire import decode_wire_adapters, decode_wire_annotations
+from protoloom.decode.wire import (
+    decode_wire_adapters,
+    decode_wire_annotations,
+    decode_wire_enums,
+)
 from protoloom.emit.dashboard import emit_dashboard
 from protoloom.emit.descset import emit_descriptor_set
 from protoloom.emit.jsonout import emit_json
@@ -34,8 +38,10 @@ from protoloom.extract.gozip import scan_gzip_descriptors
 from protoloom.extract.jadx import JadxError, decompile_with_jadx
 from protoloom.extract.lite import extract_lite
 from protoloom.extract.wire import (
+    WireAdapterFinding,
     extract_wire_adapter_writes,
     extract_wire_annotations,
+    extract_wire_enums,
     extract_wire_names,
 )
 from protoloom.model import EnumType, Message, RecoveredSchema
@@ -121,23 +127,36 @@ def _wire_parent(owner: str) -> str | None:
 
 def _find_wire(
     path: Path,
-) -> tuple[list[RecoveredSchema], dict[tuple[str, str], tuple[str, str | None]]]:
+) -> tuple[
+    list[RecoveredSchema],
+    dict[tuple[str, str], tuple[str, str | None]],
+    dict[tuple[str, str], dict[str, str | None]],
+]:
     schemas = []
     lineage = {}
+    enum_lineage = {}
     for source, data in _dex_inputs(path):
         dex = DexFile(data)
         annotations = extract_wire_annotations(dex)
         decoded = decode_wire_annotations(dex, annotations, source)
+        writes: tuple[WireAdapterFinding, ...] = ()
         if not annotations:
             writes = extract_wire_adapter_writes(dex)
             decoded.extend(
                 decode_wire_adapters(dex, writes, extract_wire_names(dex), source)
             )
+        enum_schemas, decoded_enum_lineage = decode_wire_enums(
+            extract_wire_enums(dex, writes, annotations), source
+        )
+        decoded.extend(enum_schemas)
+        enum_lineage.update(decoded_enum_lineage)
         for schema in decoded:
+            if not schema.messages:
+                continue
             owner = schema.evidence[0].location
             lineage[(schema.package, schema.name)] = (owner, _wire_parent(owner))
         schemas.extend(decoded)
-    return schemas, lineage
+    return schemas, lineage, enum_lineage
 
 
 def _find_lite(
@@ -396,8 +415,9 @@ def extract(
     lite_schemas, bailouts, lineage, enum_lineage = _find_lite(
         path, allow_heuristic=allow_heuristic_lite
     )
-    wire_schemas, wire_lineage = _find_wire(path)
+    wire_schemas, wire_lineage, wire_enum_lineage = _find_wire(path)
     lineage.update(wire_lineage)
+    enum_lineage.update(wire_enum_lineage)
     bailouts.extend(f"{path.name}: {reason}" for reason in go_tags.bailouts)
     if jadx:
         if detect(path).kind not in {
