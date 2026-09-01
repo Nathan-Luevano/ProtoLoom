@@ -6,6 +6,7 @@ from protoloom.extract.wire import (
     WireEnumFinding,
     WireFieldFinding,
     WireNameFinding,
+    WireOneofFinding,
     wire_adapter_type,
 )
 from protoloom.model import (
@@ -86,10 +87,16 @@ def decode_wire_adapter_fields(
     dex: DexFile,
     findings: tuple[WireAdapterFinding, ...],
     names: tuple[WireNameFinding, ...],
+    oneofs: tuple[WireOneofFinding, ...],
     source: str,
 ) -> dict[str, list[Field]]:
     recovered_names = {(item.owner, item.field.name_index): item.name for item in names}
     indexes = {field: index for index, field in enumerate(dex.fields)}
+    groups = {
+        (item.owner, name): f"choice_{index}"
+        for index, item in enumerate(oneofs)
+        for name in item.fields
+    }
     fields: dict[str, list[Field]] = defaultdict(list)
     for item in findings:
         type_name = wire_dex_type(dex, indexes[item.field], indexes[item.adapter])
@@ -107,6 +114,7 @@ def decode_wire_adapter_fields(
                 Confidence.HIGH,
                 [Evidence(source, location, "Square Wire tagged adapter write")],
                 label=item.label,
+                oneof=groups.get((item.owner, name)),
                 packed=item.packed or None,
             )
         )
@@ -117,10 +125,11 @@ def decode_wire_adapters(
     dex: DexFile,
     findings: tuple[WireAdapterFinding, ...],
     names: tuple[WireNameFinding, ...],
+    oneofs: tuple[WireOneofFinding, ...],
     source: str,
     syntaxes: dict[str, str] | None = None,
 ) -> list[RecoveredSchema]:
-    fields = decode_wire_adapter_fields(dex, findings, names, source)
+    fields = decode_wire_adapter_fields(dex, findings, names, oneofs, source)
     names_by_owner = {item.owner: item.message_name for item in names}
     schemas = []
     for owner, items in fields.items():
