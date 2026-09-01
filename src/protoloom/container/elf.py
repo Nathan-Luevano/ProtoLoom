@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 
 class ElfError(ValueError):
@@ -38,7 +39,7 @@ class ElfFile:
         if elf_class not in {1, 2} or byte_order not in {1, 2}:
             raise ElfError("unsupported ELF identification")
         self.bits = 32 if elf_class == 1 else 64
-        self.endian = "little" if byte_order == 1 else "big"
+        self.endian: Literal["little", "big"] = "little" if byte_order == 1 else "big"
         self._prefix = "<" if byte_order == 1 else ">"
         self.sections, self.segments = self._parse_tables()
 
