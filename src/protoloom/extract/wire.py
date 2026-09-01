@@ -176,9 +176,14 @@ def _wire_enum_method(
                 descriptor,
             ):
                 continue
-            positions = (
-                (3, 2) if parameters == ("I", "I", "Ljava/lang/String;") else (1, 3)
-            )
+            if parameters == ("I", "I", "Ljava/lang/String;"):
+                positions = (3, 2)
+            elif parameters == ("Ljava/lang/String;", "I", "I"):
+                positions = (1, 3)
+            elif parameters == ("Ljava/lang/String;", "I"):
+                positions = (1, 2)
+            else:
+                continue
             name, number = (registers.get(arguments[index]) for index in positions)
             if isinstance(name, str) and isinstance(number, int):
                 registers[arguments[0]] = ("enum", name, number)
