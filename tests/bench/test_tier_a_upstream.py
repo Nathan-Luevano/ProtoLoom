@@ -98,6 +98,43 @@ def test_manifest_requires_valid_remote_pins(
         validate_source_manifest(manifest)
 
 
+def test_manifest_refuses_unsafe_file_and_include_paths() -> None:
+    manifest = _manifest()
+    manifest["sources"][0]["files"] = [
+        {
+            "path": "../escape.proto",
+            "url": "https://example.test/file",
+            "sha256": "a" * 64,
+            "size": 1,
+        }
+    ]
+    with pytest.raises(ValueError, match="unsafe source file path"):
+        validate_source_manifest(manifest)
+    manifest = _manifest()
+    manifest["sources"][0]["includes"] = ["../escape"]
+    with pytest.raises(ValueError, match="unsafe include root"):
+        validate_source_manifest(manifest)
+
+
+def test_manifest_refuses_invalid_and_duplicate_targets() -> None:
+    manifest = _manifest()
+    manifest["sources"][0]["targets"] = ["target"]
+    with pytest.raises(ValueError, match="target entry must be an object"):
+        validate_source_manifest(manifest)
+    manifest = _manifest()
+    target = manifest["sources"][0]["targets"][0]
+    manifest["sources"][0]["targets"].append(dict(target))
+    with pytest.raises(ValueError, match="duplicate target name"):
+        validate_source_manifest(manifest)
+
+
+def test_manifest_refuses_duplicate_sources() -> None:
+    manifest = _manifest()
+    manifest["sources"].append(dict(manifest["sources"][0]))
+    with pytest.raises(ValueError, match="duplicate source name"):
+        validate_source_manifest(manifest)
+
+
 def test_manifest_refuses_unsupported_compiled_leg() -> None:
     manifest = _manifest()
     manifest["sources"][0]["targets"][0]["compiled_leg"] = "go-binary"
