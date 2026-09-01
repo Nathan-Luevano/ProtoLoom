@@ -43,3 +43,16 @@ def test_reads_go_runtime_name_and_tag() -> None:
     memory = _Memory(FakeElf(encoded))
 
     assert memory.name(0x1000) == ("Samples", tag.decode())
+
+
+def test_reads_go_runtime_type_name_and_kind() -> None:
+    data = bytearray(128)
+    name = b"*main.Record"
+    data[32 : 34 + len(name)] = bytes((1, len(name))) + name
+    data[64 + 20] = 2
+    data[64 + 23] = 25
+    data[64 + 40 : 64 + 44] = (32).to_bytes(4, "little", signed=True)
+    memory = _Memory(FakeElf(bytes(data)))
+
+    assert memory.type_name(0x1040) == "main.Record"
+    assert memory.kind(0x1040) == 25
