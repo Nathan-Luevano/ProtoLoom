@@ -1,7 +1,12 @@
 from collections import defaultdict
 
 from protoloom.container.dex import DexFile
-from protoloom.extract.wire import WireFieldFinding, wire_adapter_type
+from protoloom.extract.wire import (
+    WireAdapterFinding,
+    WireFieldFinding,
+    WireNameFinding,
+    wire_adapter_type,
+)
 from protoloom.model import Confidence, Evidence, Field, Message, RecoveredSchema
 
 
@@ -52,6 +57,35 @@ def wire_dex_type(dex: DexFile, field_index: int, adapter_index: int) -> str | N
     if adapter.class_index == field.type_index and raw_type.startswith("L"):
         return f".{raw_type[1:-1].replace('/', '.').replace('$', '.')}"
     return None
+
+
+def decode_wire_adapter_fields(
+    dex: DexFile,
+    findings: tuple[WireAdapterFinding, ...],
+    names: tuple[WireNameFinding, ...],
+    source: str,
+) -> dict[str, list[Field]]:
+    recovered_names = {(item.owner, item.field.name_index): item.name for item in names}
+    indexes = {field: index for index, field in enumerate(dex.fields)}
+    fields: dict[str, list[Field]] = defaultdict(list)
+    for item in findings:
+        type_name = wire_dex_type(dex, indexes[item.field], indexes[item.adapter])
+        if type_name is None:
+            continue
+        name = recovered_names.get(
+            (item.owner, item.field.name_index), dex.field_name(item.field)
+        )
+        location = f"method {item.method_index} @ 0x{item.instruction_offset:x}"
+        fields[item.owner].append(
+            Field(
+                name,
+                item.number,
+                type_name,
+                Confidence.HIGH,
+                [Evidence(source, location, "Square Wire tagged adapter write")],
+            )
+        )
+    return fields
 
 
 def decode_wire_annotations(
