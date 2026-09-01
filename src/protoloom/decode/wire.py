@@ -155,6 +155,27 @@ def decode_wire_adapters(
     return schemas
 
 
+def decode_wire_messages(
+    owners: tuple[str, ...], source: str, syntaxes: dict[str, str] | None = None
+) -> list[RecoveredSchema]:
+    schemas = []
+    for owner in owners:
+        path = owner.removeprefix("L").removesuffix(";")
+        package, _, class_name = path.rpartition("/")
+        message_name = class_name.replace("$", "_")
+        evidence = Evidence(source, owner, "Square Wire message superclass")
+        schemas.append(
+            RecoveredSchema(
+                f"{message_name}.proto",
+                package.replace("/", "."),
+                syntax=(syntaxes or {}).get(owner, "proto2"),
+                messages=[Message(message_name, [], evidence=[evidence])],
+                evidence=[evidence],
+            )
+        )
+    return schemas
+
+
 def decode_wire_enums(
     findings: tuple[WireEnumFinding, ...],
     source: str,
