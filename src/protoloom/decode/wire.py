@@ -56,7 +56,9 @@ def wire_dex_type(dex: DexFile, field_index: int, adapter_index: int) -> str | N
         return obvious[raw_type]
     adapter_name = dex.field_name(adapter)
     adapter_owner = dex.types[adapter.class_index]
-    if adapter_name == "ADAPTER" and adapter_owner.startswith("L"):
+    if (
+        adapter_name == "ADAPTER" or adapter.class_index == field.type_index
+    ) and adapter_owner.startswith("L"):
         return adapter_owner[1:-1].rsplit("/", 1)[-1].replace("$", "_")
     scalar = wire_adapter_type(f"adapter#{adapter_name}")
     if scalar is not None:
@@ -100,6 +102,7 @@ def decode_wire_adapters(
     findings: tuple[WireAdapterFinding, ...],
     names: tuple[WireNameFinding, ...],
     source: str,
+    syntaxes: dict[str, str] | None = None,
 ) -> list[RecoveredSchema]:
     fields = decode_wire_adapter_fields(dex, findings, names, source)
     names_by_owner = {item.owner: item.message_name for item in names}
@@ -119,6 +122,7 @@ def decode_wire_adapters(
             RecoveredSchema(
                 f"{message_name}.proto",
                 package.replace("/", "."),
+                syntax=(syntaxes or {}).get(owner, "proto2"),
                 messages=[message],
                 evidence=[evidence],
             )
@@ -155,7 +159,10 @@ def decode_wire_enums(
 
 
 def decode_wire_annotations(
-    dex: DexFile, findings: tuple[WireFieldFinding, ...], source: str
+    dex: DexFile,
+    findings: tuple[WireFieldFinding, ...],
+    source: str,
+    syntaxes: dict[str, str] | None = None,
 ) -> list[RecoveredSchema]:
     grouped: dict[str, list[WireFieldFinding]] = defaultdict(list)
     for item in findings:
@@ -171,6 +178,7 @@ def decode_wire_annotations(
             RecoveredSchema(
                 f"{message.name}.proto",
                 package.replace("/", "."),
+                syntax=(syntaxes or {}).get(owner, "proto2"),
                 messages=[message],
                 evidence=[evidence],
             )
