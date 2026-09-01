@@ -42,6 +42,15 @@ class WireAdapterFinding:
     adapter: DexField
     method_index: int
     instruction_offset: int
+    label: str = "optional"
+    packed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _AdapterValue:
+    field: DexField
+    label: str = "optional"
+    packed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,8 +120,9 @@ def _constant(instruction: _Instruction) -> tuple[int, int] | None:
 
 
 def _method_writes(dex: DexFile, method: EncodedMethod) -> list[WireAdapterFinding]:
-    registers: dict[int, DexField | int] = {}
+    registers: dict[int, DexField | int | _AdapterValue] = {}
     findings = []
+    pending: _AdapterValue | None = None
     for instruction in _instructions(dex.code_item(method.code_offset).instructions):
         units = instruction.units
         if 0x52 <= instruction.opcode <= 0x58 and units[1] < len(dex.fields):
@@ -125,28 +135,49 @@ def _method_writes(dex: DexFile, method: EncodedMethod) -> list[WireAdapterFindi
         if constant is not None:
             registers[constant[0]] = constant[1]
             continue
+        if instruction.opcode == 0x0C and pending is not None:
+            registers[units[0] >> 8] = pending
+            pending = None
+            continue
         if instruction.opcode not in {*range(0x6E, 0x73), *range(0x74, 0x79)}:
             continue
         target = dex.methods[units[1]]
         parameters = dex.method_parameter_types(target)
         arguments = _invoke_registers(instruction)
+        target_name = dex.method_name(target)
+        if target_name in {"asPacked", "asRepeated"} and len(arguments) == 1:
+            value = registers.get(arguments[0])
+            if isinstance(value, DexField):
+                value = _AdapterValue(value)
+            if isinstance(value, _AdapterValue):
+                pending = _AdapterValue(
+                    value.field, "repeated", target_name == "asPacked"
+                )
+            continue
         if parameters[-2:] != ("I", "Ljava/lang/Object;") or len(arguments) != 4:
             continue
         adapter = registers.get(arguments[0])
         number = registers.get(arguments[2])
         field = registers.get(arguments[3])
-        if not isinstance(adapter, DexField) or not isinstance(field, DexField):
+        if isinstance(adapter, DexField):
+            adapter = _AdapterValue(adapter)
+        if not isinstance(adapter, _AdapterValue) or not isinstance(field, DexField):
             continue
-        if not isinstance(number, int) or adapter.class_index == field.class_index:
+        if (
+            not isinstance(number, int)
+            or adapter.field.class_index == field.class_index
+        ):
             continue
         findings.append(
             WireAdapterFinding(
                 dex.types[field.class_index],
                 field,
                 number,
-                adapter,
+                adapter.field,
                 method.method_index,
                 instruction.offset,
+                adapter.label,
+                adapter.packed,
             )
         )
     return findings
