@@ -135,6 +135,21 @@ def test_manifest_refuses_duplicate_sources() -> None:
         validate_source_manifest(manifest)
 
 
+def test_manifest_accepts_valid_archive_and_file_sources() -> None:
+    archive_manifest = _manifest()
+    assert validate_source_manifest(archive_manifest) is archive_manifest
+    file_manifest = _manifest()
+    file_manifest["sources"][0]["files"] = [
+        {
+            "path": "proto/sample.proto",
+            "url": "https://example.test/sample.proto",
+            "sha256": "a" * 64,
+            "size": 1,
+        }
+    ]
+    assert validate_source_manifest(file_manifest) is file_manifest
+
+
 def test_manifest_refuses_unsupported_compiled_leg() -> None:
     manifest = _manifest()
     manifest["sources"][0]["targets"][0]["compiled_leg"] = "go-binary"
@@ -251,6 +266,14 @@ def test_extract_refuses_traversal_and_links(tmp_path: Path) -> None:
             bundle.addfile(member, io.BytesIO())
         with pytest.raises(ValueError, match=r"unsafe|non-file"):
             extract(archive, tmp_path / f"out-{kind!s}")
+
+
+def test_extract_refuses_empty_archive(tmp_path: Path) -> None:
+    archive = tmp_path / "empty.tar.gz"
+    with tarfile.open(archive, "w:gz"):
+        pass
+    with pytest.raises(ValueError, match="empty archive"):
+        extract(archive, tmp_path / "empty")
 
 
 def test_extract_materializes_one_root_tree(tmp_path: Path) -> None:
