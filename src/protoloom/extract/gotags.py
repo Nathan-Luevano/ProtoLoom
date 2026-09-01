@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from protoloom.container.elf import ElfSection
-from protoloom.model import Confidence, Evidence, Field, RecoveredSchema
+from protoloom.model import Confidence, Evidence, Field, Message, RecoveredSchema
 
 _PROTOBUF_TAG = re.compile(r'(?:^| )protobuf:"([^"]+)"(?: |$)')
 
@@ -169,4 +169,41 @@ def _tagged_field(
         ),
         None,
         tag.proto3,
+    )
+
+
+def _struct_schema(
+    memory: _Memory, address: int, source: str
+) -> tuple[RecoveredSchema | None, list[str]]:
+    type_name = memory.type_name(address)
+    fields_address = memory.pointer(address + 56)
+    field_count = memory.uint(address + 64, 8)
+    if field_count > 10_000:
+        raise ValueError(f"implausible Go struct field count: {field_count}")
+    fields: list[Field] = []
+    bailouts: list[str] = []
+    proto3 = True
+    for index in range(field_count):
+        entry = fields_address + index * 24
+        field, bailout, is_proto3 = _tagged_field(memory, entry, source, type_name)
+        proto3 &= is_proto3
+        if field is not None:
+            fields.append(field)
+        if bailout is not None:
+            bailouts.append(bailout)
+    if not fields or bailouts:
+        return None, bailouts
+    message_name = type_name.rsplit(".", 1)[-1]
+    evidence = [Evidence(source, type_name, "Go runtime struct metadata")]
+    message = Message(
+        message_name, fields, confidence=Confidence.CERTAIN, evidence=evidence
+    )
+    return (
+        RecoveredSchema(
+            f"{message_name}.proto",
+            syntax="proto3" if proto3 else "proto2",
+            messages=[message],
+            evidence=evidence,
+        ),
+        [],
     )
