@@ -1,5 +1,12 @@
 from protoloom.emit.proto import emit_proto
-from protoloom.model import Confidence, EnumType, EnumValue, Field, Message, RecoveredSchema
+from protoloom.model import (
+    Confidence,
+    EnumType,
+    EnumValue,
+    Field,
+    Message,
+    RecoveredSchema,
+)
 from protoloom.validate.compile import compile_proto
 
 
