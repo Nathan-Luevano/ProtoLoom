@@ -4,6 +4,23 @@ from protoloom.container.dex import AnnotationItem, DexField, DexFile
 
 _MESSAGE = "Lcom/squareup/wire/Message;"
 _WIRE_FIELD = "Lcom/squareup/wire/WireField;"
+_SCALARS = {
+    "BOOL": "bool",
+    "BYTES": "bytes",
+    "DOUBLE": "double",
+    "FIXED32": "fixed32",
+    "FIXED64": "fixed64",
+    "FLOAT": "float",
+    "INT32": "int32",
+    "INT64": "int64",
+    "SFIXED32": "sfixed32",
+    "SFIXED64": "sfixed64",
+    "SINT32": "sint32",
+    "SINT64": "sint64",
+    "STRING": "string",
+    "UINT32": "uint32",
+    "UINT64": "uint64",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +49,18 @@ def _label(dex: DexFile, value: object) -> str:
         if name in {"optional", "required", "repeated", "packed"}:
             return "repeated" if name == "packed" else name
     return "optional"
+
+
+def wire_adapter_type(adapter: str) -> str | None:
+    owner, separator, member = adapter.partition("#")
+    if not separator:
+        return None
+    scalar = _SCALARS.get(member)
+    if scalar is not None:
+        return scalar
+    if member != "ADAPTER":
+        return None
+    return f".{owner.replace('$', '.')}"
 
 
 def extract_wire_annotations(dex: DexFile) -> tuple[WireFieldFinding, ...]:
