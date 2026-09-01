@@ -1,8 +1,13 @@
 from types import SimpleNamespace
 
 from protoloom.container.dex import AnnotationItem, DexClass, DexField
-from protoloom.decode.wire import decode_wire_annotations
-from protoloom.extract.wire import extract_wire_annotations, wire_adapter_type
+from protoloom.decode.wire import decode_wire_annotations, wire_dex_type
+from protoloom.extract.lite import _Instruction
+from protoloom.extract.wire import (
+    _constant,
+    extract_wire_annotations,
+    wire_adapter_type,
+)
 
 
 def _wire_dex() -> SimpleNamespace:
@@ -72,3 +77,19 @@ def test_decodes_annotated_wire_message() -> None:
     ]
     field = schemas[0].messages[0].fields[0]
     assert (field.name, field.number, field.type_name) == ("title", 7, "string")
+
+
+def test_decodes_wire_constants() -> None:
+    assert _constant(_Instruction(0, 0x12, (0xE312,))) == (3, -2)
+    assert _constant(_Instruction(0, 0x13, (0x0213, 0xFFFE))) == (2, -2)
+
+
+def test_resolves_wire_dex_types() -> None:
+    fields = (DexField(0, 0, 0), DexField(1, 1, 1))
+    dex = SimpleNamespace(
+        fields=fields,
+        types=("Z", "Lcom/squareup/wire/ProtoAdapter;"),
+        field_name=lambda field: "BOOL" if field is fields[1] else "value",
+    )
+
+    assert wire_dex_type(dex, 0, 1) == "bool"
