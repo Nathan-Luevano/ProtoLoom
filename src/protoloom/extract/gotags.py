@@ -1,4 +1,5 @@
 import re
+import struct
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
@@ -207,3 +208,33 @@ def _struct_schema(
         ),
         [],
     )
+
+
+def scan_go_struct_tags(elf: GoElf, source: str) -> GoTagExtraction:
+    if elf.bits != 64 or elf.endian != "little":
+        return GoTagExtraction((), ("unsupported Go ELF architecture",))
+    try:
+        build_info = bytes(elf.section_data(".go.buildinfo"))
+        typelinks = bytes(elf.section_data(".typelink"))
+        memory = _Memory(elf)
+    except KeyError:
+        return GoTagExtraction((), ())
+    if b"go1.24." not in build_info:
+        return GoTagExtraction((), ("unsupported Go metadata version",))
+    schemas: list[RecoveredSchema] = []
+    bailouts: list[str] = []
+    for (relative,) in struct.iter_unpack("<i", typelinks):
+        pointer = memory.rodata.address + relative
+        if memory.kind(pointer) != 22:
+            continue
+        target = memory.pointer(pointer + 48)
+        if memory.kind(target) != 25:
+            continue
+        try:
+            schema, reasons = _struct_schema(memory, target, source)
+        except (UnicodeDecodeError, ValueError):
+            continue
+        if schema is not None:
+            schemas.append(schema)
+        bailouts.extend(reasons)
+    return GoTagExtraction(tuple(schemas), tuple(bailouts))
