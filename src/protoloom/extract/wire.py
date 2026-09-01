@@ -81,6 +81,15 @@ class WireOneofFinding:
 _ONEOF_MESSAGE = re.compile(r"^At most one of (.+) may be non-null$")
 
 
+def extract_wire_messages(dex: DexFile) -> tuple[str, ...]:
+    return tuple(
+        dex.types[item.class_index]
+        for item in dex.classes
+        if item.superclass_index != dex.NO_INDEX
+        and dex.types[item.superclass_index] == _MESSAGE
+    )
+
+
 def extract_wire_oneofs(dex: DexFile, owners: set[str]) -> tuple[WireOneofFinding, ...]:
     result = []
     for item in dex.classes:
