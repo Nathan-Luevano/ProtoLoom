@@ -400,6 +400,8 @@ def extract(
     lite_schemas, bailouts, lineage, enum_lineage = _find_lite(
         path, allow_heuristic=allow_heuristic_lite
     )
+    wire_schemas, wire_lineage = _find_wire(path)
+    lineage.update(wire_lineage)
     bailouts.extend(f"{path.name}: {reason}" for reason in go_tags.bailouts)
     if jadx:
         if detect(path).kind not in {
@@ -420,7 +422,7 @@ def extract(
             f"and indexed {result.candidate_sites} protobuf metadata sites "
             f"-> {result.output}"
         )
-    if not findings and not lite_schemas and not go_tags.schemas:
+    if not findings and not lite_schemas and not go_tags.schemas and not wire_schemas:
         typer.echo("no recoverable schema evidence found", err=True)
         for reason in bailouts:
             typer.echo(f"bail-out: {reason}", err=True)
@@ -433,6 +435,7 @@ def extract(
         schemas.append(schema)
     schemas.extend(go_tags.schemas)
     schemas.extend(lite_schemas)
+    schemas.extend(wire_schemas)
     reconciled = reconcile(schemas)
     descriptors = [finding.descriptor for finding in findings]
     certain_names = {finding.descriptor.name for finding in findings}

@@ -44,11 +44,12 @@ def wire_dex_type(dex: DexFile, field_index: int, adapter_index: int) -> str | N
     if raw_type in obvious:
         return obvious[raw_type]
     adapter_name = dex.field_name(adapter)
+    adapter_owner = dex.types[adapter.class_index]
+    if adapter_name == "ADAPTER" and adapter_owner.startswith("L"):
+        return adapter_owner[1:-1].rsplit("/", 1)[-1].replace("$", "_")
     scalar = wire_adapter_type(f"adapter#{adapter_name}")
     if scalar is not None:
         return scalar
-    if adapter.class_index == field.type_index and raw_type.startswith("L"):
-        return f".{raw_type[1:-1].replace('/', '.').replace('$', '.')}"
     return None
 
 
