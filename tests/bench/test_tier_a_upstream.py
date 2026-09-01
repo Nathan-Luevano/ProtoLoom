@@ -46,6 +46,32 @@ def test_manifest_refuses_unsafe_proto_path() -> None:
         validate_source_manifest(manifest)
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("name", "../upstream", "source name"),
+        ("commit", "abc", "full commit SHA"),
+        ("files", [], "non-empty array"),
+        ("includes", [], "include roots"),
+        ("targets", [], "needs targets"),
+    ],
+)
+def test_manifest_refuses_incomplete_or_unsafe_sources(
+    field: str, value: object, error: str
+) -> None:
+    manifest = _manifest()
+    manifest["sources"][0][field] = value
+    with pytest.raises(ValueError, match=error):
+        validate_source_manifest(manifest)
+
+
+def test_manifest_refuses_unsupported_compiled_leg() -> None:
+    manifest = _manifest()
+    manifest["sources"][0]["targets"][0]["compiled_leg"] = "go-binary"
+    with pytest.raises(ValueError, match="unsupported compiled leg"):
+        validate_source_manifest(manifest)
+
+
 def test_download_checks_redirect_size_hash_and_installs_atomically(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
