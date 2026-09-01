@@ -266,3 +266,23 @@ def test_extract_reports_uncompilable_recovery(
 
     assert result.exit_code == 2
     assert "recovery failed: protoc rejected schema" in result.output
+
+
+def test_extract_reports_descriptor_assembly_failure(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    binary = tmp_path / "input.bin"
+    binary.write_bytes(b"descriptor")
+    demo_dir = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "-o", str(demo_dir)]).exit_code == 0
+    findings = _find(demo_dir / "demo.desc")
+    monkeypatch.setattr("protoloom.cli._find", lambda path: findings)
+    monkeypatch.setattr(
+        "protoloom.cli._combined_lite_descriptors",
+        lambda *args: (_ for _ in ()).throw(ValueError("duplicate descriptor")),
+    )
+
+    result = runner.invoke(app, ["extract", str(binary)])
+
+    assert result.exit_code == 2
+    assert "descriptor-set assembly failed: duplicate descriptor" in result.output
