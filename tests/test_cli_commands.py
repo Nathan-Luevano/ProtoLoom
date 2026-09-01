@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from zipfile import ZipFile
 
+from click import unstyle
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 from pytest import MonkeyPatch
 from typer.testing import CliRunner
@@ -151,7 +152,7 @@ def test_extract_refuses_jadx_for_unsupported_container(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert "--jadx only supports APK, AAB, and DEX inputs" in " ".join(
-        result.output.split()
+        unstyle(result.output).split()
     )
 
 
