@@ -9,6 +9,7 @@ import pytest
 from protoloom.bench.upstream import (
     download,
     extract,
+    materialize_source,
     validate_source_manifest,
 )
 
@@ -209,3 +210,32 @@ def test_extract_refuses_multiple_roots(tmp_path: Path) -> None:
             bundle.addfile(member, io.BytesIO(b"x"))
     with pytest.raises(ValueError, match="one root directory"):
         extract(archive, tmp_path / "multiple")
+
+
+def test_materialize_source_downloads_individual_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    downloads: list[tuple[str, Path]] = []
+
+    def fake_download(url: str, expected: str, size: int, output: Path) -> None:
+        downloads.append((url, output))
+        output.write_bytes(expected.encode())
+
+    monkeypatch.setattr("protoloom.bench.upstream.download", fake_download)
+    root = tmp_path / "source"
+    source = {
+        "files": [
+            {
+                "path": "proto/one.proto",
+                "url": "https://example.test/one",
+                "sha256": "a" * 64,
+                "size": 1,
+            }
+        ]
+    }
+
+    result = materialize_source(source, tmp_path / "cache", root)
+
+    assert result == root
+    assert downloads == [("https://example.test/one", root / "proto/one.proto")]
+    assert (root / "proto/one.proto").read_text() == "a" * 64
