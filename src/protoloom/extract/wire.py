@@ -305,10 +305,21 @@ def extract_wire_adapter_writes(dex: DexFile) -> tuple[WireAdapterFinding, ...]:
 
 
 def extract_wire_enums(
-    dex: DexFile, findings: tuple[WireAdapterFinding, ...]
+    dex: DexFile,
+    findings: tuple[WireAdapterFinding, ...],
+    annotations: tuple[WireFieldFinding, ...] = (),
 ) -> tuple[WireEnumFinding, ...]:
     result = []
-    for type_index in sorted({item.adapter.class_index for item in findings}):
+    descriptors = {
+        f"L{item.adapter.partition('#')[0].replace('.', '/')};"
+        for item in annotations
+        if item.adapter.endswith("#ADAPTER")
+    }
+    type_indexes = {item.adapter.class_index for item in findings}
+    type_indexes.update(
+        index for index, descriptor in enumerate(dex.types) if descriptor in descriptors
+    )
+    for type_index in sorted(type_indexes):
         enum_class = dex.class_by_type_index(type_index)
         if enum_class is None or enum_class.superclass_index == dex.NO_INDEX:
             continue
