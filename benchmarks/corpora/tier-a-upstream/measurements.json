@@ -2,6 +2,7 @@
   {
     "compiled_leg": null,
     "compiled_object_exact": null,
+    "compiled_object_recovered": null,
     "descriptor_bytes": 6487,
     "descriptor_exact": true,
     "proto": "google/protobuf/unittest_proto3.proto",
@@ -12,6 +13,7 @@
   {
     "compiled_leg": null,
     "compiled_object_exact": null,
+    "compiled_object_recovered": null,
     "descriptor_bytes": 7299,
     "descriptor_exact": true,
     "proto": "google/protobuf/unittest_well_known_types.proto",
@@ -22,6 +24,7 @@
   {
     "compiled_leg": null,
     "compiled_object_exact": null,
+    "compiled_object_recovered": null,
     "descriptor_bytes": 12176,
     "descriptor_exact": true,
     "proto": "google/protobuf/test_messages_proto3.proto",
@@ -32,6 +35,7 @@
   {
     "compiled_leg": "cpp-object",
     "compiled_object_exact": false,
+    "compiled_object_recovered": true,
     "descriptor_bytes": 1463,
     "descriptor_exact": true,
     "proto": "conformance/conformance.proto",
@@ -42,6 +46,7 @@
   {
     "compiled_leg": "cpp-object",
     "compiled_object_exact": false,
+    "compiled_object_recovered": true,
     "descriptor_bytes": 205,
     "descriptor_exact": true,
     "proto": "google/type/date.proto",
@@ -52,6 +57,7 @@
   {
     "compiled_leg": null,
     "compiled_object_exact": null,
+    "compiled_object_recovered": null,
     "descriptor_bytes": 231,
     "descriptor_exact": true,
     "proto": "google/type/money.proto",
@@ -62,6 +68,7 @@
   {
     "compiled_leg": null,
     "compiled_object_exact": null,
+    "compiled_object_recovered": null,
     "descriptor_bytes": 213,
     "descriptor_exact": true,
     "proto": "google/type/latlng.proto",
@@ -72,6 +79,7 @@
   {
     "compiled_leg": null,
     "compiled_object_exact": null,
+    "compiled_object_recovered": null,
     "descriptor_bytes": 266,
     "descriptor_exact": true,
     "proto": "google/type/timeofday.proto",
@@ -82,6 +90,7 @@
   {
     "compiled_leg": null,
     "compiled_object_exact": null,
+    "compiled_object_recovered": null,
     "descriptor_bytes": 320,
     "descriptor_exact": true,
     "proto": "google/type/month.proto",
@@ -92,6 +101,7 @@
   {
     "compiled_leg": "cpp-object",
     "compiled_object_exact": false,
+    "compiled_object_recovered": true,
     "descriptor_bytes": 871,
     "descriptor_exact": true,
     "proto": "grpc/health/v1/health.proto",
@@ -102,6 +112,7 @@
   {
     "compiled_leg": null,
     "compiled_object_exact": null,
+    "compiled_object_recovered": null,
     "descriptor_bytes": 282,
     "descriptor_exact": true,
     "proto": "test/proto/helloworld.proto",
@@ -112,6 +123,7 @@
   {
     "compiled_leg": null,
     "compiled_object_exact": null,
+    "compiled_object_recovered": null,
     "descriptor_bytes": 2410,
     "descriptor_exact": true,
     "proto": "test/proto/extraction.proto",
@@ -122,6 +134,7 @@
   {
     "compiled_leg": null,
     "compiled_object_exact": null,
+    "compiled_object_recovered": null,
     "descriptor_bytes": 174,
     "descriptor_exact": true,
     "proto": "test/common/protobuf/arena_wrapped_proto_test.proto",
