@@ -260,7 +260,7 @@ no recovery compile denominator.
 | Molly, two `protowire` files | 100% (546/546) | 100% (546/546) | 100% (546/546) | 100% (546/546) | 98.90% (540/546) | 100% (110/110) | 100% (159/159) | 100% (2/2) |
 | Bitwarden Authenticator, `google_authenticator.proto` | 100% (12/12) | 100% (12/12) | 100% (12/12) | 75% (9/12) | 100% (12/12) | 0% (0/1) | 100% (5/5) | 100% (1/1) |
 | Bitwarden, package-normalized | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (1/1) | 100% (5/5) | 100% (1/1) |
-| Meshtastic, three selected files | 91.77% (446/486) | 100% (446/446) | 100% (446/446) | 97.53% (435/446) | 99.33% (443/446) | 93.28% (125/134) | 77.92% (353/453) | 100% (3/3) |
+| Meshtastic, three selected files | 91.77% (446/486) | 100% (446/446) | 100% (446/446) | 99.55% (444/446) | 99.33% (443/446) | 93.28% (125/134) | 77.92% (353/453) | 100% (3/3) |
 | Flipper, three selected schema groups | 66.67% (24/36) | 100% (24/24) | 75% (18/24) | 75% (18/24) | 100% (24/24) | 0% (0/2) | 0% (0/20) | 100% (3/3) |
 | Gadgetbridge, three selected files, package-normalized | 100% (115/115) | 100% (115/115) | 100% (115/115) | 100% (115/115) | 63.48% (73/115) | 100% (16/16) | 100% (27/27) | 100% (3/3) |
 | Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 86.49% (32/37) | 100% (37/37) | 100% (7/7) | 7.41% (2/27) | 100% (1/1) |
@@ -328,6 +328,11 @@ models retain boxed JVM types for 107 of the previously missed scalar fields.
 Applying that compiled presence proof to the adapter path moves structural
 fidelity from 18/134 to 125/134; unboxed fields and absent messages remain
 unclassified.
+Nine message fields retained flattened DEX names even though their child
+declarations and complete enclosing chains were recovered. Resolving those
+references only after every attached message has its final name moves exact
+types from 435/446 to 444/446. Mullvad remains perfect on all nine metrics;
+the same declaration-aware pass removes 19 duplicate placeholder messages.
 The 40 missing fields belong to ten source messages with no corresponding
 generated class in the pinned APK; similarly named generated classes are not
 renamed to them. Exact type identity remains absent for some scalar-family and
