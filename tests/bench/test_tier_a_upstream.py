@@ -108,6 +108,31 @@ def test_download_refuses_non_https_redirect(
         )
 
 
+@pytest.mark.parametrize(
+    ("size", "digest", "error"),
+    [
+        (3, hashlib.sha256(b"payload").hexdigest(), "exceeds pinned size"),
+        (8, hashlib.sha256(b"payload").hexdigest(), "size mismatch"),
+        (7, "0" * 64, "hash mismatch"),
+    ],
+)
+def test_download_cleans_partial_on_pin_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    size: int,
+    digest: str,
+    error: str,
+) -> None:
+    monkeypatch.setattr(
+        "protoloom.bench.upstream.urllib.request.urlopen",
+        lambda request, timeout: Response(b"payload"),
+    )
+    destination = tmp_path / "archive.tar.gz"
+    with pytest.raises(ValueError, match=error):
+        download("https://example.test/archive", digest, size, destination)
+    assert not destination.with_name(destination.name + ".part").exists()
+
+
 def test_download_refuses_cache_symlink(tmp_path: Path) -> None:
     destination = tmp_path / "archive.tar.gz"
     destination.symlink_to(tmp_path / "missing")
