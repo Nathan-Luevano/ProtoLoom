@@ -81,6 +81,7 @@ class WireOneofFinding:
 
 _ONEOF_MESSAGE = re.compile(r"^At most one of (.+) may be non-null$")
 _DEFAULT_MARKER = "Lkotlin/jvm/internal/DefaultConstructorMarker;"
+_NON_NULL = object()
 
 
 def _parameter_registers(
@@ -134,6 +135,21 @@ def _constructor_and(registers: dict[int, object], instruction: _Instruction) ->
     else:
         registers.pop(destination, None)
     return True
+
+
+def _constructor_value(registers: dict[int, object], instruction: _Instruction) -> bool:
+    if _constructor_move(registers, instruction) or _constructor_and(
+        registers, instruction
+    ):
+        return True
+    constant = _constant(instruction)
+    if constant is not None:
+        registers[constant[0]] = constant[1]
+        return True
+    if instruction.opcode in {0x1A, 0x1B, 0x62}:
+        registers[instruction.units[0] >> 8] = _NON_NULL
+        return True
+    return False
 
 
 def extract_wire_messages(dex: DexFile) -> tuple[str, ...]:
