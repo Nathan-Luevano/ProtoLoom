@@ -3,11 +3,20 @@ from collections import defaultdict
 from protoloom.container.dex import DexFile
 from protoloom.extract.wire import (
     WireAdapterFinding,
+    WireEnumFinding,
     WireFieldFinding,
     WireNameFinding,
     wire_adapter_type,
 )
-from protoloom.model import Confidence, Evidence, Field, Message, RecoveredSchema
+from protoloom.model import (
+    Confidence,
+    EnumType,
+    EnumValue,
+    Evidence,
+    Field,
+    Message,
+    RecoveredSchema,
+)
 
 
 def _field(dex: DexFile, item: WireFieldFinding, source: str) -> Field | None:
@@ -115,6 +124,34 @@ def decode_wire_adapters(
             )
         )
     return schemas
+
+
+def decode_wire_enums(
+    findings: tuple[WireEnumFinding, ...], source: str
+) -> tuple[list[RecoveredSchema], dict[tuple[str, str], dict[str, str | None]]]:
+    schemas = []
+    lineage = {}
+    for item in findings:
+        path = item.descriptor.removeprefix("L").removesuffix(";")
+        package, _, class_name = path.rpartition("/")
+        enum_name = class_name.replace("$", "_")
+        parent = f"L{path.rsplit('$', 1)[0]};" if "$" in path else None
+        evidence = Evidence(source, item.descriptor, "Wire enum initializer")
+        enum = EnumType(
+            enum_name,
+            [EnumValue(name, number) for name, number in item.values],
+            Confidence.CERTAIN,
+            [evidence],
+        )
+        schema = RecoveredSchema(
+            f"{enum_name}.proto",
+            package.replace("/", "."),
+            enums=[enum],
+            evidence=[evidence],
+        )
+        schemas.append(schema)
+        lineage[(schema.package, schema.name)] = {enum_name: parent}
+    return schemas, lineage
 
 
 def decode_wire_annotations(
