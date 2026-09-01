@@ -35,6 +35,7 @@ class WireFieldFinding:
     adapter: str
     label: str
     oneof: str | None
+    schema_index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -482,6 +483,7 @@ def extract_wire_annotations(dex: DexFile) -> tuple[WireFieldFinding, ...]:
             values = _elements(dex, annotation)
             number = values.get("tag")
             adapter = _string(dex, values.get("adapter"))
+            schema_index = values.get("schemaIndex")
             if not isinstance(number, int) or adapter is None:
                 continue
             findings.append(
@@ -492,6 +494,7 @@ def extract_wire_annotations(dex: DexFile) -> tuple[WireFieldFinding, ...]:
                     adapter,
                     _label(dex, values.get("label")),
                     _string(dex, values.get("oneofName")),
+                    schema_index if isinstance(schema_index, int) else None,
                 )
             )
     return tuple(findings)
