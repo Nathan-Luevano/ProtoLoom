@@ -301,9 +301,7 @@ class DexFile:
             if field_index >= len(self.fields):
                 raise DexError("annotated field index is out of range")
             (count,) = self._unpack("<I", int(annotation_set_offset))
-            offsets = self._unpack(
-                f"<{int(count)}I", int(annotation_set_offset) + 4
-            )
+            offsets = self._unpack(f"<{int(count)}I", int(annotation_set_offset) + 4)
             annotations = tuple(
                 self._annotation_item(int(offset)) for offset in offsets
             )
