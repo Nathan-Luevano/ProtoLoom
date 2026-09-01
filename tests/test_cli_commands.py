@@ -147,10 +147,12 @@ def test_extract_refuses_jadx_for_unsupported_container(tmp_path: Path) -> None:
     binary = tmp_path / "unknown.bin"
     binary.write_bytes(b"unknown")
 
-    result = runner.invoke(app, ["extract", str(binary), "--jadx"])
+    result = runner.invoke(app, ["extract", str(binary), "--jadx"], color=False)
 
     assert result.exit_code == 2
-    assert "--jadx only supports APK, AAB, and DEX inputs" in result.output
+    assert "--jadx only supports APK, AAB, and DEX inputs" in " ".join(
+        result.output.split()
+    )
 
 
 def test_extract_reports_jadx_failure(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
