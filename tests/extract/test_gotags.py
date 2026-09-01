@@ -7,6 +7,7 @@ from protoloom.extract.gotags import (
     _protobuf_type,
     _tagged_field,
     parse_protobuf_tag,
+    scan_go_struct_tags,
 )
 
 
@@ -93,3 +94,39 @@ def test_builds_field_from_linked_go_metadata() -> None:
     assert bailout is None and proto3
     assert field is not None
     assert (field.name, field.number, field.type_name) == ("id", 1, "uint64")
+
+
+def test_scans_linked_go_struct_metadata() -> None:
+    data = bytearray(1024)
+    type_name = b"*main.Record"
+    data[32 : 34 + len(type_name)] = bytes((1, len(type_name))) + type_name
+    data[64 + 23] = 22
+    data[64 + 48 : 64 + 56] = (0x1100).to_bytes(8, "little")
+    data[256 + 20] = 2
+    data[256 + 23] = 25
+    data[256 + 40 : 256 + 44] = (32).to_bytes(4, "little", signed=True)
+    data[256 + 56 : 256 + 64] = (0x1200).to_bytes(8, "little")
+    data[256 + 64 : 256 + 72] = (1).to_bytes(8, "little")
+    data[384 + 23] = 11
+    field_name = b"Id"
+    field_tag = b'protobuf:"varint,1,opt,name=id,proto3"'
+    encoded = (
+        bytes((3, len(field_name))) + field_name + bytes((len(field_tag),)) + field_tag
+    )
+    data[768 : 768 + len(encoded)] = encoded
+    data[512:520] = (0x1300).to_bytes(8, "little")
+    data[520:528] = (0x1180).to_bytes(8, "little")
+    elf = FakeElf(bytes(data))
+    elf.payloads.update(
+        {".typelink": (64).to_bytes(4, "little"), ".go.buildinfo": b"go1.24.0"}
+    )
+    elf.sections += (
+        ElfSection(".typelink", 0, 4, 0x2000, 2, 1),
+        ElfSection(".go.buildinfo", 0, 8, 0x3000, 2, 1),
+    )
+
+    result = scan_go_struct_tags(elf, "fixture")
+
+    assert result.bailouts == ()
+    fields = result.schemas[0].messages[0].fields
+    assert [(field.name, field.type_name) for field in fields] == [("id", "uint64")]
