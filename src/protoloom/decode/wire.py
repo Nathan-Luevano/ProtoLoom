@@ -33,27 +33,20 @@ def wire_dex_type(dex: DexFile, field_index: int, adapter_index: int) -> str | N
     raw_type = dex.types[field.type_index]
     obvious = {
         "Z": "bool",
+        "Ljava/lang/Boolean;": "bool",
         "D": "double",
+        "Ljava/lang/Double;": "double",
         "F": "float",
+        "Ljava/lang/Float;": "float",
         "Ljava/lang/String;": "string",
         "Lokio/ByteString;": "bytes",
     }
     if raw_type in obvious:
         return obvious[raw_type]
     adapter_name = dex.field_name(adapter)
-    if adapter_name in {
-        "INT32",
-        "INT64",
-        "UINT32",
-        "UINT64",
-        "SINT32",
-        "SINT64",
-        "FIXED32",
-        "FIXED64",
-        "SFIXED32",
-        "SFIXED64",
-    }:
-        return adapter_name.lower()
+    scalar = wire_adapter_type(f"adapter#{adapter_name}")
+    if scalar is not None:
+        return scalar
     if adapter.class_index == field.type_index and raw_type.startswith("L"):
         return f".{raw_type[1:-1].replace('/', '.').replace('$', '.')}"
     return None
