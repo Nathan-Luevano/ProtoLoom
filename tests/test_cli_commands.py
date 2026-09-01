@@ -161,6 +161,7 @@ def test_extract_reports_jadx_failure(tmp_path: Path, monkeypatch: MonkeyPatch) 
         "protoloom.cli._find_lite",
         lambda path, allow_heuristic: ([], [], {}, {}),
     )
+    monkeypatch.setattr("protoloom.cli._find_wire", lambda path: ([], {}, {}))
     monkeypatch.setattr(
         "protoloom.cli.detect", lambda path: Detection(ContainerKind.DEX)
     )
@@ -185,6 +186,7 @@ def test_extract_reports_retained_jadx_context(
         "protoloom.cli._find_lite",
         lambda path, allow_heuristic: ([], [], {}, {}),
     )
+    monkeypatch.setattr("protoloom.cli._find_wire", lambda path: ([], {}, {}))
     monkeypatch.setattr(
         "protoloom.cli.detect", lambda path: Detection(ContainerKind.DEX)
     )
