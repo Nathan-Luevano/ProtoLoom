@@ -94,6 +94,24 @@ def _parameter_registers(
     return tuple(result)
 
 
+def _constructor_move(registers: dict[int, object], instruction: _Instruction) -> bool:
+    units = instruction.units
+    if instruction.opcode in {0x01, 0x04, 0x07}:
+        destination = (units[0] >> 8) & 0xF
+        source = (units[0] >> 12) & 0xF
+    elif instruction.opcode in {0x02, 0x05, 0x08}:
+        destination, source = units[0] >> 8, units[1]
+    elif instruction.opcode in {0x03, 0x06, 0x09}:
+        destination, source = units[1], units[2]
+    else:
+        return False
+    if source in registers:
+        registers[destination] = registers[source]
+    else:
+        registers.pop(destination, None)
+    return True
+
+
 def extract_wire_messages(dex: DexFile) -> tuple[str, ...]:
     return tuple(
         dex.types[item.class_index]
