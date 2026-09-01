@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from protoloom.container.dex import AnnotationItem, DexClass, DexField
-from protoloom.extract.wire import extract_wire_annotations
+from protoloom.extract.wire import extract_wire_annotations, wire_adapter_type
 
 
 def _wire_dex() -> SimpleNamespace:
@@ -54,3 +54,9 @@ def test_extracts_retained_wire_field_annotation() -> None:
         "x#STRING",
     )
     assert (finding.label, finding.oneof) == ("repeated", "choice")
+
+
+def test_resolves_wire_adapter_types() -> None:
+    assert wire_adapter_type("com.squareup.wire.ProtoAdapter#SINT64") == "sint64"
+    assert wire_adapter_type("example.Outer$Inner#ADAPTER") == ".example.Outer.Inner"
+    assert wire_adapter_type("example.Custom#OTHER") is None
