@@ -251,3 +251,21 @@ def test_decodes_adapter_write_evidence() -> None:
         True,
         "choice_0",
     )
+
+
+def test_decodes_boxed_adapter_presence() -> None:
+    model = DexField(0, 1, 0)
+    adapter = DexField(2, 3, 1)
+    owner = "Lexample/Record;"
+    dex: Any = SimpleNamespace(
+        fields=(model, adapter),
+        types=(owner, "Ljava/lang/Integer;", "Lwire/Adapters;"),
+        field_name=lambda field: "count" if field is model else "INT32",
+    )
+    finding = WireAdapterFinding(owner, model, 4, adapter, 7, 12)
+
+    fields = decode_wire_adapter_fields(
+        dex, (finding,), (), (), "classes.dex", {owner: "proto3"}
+    )
+
+    assert fields[owner][0].proto3_optional
