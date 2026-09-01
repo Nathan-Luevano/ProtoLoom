@@ -32,6 +32,7 @@ def _wire_dex() -> Any:
             (4, 5),
             (6, 1),
             (8, 9),
+            (10, 2),
         ),
     )
     return SimpleNamespace(
@@ -55,6 +56,7 @@ def _wire_dex() -> Any:
             "unused",
             "oneofName",
             "choice",
+            "schemaIndex",
         ),
         field_annotations=lambda _: ((field, (annotation,)),),
         field_name=lambda item: "REPEATED" if item is label else "title",
@@ -70,6 +72,7 @@ def test_extracts_retained_wire_field_annotation() -> None:
         "x#STRING",
     )
     assert (finding.label, finding.oneof) == ("repeated", "choice")
+    assert finding.schema_index == 2
 
 
 def test_extracts_empty_wire_message() -> None:
