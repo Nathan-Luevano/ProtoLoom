@@ -14,13 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: mamba-org/setup-micromamba@v1
+      - uses: astral-sh/setup-uv@v9
         with:
-          environment-file: environment.yml
-          cache-environment: true
+          enable-cache: true
+          python-version: "3.11"
+      - run: uv sync --locked --extra dev --group dev
       - name: Run quality gates
-        shell: micromamba-shell {0}
-        run: make check
+        run: uv run make check
 
   package:
     needs: quality
