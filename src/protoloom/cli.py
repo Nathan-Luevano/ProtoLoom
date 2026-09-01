@@ -350,7 +350,14 @@ def _nested_lite_enums(
         prefix = next((item for item in prefixes if enum.name.startswith(item)), None)
         if prefix is not None and len(enum.name) > len(prefix):
             new_name = enum.name[len(prefix) :]
-            enum_renames[enum.name] = new_name
+            names = [new_name]
+            descriptor: str | None = owner_descriptor
+            while descriptor in by_descriptor:
+                names.append(by_descriptor[descriptor].name)
+                descriptor = (
+                    f"{descriptor.rsplit('$', 1)[0]};" if "$" in descriptor else None
+                )
+            enum_renames[enum.name] = ".".join(reversed(names))
             enum.name = new_name
         owner.enums.append(enum)
     return top_level_enums, enum_renames
