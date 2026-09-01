@@ -217,25 +217,28 @@ change; their rows below contain those newer results.
 
 | App | Output schemas | Bail-outs | Strict-default result |
 |---|---:|---:|---|
-| Signal 8.22.2 | 186 | 0 | dependency schemas; selected Wire runtime unsupported |
-| Molly 8.19.2-4 | 3 | 0 | dependency schemas; selected Wire runtime unsupported |
+| Signal 8.22.2 | 776 | 0 | selected Wire schemas recovered |
+| Molly 8.19.2-4 | 577 | 0 | selected Wire schemas recovered |
 | Mullvad 2026.8 | 129 | 0 | recovered |
 | Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
-| Meshtastic 2.8.1 | 52 | 0 | dependency schemas; selected Wire runtime unsupported |
-| Flipper 1.8.1.1890 | 0 | 0 | no recoverable evidence |
+| Meshtastic 2.8.1 | 253 | 0 | selected Wire schemas partially recovered |
+| Flipper 1.8.1.1890 | 61 | 0 | selected Wire `Settings` recovered |
 | Gadgetbridge 0.93.0 | 646 | 0 | recovered |
 | Smartspacer 1.11.2 | 70 | 0 | recovered with explicit enum uncertainty |
 
-Signal's strict output moved from 9 files and 404 bail-outs to 175 files and 11
-bail-outs with packed-switch state restoration, then to 186 files and zero
-bail-outs when the same exact-state handling was applied to ordinary branch
-targets. The remaining 11 were Play Billing dependency messages whose array
-indexes were constants established before an `if` chain. Molly's fresh run is
-also at zero bail-outs, but its output remains three files. Neither result is a
-ground-truth recovery claim for Signal's selected schemas: both apps build the
-selected `protowire` sources with Square Wire (`com.squareup.wire` and its
-`wire { protoLibrary = true }` build configuration), not protobuf-lite, so the
-recovered files are dependency schemas outside the selected truth set.
+Square Wire recovery is now a separate extraction path. Signal and Molly retain
+exact `WireField` annotations; Meshtastic's generated adapters retain field
+loads, adapter identities, literal tags, and `encodeWithTag` calls after its
+annotations are stripped. Flipper's R8 output retains the same adapter-write
+shape and exact source field spellings in generated `toString` strings. Wire
+enum initializer stores, syntax constants, boxed proto3 presence, and the exact
+constructor diagnostic for oneof membership are consumed only when their
+compiled evidence survives.
+
+The path does not use protobuf-lite `newMessageInfo`, and it does not infer
+absent source identities. Every fresh run above has zero bail-outs. The prior
+lite-only counts remain useful historical coverage results, but no longer
+describe the selected Wire schemas.
 
 These are coverage smoke results, not accuracy figures. Ground-truth scoring
 requires matching recovered messages to each selected source schema and is not
