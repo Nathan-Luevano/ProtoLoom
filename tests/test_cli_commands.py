@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from protoloom.cli import _dex_inputs, _find, app
 from protoloom.container.detect import ContainerKind, Detection
+from protoloom.extract.gotags import GoTagExtraction
 from protoloom.extract.jadx import JadxError, JadxResult
 from protoloom.model import Confidence, Field, Message, RecoveredSchema
 
@@ -266,6 +267,33 @@ def test_extract_compiles_lite_schema_and_honors_heuristic_flag(
     assert flags == [True]
     assert "string value = 1;" in (output / "lite.proto").read_text()
     assert FileDescriptorSet.FromString((output / "classes.desc").read_bytes()).file
+
+
+def test_extract_emits_descriptor_free_go_schema(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    binary = tmp_path / "go-binary"
+    binary.write_bytes(b"ELF")
+    schema = RecoveredSchema(
+        name="Record.proto",
+        syntax="proto3",
+        messages=[
+            Message(
+                "Record",
+                fields=[Field("id", 1, "uint64", Confidence.CERTAIN)],
+            )
+        ],
+    )
+    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr(
+        "protoloom.cli._find_go_tags", lambda path: GoTagExtraction((schema,), ())
+    )
+    output = tmp_path / "output"
+
+    result = runner.invoke(app, ["extract", str(binary), "-o", str(output)])
+
+    assert result.exit_code == 0, result.output
+    assert "uint64 id = 1;" in (output / "Record.proto").read_text()
 
 
 def test_doctor_reports_required_and_optional_tools() -> None:
