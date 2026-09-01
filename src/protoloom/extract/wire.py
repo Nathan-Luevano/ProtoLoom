@@ -32,3 +32,41 @@ def _label(dex: DexFile, value: object) -> str:
         if name in {"optional", "required", "repeated", "packed"}:
             return "repeated" if name == "packed" else name
     return "optional"
+
+
+def extract_wire_annotations(dex: DexFile) -> tuple[WireFieldFinding, ...]:
+    types = dex.types
+    findings = []
+    for item in dex.classes:
+        if item.superclass_index == dex.NO_INDEX:
+            continue
+        if types[item.superclass_index] != _MESSAGE:
+            continue
+        owner = types[item.class_index]
+        for field, annotations in dex.field_annotations(item):
+            annotation = next(
+                (
+                    value
+                    for value in annotations
+                    if types[value.type_index] == _WIRE_FIELD
+                ),
+                None,
+            )
+            if annotation is None:
+                continue
+            values = _elements(dex, annotation)
+            number = values.get("tag")
+            adapter = _string(dex, values.get("adapter"))
+            if not isinstance(number, int) or adapter is None:
+                continue
+            findings.append(
+                WireFieldFinding(
+                    owner,
+                    field,
+                    number,
+                    adapter,
+                    _label(dex, values.get("label")),
+                    _string(dex, values.get("oneofName")),
+                )
+            )
+    return tuple(findings)
