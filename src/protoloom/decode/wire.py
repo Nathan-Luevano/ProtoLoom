@@ -14,6 +14,8 @@ def _field(dex: DexFile, item: WireFieldFinding, source: str) -> Field | None:
     type_name = wire_adapter_type(item.adapter)
     if type_name is None:
         return None
+    if type_name.startswith("."):
+        type_name = type_name.rsplit(".", 1)[-1].replace("$", "_")
     location = f"{item.owner}->{dex.field_name(item.field)}"
     return Field(
         dex.field_name(item.field),

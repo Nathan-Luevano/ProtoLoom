@@ -127,16 +127,12 @@ def _find_wire(
     for source, data in _dex_inputs(path):
         dex = DexFile(data)
         annotations = extract_wire_annotations(dex)
-        annotated_owners = {item.owner for item in annotations}
         decoded = decode_wire_annotations(dex, annotations, source)
-        writes = tuple(
-            item
-            for item in extract_wire_adapter_writes(dex)
-            if item.owner not in annotated_owners
-        )
-        decoded.extend(
-            decode_wire_adapters(dex, writes, extract_wire_names(dex), source)
-        )
+        if not annotations:
+            writes = extract_wire_adapter_writes(dex)
+            decoded.extend(
+                decode_wire_adapters(dex, writes, extract_wire_names(dex), source)
+            )
         for schema in decoded:
             owner = schema.evidence[0].location
             lineage[(schema.package, schema.name)] = (owner, _wire_parent(owner))
