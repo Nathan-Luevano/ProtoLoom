@@ -176,7 +176,7 @@ def _compile_cpp_object(
     proto: str,
     descriptor: FileDescriptorProto,
     root: Path,
-) -> bool:
+) -> tuple[bool, bool]:
     generated = root / "generated"
     generated.mkdir(parents=True)
     subprocess.run(
@@ -213,8 +213,9 @@ def _compile_cpp_object(
         None,
     )
     return (
+        recovered is not None,
         recovered is not None
-        and recovered.SerializeToString() == descriptor.SerializeToString()
+        and recovered.SerializeToString() == descriptor.SerializeToString(),
     )
 
 
@@ -285,16 +286,19 @@ def main() -> None:
                 _write_json(truth_path, _schema(descriptor))
                 _write_json(recovered_path, _schema(recovered))
                 exact = recovered.SerializeToString() == encoded
+                compiled_object_recovered = None
                 compiled_object_exact = None
                 if target.get("compiled_leg") == "cpp-object":
-                    compiled_object_exact = _compile_cpp_object(
-                        args.protoc,
-                        args.cxx,
-                        protobuf_include,
-                        includes,
-                        target["proto"],
-                        descriptor,
-                        extraction_root / "cpp" / target["name"],
+                    compiled_object_recovered, compiled_object_exact = (
+                        _compile_cpp_object(
+                            args.protoc,
+                            args.cxx,
+                            protobuf_include,
+                            includes,
+                            target["proto"],
+                            descriptor,
+                            extraction_root / "cpp" / target["name"],
+                        )
                     )
                 measurements.append(
                     {
@@ -305,6 +309,7 @@ def main() -> None:
                         "descriptor_exact": exact,
                         "recovered_proto_compiled": True,
                         "compiled_leg": target.get("compiled_leg"),
+                        "compiled_object_recovered": compiled_object_recovered,
                         "compiled_object_exact": compiled_object_exact,
                     }
                 )
