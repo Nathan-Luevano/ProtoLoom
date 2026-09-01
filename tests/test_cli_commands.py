@@ -244,3 +244,25 @@ def test_bench_reports_invalid_manifest(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert "benchmark failed:" in result.output
+
+
+def test_extract_reports_uncompilable_recovery(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    binary = tmp_path / "classes.dex"
+    binary.write_bytes(b"dex")
+    schema = RecoveredSchema(name="broken.proto", messages=[Message("Broken")])
+    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr(
+        "protoloom.cli._find_lite",
+        lambda path, allow_heuristic: ([schema], [], {}, {}),
+    )
+    monkeypatch.setattr(
+        "protoloom.cli._compiled_descriptors",
+        lambda schema: (_ for _ in ()).throw(ValueError("protoc rejected schema")),
+    )
+
+    result = runner.invoke(app, ["extract", str(binary)])
+
+    assert result.exit_code == 2
+    assert "recovery failed: protoc rejected schema" in result.output
