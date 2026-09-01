@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import TypeVar
 
 from protoloom.container.dex import AnnotationItem, DexField, DexFile, EncodedMethod
 from protoloom.extract.lite import _Instruction, _instructions, _invoke_registers
@@ -22,6 +23,7 @@ _SCALARS = {
     "UINT32": "uint32",
     "UINT64": "uint64",
 }
+_RegisterValue = TypeVar("_RegisterValue")
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +61,31 @@ class WireNameFinding:
     field: DexField
     name: str
     message_name: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class WireEnumFinding:
+    descriptor: str
+    values: tuple[tuple[str, int], ...]
+    method_index: int
+
+
+def _move_register(
+    registers: dict[int, _RegisterValue], instruction: _Instruction
+) -> bool:
+    units = instruction.units
+    if instruction.opcode in {0x01, 0x04, 0x07}:
+        destination = (units[0] >> 8) & 0xF
+        source = (units[0] >> 12) & 0xF
+    elif instruction.opcode in {0x02, 0x05, 0x08}:
+        destination, source = units[0] >> 8, units[1]
+    elif instruction.opcode in {0x03, 0x06, 0x09}:
+        destination, source = units[1], units[2]
+    else:
+        return False
+    if source in registers:
+        registers[destination] = registers[source]
+    return True
 
 
 def extract_wire_names(dex: DexFile) -> tuple[WireNameFinding, ...]:
@@ -125,19 +152,7 @@ def _method_writes(dex: DexFile, method: EncodedMethod) -> list[WireAdapterFindi
     pending: _AdapterValue | None = None
     for instruction in _instructions(dex.code_item(method.code_offset).instructions):
         units = instruction.units
-        if instruction.opcode in {0x01, 0x04, 0x07}:
-            destination = (units[0] >> 8) & 0xF
-            source = (units[0] >> 12) & 0xF
-            if source in registers:
-                registers[destination] = registers[source]
-            continue
-        if instruction.opcode in {0x02, 0x05, 0x08}:
-            if units[1] in registers:
-                registers[units[0] >> 8] = registers[units[1]]
-            continue
-        if instruction.opcode in {0x03, 0x06, 0x09}:
-            if units[2] in registers:
-                registers[units[1]] = registers[units[2]]
+        if _move_register(registers, instruction):
             continue
         if 0x52 <= instruction.opcode <= 0x58 and units[1] < len(dex.fields):
             registers[(units[0] >> 8) & 0xF] = dex.fields[units[1]]
