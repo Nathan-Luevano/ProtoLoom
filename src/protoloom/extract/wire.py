@@ -219,9 +219,10 @@ def _constant(instruction: _Instruction) -> tuple[int, int] | None:
         register = (units[0] >> 8) & 0xF
         value = units[0] >> 12
         return register, value - 16 if value & 8 else value
-    if opcode == 0x13:
+    if opcode in {0x13, 0x15}:
         value = units[1]
-        return units[0] >> 8, value - 65536 if value & 0x8000 else value
+        value = value - 65536 if value & 0x8000 else value
+        return units[0] >> 8, value << (16 if opcode == 0x15 else 0)
     if opcode == 0x14:
         value = units[1] | units[2] << 16
         return units[0] >> 8, value - 2**32 if value & 0x80000000 else value
