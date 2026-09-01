@@ -221,7 +221,7 @@ change; their rows below contain those newer results.
 | Molly 8.19.2-4 | 589 | 0 | selected Wire schemas recovered |
 | Mullvad 2026.8 | 129 | 0 | recovered |
 | Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
-| Meshtastic 2.8.1 | 288 | 0 | selected Wire schemas partially recovered |
+| Meshtastic 2.8.1 | 289 | 0 | selected Wire schemas partially recovered |
 | Flipper 1.8.1.1890 | 61 | 0 | selected Wire `Settings` recovered |
 | Gadgetbridge 0.93.0 | 646 | 0 | recovered |
 | Smartspacer 1.11.2 | 70 | 0 | recovered with explicit enum uncertainty |
@@ -260,7 +260,7 @@ no recovery compile denominator.
 | Molly, two `protowire` files | 100% (546/546) | 100% (546/546) | 100% (546/546) | 100% (546/546) | 98.90% (540/546) | 100% (110/110) | 100% (159/159) | 100% (2/2) |
 | Bitwarden Authenticator, `google_authenticator.proto` | 100% (12/12) | 100% (12/12) | 100% (12/12) | 75% (9/12) | 100% (12/12) | 0% (0/1) | 100% (5/5) | 100% (1/1) |
 | Bitwarden, package-normalized | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (1/1) | 100% (5/5) | 100% (1/1) |
-| Meshtastic, three selected files | 91.77% (446/486) | 100% (446/446) | 99.78% (445/446) | 97.31% (434/446) | 99.33% (443/446) | 13.43% (18/134) | 77.70% (352/453) | 100% (3/3) |
+| Meshtastic, three selected files | 91.77% (446/486) | 100% (446/446) | 100% (446/446) | 97.53% (435/446) | 99.33% (443/446) | 13.43% (18/134) | 77.92% (353/453) | 100% (3/3) |
 | Flipper, three selected schema groups | 66.67% (24/36) | 100% (24/24) | 75% (18/24) | 75% (18/24) | 100% (24/24) | 0% (0/2) | 0% (0/20) | 100% (3/3) |
 | Gadgetbridge, three selected files, package-normalized | 100% (115/115) | 100% (115/115) | 100% (115/115) | 100% (115/115) | 63.48% (73/115) | 100% (16/16) | 100% (27/27) | 100% (3/3) |
 | Smartspacer, `smartspace.proto` | 100% (37/37) | 100% (37/37) | 100% (37/37) | 86.49% (32/37) | 100% (37/37) | 100% (7/7) | 7.41% (2/27) | 100% (1/1) |
@@ -317,7 +317,11 @@ Six external enum references now retain their exact nested owner path. DEX
 lineage identifies both the enum owner and each recovered enclosing message;
 ProtoLoom qualifies a reference only through that complete declared chain.
 This moves wire accuracy from 439/446 to 445/446 and exact types from 428/446
-to 434/446 without inventing a scope for an absent owner.
+to 434/446 without inventing a scope for an absent owner. The final wire miss
+was a one-value enum whose initializer uses Java's standard `(String, int)`
+enum constructor. Accepting its exact three-register invocation recovers the
+retained `UNUSED = 0`, closing wire accuracy at 446/446 and moving exact types
+to 435/446 and enum values to 353/453.
 The 40 missing fields belong to ten source messages with no corresponding
 generated class in the pinned APK; similarly named generated classes are not
 renamed to them. Exact type identity remains absent for some scalar-family and
