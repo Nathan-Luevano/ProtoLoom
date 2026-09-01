@@ -115,6 +115,35 @@ def test_download_refuses_cache_symlink(tmp_path: Path) -> None:
         download("https://example.test/archive", "0" * 64, 1, destination)
 
 
+def test_download_reuses_verified_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"cached"
+    destination = tmp_path / "archive.tar.gz"
+    destination.write_bytes(payload)
+    monkeypatch.setattr(
+        "protoloom.bench.upstream.urllib.request.urlopen",
+        lambda request, timeout: pytest.fail("network should not be used"),
+    )
+    download(
+        "https://example.test/archive",
+        hashlib.sha256(payload).hexdigest(),
+        len(payload),
+        destination,
+    )
+    assert destination.read_bytes() == payload
+
+
+def test_download_refuses_invalid_size_and_partial_symlink(tmp_path: Path) -> None:
+    destination = tmp_path / "archive.tar.gz"
+    with pytest.raises(ValueError, match="128 MiB limit"):
+        download("https://example.test/archive", "0" * 64, 0, destination)
+    partial = destination.with_name(destination.name + ".part")
+    partial.symlink_to(tmp_path / "missing")
+    with pytest.raises(ValueError, match="partial cache path is a symlink"):
+        download("https://example.test/archive", "0" * 64, 1, destination)
+
+
 def test_extract_refuses_traversal_and_links(tmp_path: Path) -> None:
     for name, kind in (("../escape", tarfile.REGTYPE), ("root/link", tarfile.SYMTYPE)):
         archive = tmp_path / f"{kind!s}.tar.gz"
