@@ -304,6 +304,33 @@ def extract_wire_adapter_writes(dex: DexFile) -> tuple[WireAdapterFinding, ...]:
     return tuple(unique[key] for key in sorted(unique))
 
 
+def extract_wire_enums(
+    dex: DexFile, findings: tuple[WireAdapterFinding, ...]
+) -> tuple[WireEnumFinding, ...]:
+    result = []
+    for type_index in sorted({item.adapter.class_index for item in findings}):
+        enum_class = dex.class_by_type_index(type_index)
+        if enum_class is None or enum_class.superclass_index == dex.NO_INDEX:
+            continue
+        if dex.types[enum_class.superclass_index] != "Ljava/lang/Enum;":
+            continue
+        descriptor = dex.types[type_index]
+        initializer = next(
+            (
+                method
+                for method in dex.class_methods(enum_class)
+                if dex.method_name(method) == "<clinit>" and method.code_offset
+            ),
+            None,
+        )
+        if initializer is None:
+            continue
+        finding = _wire_enum_method(dex, initializer, descriptor)
+        if finding is not None:
+            result.append(finding)
+    return tuple(result)
+
+
 def _elements(dex: DexFile, annotation: AnnotationItem) -> dict[str, object]:
     return {dex.strings[name]: value for name, value in annotation.elements}
 
