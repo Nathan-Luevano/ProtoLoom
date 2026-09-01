@@ -130,6 +130,31 @@ def extract_wire_names(dex: DexFile) -> tuple[WireNameFinding, ...]:
     return tuple(findings)
 
 
+def extract_wire_syntaxes(dex: DexFile, owners: set[str]) -> dict[str, str]:
+    result = {}
+    for item in dex.classes:
+        owner = dex.types[item.class_index]
+        if owner not in owners:
+            continue
+        values = set()
+        for method in dex.class_methods(item):
+            if dex.method_name(method) != "<clinit>" or not method.code_offset:
+                continue
+            for instruction in _instructions(
+                dex.code_item(method.code_offset).instructions
+            ):
+                if not 0x60 <= instruction.opcode <= 0x66:
+                    continue
+                field = dex.fields[instruction.units[1]]
+                if dex.types[field.class_index] == "Lcom/squareup/wire/Syntax;":
+                    values.add(dex.field_name(field).lower().replace("_", ""))
+        if len(values) == 1:
+            value = values.pop()
+            if value in {"proto2", "proto3"}:
+                result[owner] = value
+    return result
+
+
 def _constant(instruction: _Instruction) -> tuple[int, int] | None:
     opcode = instruction.opcode
     units = instruction.units
