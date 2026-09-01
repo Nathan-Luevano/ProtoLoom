@@ -11,6 +11,7 @@ from protoloom.decode.wire import (
 from protoloom.extract.lite import _Instruction
 from protoloom.extract.wire import (
     WireAdapterFinding,
+    WireFieldFinding,
     WireNameFinding,
     WireOneofFinding,
     _constant,
@@ -102,6 +103,23 @@ def test_decodes_annotated_wire_message() -> None:
     ]
     field = schemas[0].messages[0].fields[0]
     assert (field.name, field.number, field.type_name) == ("title", 7, "string")
+
+
+def test_decodes_proven_wire_scalar_presence() -> None:
+    dex = _wire_dex()
+    finding = extract_wire_annotations(dex)[0]
+    finding = WireFieldFinding(
+        finding.owner, finding.field, 7, "x#STRING", "optional", None, 2
+    )
+    schema = decode_wire_annotations(
+        dex,
+        (finding,),
+        "classes.dex",
+        {finding.owner: "proto3"},
+        {finding.owner: frozenset({2})},
+    )[0]
+
+    assert schema.messages[0].fields[0].proto3_optional
 
 
 def test_decodes_empty_wire_message() -> None:

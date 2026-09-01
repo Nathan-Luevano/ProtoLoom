@@ -36,6 +36,7 @@ def _field(
     boxed_presence = (
         proto3
         and item.oneof is None
+        and item.label != "repeated"
         and raw_type
         in {
             "Ljava/lang/Boolean;",
@@ -48,6 +49,7 @@ def _field(
     default_presence = (
         proto3
         and item.oneof is None
+        and item.label != "repeated"
         and item.schema_index in null_defaults
         and _wire_presence_type(dex, item)
     )
@@ -246,6 +248,7 @@ def decode_wire_annotations(
     findings: tuple[WireFieldFinding, ...],
     source: str,
     syntaxes: dict[str, str] | None = None,
+    null_defaults: dict[str, frozenset[int]] | None = None,
 ) -> list[RecoveredSchema]:
     grouped: dict[str, list[WireFieldFinding]] = defaultdict(list)
     for item in findings:
@@ -258,7 +261,15 @@ def decode_wire_annotations(
         fields = [
             field
             for item in items
-            if (field := _field(dex, item, source, syntax == "proto3"))
+            if (
+                field := _field(
+                    dex,
+                    item,
+                    source,
+                    syntax == "proto3",
+                    (null_defaults or {}).get(owner, frozenset()),
+                )
+            )
         ]
         evidence = Evidence(source, owner, "retained Square Wire annotations")
         message = Message(class_name.replace("$", "_"), fields, evidence=[evidence])
