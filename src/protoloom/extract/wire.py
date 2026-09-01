@@ -257,6 +257,25 @@ def extract_wire_messages(dex: DexFile) -> tuple[str, ...]:
     )
 
 
+def extract_wire_null_defaults(
+    dex: DexFile, owners: set[str]
+) -> dict[str, frozenset[int]]:
+    result = {}
+    for item in dex.classes:
+        owner = dex.types[item.class_index]
+        if owner not in owners:
+            continue
+        indexes = {
+            index
+            for method in dex.class_methods(item)
+            if dex.method_name(method) == "<init>" and method.code_offset
+            for index in _default_constructor_nulls(dex, method)
+        }
+        if indexes:
+            result[owner] = frozenset(indexes)
+    return result
+
+
 def extract_wire_oneofs(dex: DexFile, owners: set[str]) -> tuple[WireOneofFinding, ...]:
     result = []
     for item in dex.classes:
