@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from protoloom.container.elf import ElfSection
-from protoloom.model import RecoveredSchema
+from protoloom.model import Confidence, Evidence, Field, RecoveredSchema
 
 _PROTOBUF_TAG = re.compile(r'(?:^| )protobuf:"([^"]+)"(?: |$)')
 
@@ -145,3 +145,28 @@ def _protobuf_type(memory: _Memory, address: int, tag: GoProtobufTag) -> str | N
         message = memory.pointer(address + 48)
         return memory.type_name(message).rsplit(".", 1)[-1]
     return None
+
+
+def _tagged_field(
+    memory: _Memory, entry: int, source: str, owner: str
+) -> tuple[Field | None, str | None, bool]:
+    go_name, raw_tag = memory.name(memory.pointer(entry))
+    tag = parse_protobuf_tag(raw_tag)
+    if tag is None:
+        return None, None, True
+    result_type = _protobuf_type(memory, memory.pointer(entry + 8), tag)
+    if result_type is None:
+        return None, f"{owner}.{go_name}: unsupported tag/type: {raw_tag}", tag.proto3
+    return (
+        Field(
+            tag.name,
+            tag.number,
+            result_type,
+            Confidence.CERTAIN,
+            [Evidence(source, owner, raw_tag)],
+            label=tag.label,
+            packed=tag.packed if tag.label == "repeated" else None,
+        ),
+        None,
+        tag.proto3,
+    )
