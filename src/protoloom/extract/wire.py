@@ -427,7 +427,7 @@ def _wire_enum_method(
                 continue
             parameters = dex.method_parameter_types(target)
             arguments = _invoke_registers(instruction)
-            if len(arguments) != 4 or registers.get(arguments[0]) != (
+            if len(arguments) != len(parameters) + 1 or registers.get(arguments[0]) != (
                 "instance",
                 descriptor,
             ):

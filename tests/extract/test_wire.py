@@ -21,6 +21,7 @@ from protoloom.extract.wire import (
     _constructor_value,
     _default_constructor_state,
     _parameter_registers,
+    _wire_enum_method,
     extract_wire_annotations,
     extract_wire_messages,
     wire_adapter_type,
@@ -200,6 +201,30 @@ def test_resolves_wire_dex_types() -> None:
     )
 
     assert wire_dex_type(dex, 0, 1) == "bool"
+
+
+def test_recovers_standard_enum_constructor() -> None:
+    descriptor = "Lexample/Mode;"
+    target = object()
+    field = DexField(0, 0, 0)
+    dex: Any = SimpleNamespace(
+        methods=(target,),
+        fields=(field,),
+        types=(descriptor,),
+        strings=("UNUSED",),
+        code_item=lambda _: SimpleNamespace(
+            instructions=(0x0022, 0, 0x011A, 0, 0x0212, 0x3070, 0, 0x0210, 0x0069, 0)
+        ),
+        method_name=lambda _: "<init>",
+        method_parameter_types=lambda _: ("Ljava/lang/String;", "I"),
+        field_name=lambda _: "UNUSED",
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=7)
+
+    finding = _wire_enum_method(dex, method, descriptor)
+
+    assert finding is not None
+    assert finding.values == (("UNUSED", 0),)
 
 
 def test_decodes_adapter_write_evidence() -> None:
