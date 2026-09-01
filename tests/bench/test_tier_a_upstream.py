@@ -66,6 +66,38 @@ def test_manifest_refuses_incomplete_or_unsafe_sources(
         validate_source_manifest(manifest)
 
 
+@pytest.mark.parametrize("manifest", [None, {}, {"sources": {}}])
+def test_manifest_requires_sources_array(manifest: object) -> None:
+    with pytest.raises(ValueError, match="sources array"):
+        validate_source_manifest(manifest)
+
+
+def test_manifest_requires_source_and_file_objects() -> None:
+    with pytest.raises(ValueError, match="source entry must be an object"):
+        validate_source_manifest({"sources": ["source"]})
+    manifest = _manifest()
+    manifest["sources"][0]["files"] = ["file"]
+    with pytest.raises(ValueError, match="source file must be an object"):
+        validate_source_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("sha256", "short", "SHA-256"),
+        ("size", 0, "positive pinned size"),
+        ("url", "http://example.test/archive", "HTTPS"),
+    ],
+)
+def test_manifest_requires_valid_remote_pins(
+    field: str, value: object, error: str
+) -> None:
+    manifest = _manifest()
+    manifest["sources"][0][field] = value
+    with pytest.raises(ValueError, match=error):
+        validate_source_manifest(manifest)
+
+
 def test_manifest_refuses_unsupported_compiled_leg() -> None:
     manifest = _manifest()
     manifest["sources"][0]["targets"][0]["compiled_leg"] = "go-binary"
