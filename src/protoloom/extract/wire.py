@@ -222,6 +222,32 @@ def _constructor_next(
     return index + 1
 
 
+def _default_constructor_nulls(dex: DexFile, method: EncodedMethod) -> tuple[int, ...]:
+    state = _default_constructor_state(dex, method)
+    if state is None:
+        return ()
+    instructions, registers = state
+    by_offset = {
+        instruction.offset: index for index, instruction in enumerate(instructions)
+    }
+    index = 0
+    for _ in range(len(instructions) * 2):
+        if index >= len(instructions):
+            return ()
+        instruction = instructions[index]
+        nulls = _constructor_arguments(dex, instruction, registers)
+        if nulls is not None:
+            return nulls
+        if _constructor_value(registers, instruction):
+            index += 1
+            continue
+        next_index = _constructor_next(instruction, registers, by_offset, index)
+        if next_index is None:
+            return ()
+        index = next_index
+    return ()
+
+
 def extract_wire_messages(dex: DexFile) -> tuple[str, ...]:
     return tuple(
         dex.types[item.class_index]
