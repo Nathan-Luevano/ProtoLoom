@@ -21,7 +21,11 @@ from protoloom.model import (
 
 
 def _field(
-    dex: DexFile, item: WireFieldFinding, source: str, proto3: bool
+    dex: DexFile,
+    item: WireFieldFinding,
+    source: str,
+    proto3: bool,
+    null_defaults: frozenset[int] = frozenset(),
 ) -> Field | None:
     type_name = wire_adapter_type(item.adapter)
     if type_name is None:
@@ -29,7 +33,7 @@ def _field(
     if type_name.startswith("."):
         type_name = type_name.rsplit(".", 1)[-1].replace("$", "_")
     raw_type = dex.types[item.field.type_index]
-    presence = (
+    boxed_presence = (
         proto3
         and item.oneof is None
         and raw_type
@@ -41,6 +45,13 @@ def _field(
             "Ljava/lang/Long;",
         }
     )
+    default_presence = (
+        proto3
+        and item.oneof is None
+        and item.schema_index in null_defaults
+        and _wire_presence_type(dex, item)
+    )
+    presence = boxed_presence or default_presence
     location = f"{item.owner}->{dex.field_name(item.field)}"
     return Field(
         dex.field_name(item.field),
@@ -52,6 +63,20 @@ def _field(
         oneof=item.oneof or (f"_field_{item.number}" if presence else None),
         packed="PACKED" in item.adapter or None,
         proto3_optional=presence,
+    )
+
+
+def _wire_presence_type(dex: DexFile, item: WireFieldFinding) -> bool:
+    if not item.adapter.endswith("#ADAPTER"):
+        return True
+    raw_type = dex.types[item.field.type_index]
+    if raw_type not in dex.types:
+        return False
+    item_class = dex.class_by_type_index(dex.types.index(raw_type))
+    return (
+        item_class is not None
+        and item_class.superclass_index != dex.NO_INDEX
+        and dex.types[item_class.superclass_index] == "Ljava/lang/Enum;"
     )
 
 
