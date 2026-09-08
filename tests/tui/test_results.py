@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pytest import MonkeyPatch
 
 from protoloom.tui.results import OutputError, load_output
 
@@ -58,3 +59,23 @@ def test_reports_invalid_utf8(tmp_path: Path) -> None:
 
     with pytest.raises(OutputError, match="invalid UTF-8 at byte 0"):
         load_output(tmp_path)
+
+
+def test_rejects_oversized_recovery_output(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    (tmp_path / "recovery.json").write_text("{}  ", encoding="utf-8")
+    monkeypatch.setattr("protoloom.tui.results.MAX_RECOVERY_OUTPUT_SIZE", 3)
+
+    with pytest.raises(OutputError, match=r"recovery\.json exceeds 3 bytes"):
+        load_output(tmp_path)
+
+
+def test_ignores_oversized_optional_report(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    _write(tmp_path, {"schemas": [], "conflicts": []})
+    (tmp_path / "report.md").write_text("none", encoding="utf-8")
+    monkeypatch.setattr("protoloom.tui.results.MAX_REPORT_SIZE", 3)
+
+    assert load_output(tmp_path).bailouts is None

@@ -8,6 +8,10 @@ class OutputError(ValueError):
     pass
 
 
+MAX_RECOVERY_OUTPUT_SIZE = 16 * 1024 * 1024
+MAX_REPORT_SIZE = 1024 * 1024
+
+
 @dataclass(frozen=True, slots=True)
 class SchemaRecord:
     name: str
@@ -29,10 +33,20 @@ def _records(value: object, label: str) -> tuple[dict[str, object], ...]:
     return tuple(value)
 
 
+def _read_text(path: Path, max_size: int) -> str:
+    if path.stat().st_size > max_size:
+        raise OutputError(f"{path} exceeds {max_size} bytes")
+    with path.open("rb") as stream:
+        data = stream.read(max_size + 1)
+    if len(data) > max_size:
+        raise OutputError(f"{path} exceeds {max_size} bytes")
+    return data.decode("utf-8")
+
+
 def load_output(root: Path) -> RecoveryOutput:
     path = root / "recovery.json"
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(_read_text(path, MAX_RECOVERY_OUTPUT_SIZE))
     except OSError as error:
         raise OutputError(f"cannot read {path}: {error.strerror}") from error
     except json.JSONDecodeError as error:
@@ -60,8 +74,8 @@ def load_output(root: Path) -> RecoveryOutput:
 
 def _bailout_count(root: Path) -> int | None:
     try:
-        report = (root / "report.md").read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        report = _read_text(root / "report.md", MAX_REPORT_SIZE)
+    except (OSError, OutputError, UnicodeDecodeError):
         return None
     match = re.search(r"^Bail-outs: (\d+)$", report, re.MULTILINE)
     return int(match.group(1)) if match else None
