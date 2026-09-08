@@ -1,3 +1,4 @@
+import importlib
 import math
 
 import pytest
@@ -11,6 +12,8 @@ from protoloom.bench.metrics import (
     score_target,
     type_fidelity_ceiling,
 )
+
+metrics_module = importlib.import_module("protoloom.bench.metrics")
 
 
 def field(
@@ -110,6 +113,33 @@ def test_exact_names_are_reserved_before_signature_fallback() -> None:
     report = score_target("collision", truth, recovered)
 
     assert report.value("name_recovery_rate") == 1
+
+
+def test_message_matching_indexes_structural_signatures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    truth = BenchmarkSchema(
+        tuple(
+            BenchmarkMessage(None, (field(index, "value"),)) for index in range(1, 51)
+        )
+    )
+    recovered = BenchmarkSchema(
+        tuple(
+            BenchmarkMessage(f"message-{index}", (field(index, "value"),))
+            for index in range(1, 51)
+        )
+    )
+    calls = 0
+
+    def counted(message: BenchmarkMessage) -> tuple[tuple[int, int], ...]:
+        nonlocal calls
+        calls += 1
+        return tuple(sorted((item.number, item.wire_type) for item in message.fields))
+
+    monkeypatch.setattr(metrics_module, "_signature", counted)
+
+    assert score_target("large", truth, recovered).value("field_recall") == 1
+    assert calls == 100
 
 
 def test_macro_and_micro_are_both_reported() -> None:
