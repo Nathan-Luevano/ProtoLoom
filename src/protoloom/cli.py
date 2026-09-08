@@ -653,11 +653,12 @@ def extract(
         destination = output / name
         _atomic_write(destination, source.encode())
         typer.echo(f"recovered {schema.name} -> {destination}")
-    descriptors_by_name = {item.name: item for item in descriptors}
-    _atomic_write(
-        output / descriptor_name,
-        emit_descriptor_set(list(descriptors_by_name.values())),
-    )
+    try:
+        descriptor_set = emit_descriptor_set(descriptors)
+    except ValueError as error:
+        typer.echo(f"descriptor-set assembly failed: {error}", err=True)
+        raise typer.Exit(2) from error
+    _atomic_write(output / descriptor_name, descriptor_set)
     conflicts = [asdict(conflict) for conflict in reconciled.conflicts]
     _atomic_write(
         output / "recovery.json",
