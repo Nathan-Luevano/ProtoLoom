@@ -1,11 +1,13 @@
 import hashlib
 import os
-import shutil
 import tarfile
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 from urllib.parse import urlparse
+
+MAX_SOURCE_ARCHIVE_MEMBERS = 100_000
+MAX_SOURCE_EXTRACTED_SIZE = 1024 * 1024 * 1024
 
 
 def sha256(path: Path) -> str:
@@ -134,11 +136,26 @@ def download(url: str, expected: str, size: int, destination: Path) -> None:
         raise
 
 
-def extract(archive: Path, destination: Path) -> Path:
+def extract(
+    archive: Path,
+    destination: Path,
+    *,
+    max_members: int = MAX_SOURCE_ARCHIVE_MEMBERS,
+    max_size: int = MAX_SOURCE_EXTRACTED_SIZE,
+) -> Path:
+    if max_members <= 0 or max_size <= 0:
+        raise ValueError("source extraction limits must be positive")
+    if destination.is_symlink():
+        raise ValueError(f"source extraction path is a symlink: {destination}")
     with tarfile.open(archive, "r:gz") as bundle:
         members = bundle.getmembers()
         if not members:
             raise ValueError(f"empty archive: {archive}")
+        if len(members) > max_members:
+            raise ValueError(f"archive contains more than {max_members} members")
+        total_size = sum(member.size for member in members if member.isfile())
+        if total_size > max_size:
+            raise ValueError(f"archive expands beyond {max_size} bytes")
         for member in members:
             path = Path(member.name)
             if path.is_absolute() or ".." in path.parts:
@@ -155,11 +172,22 @@ def extract(archive: Path, destination: Path) -> Path:
             if source is None:
                 raise ValueError(f"cannot read archive member: {member.name}")
             with source, output.open("xb") as stream:
-                shutil.copyfileobj(source, stream)
+                _copy_member(source, stream, member.size)
     roots = {Path(member.name).parts[0] for member in members if member.name}
     if len(roots) != 1:
         raise ValueError(f"archive needs one root directory: {archive}")
     return destination / roots.pop()
+
+
+def _copy_member(source: IO[bytes], output: IO[bytes], expected_size: int) -> None:
+    copied = 0
+    while chunk := source.read(min(1024 * 1024, expected_size - copied + 1)):
+        copied += len(chunk)
+        if copied > expected_size:
+            raise ValueError("archive member exceeds its declared size")
+        output.write(chunk)
+    if copied != expected_size:
+        raise ValueError("archive member is shorter than its declared size")
 
 
 def materialize_source(source: dict[str, Any], cache: Path, root: Path) -> Path:
