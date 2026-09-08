@@ -21,6 +21,12 @@ class JadxError(RuntimeError):
     pass
 
 
+MAX_JADX_SOURCES = 100_000
+MAX_JADX_SOURCE_SIZE = 8 * 1024 * 1024
+MAX_JADX_SOURCE_TOTAL = 512 * 1024 * 1024
+MAX_JADX_CANDIDATES = 100_000
+
+
 def decompile_with_jadx(
     input_path: Path,
     output: Path,
@@ -65,9 +71,8 @@ def decompile_with_jadx(
             f"jadx exited with status {process.returncode}"
             + (f": {detail}" if detail else "")
         )
-    sources = tuple(output.rglob("*.java"))
-    candidates = _index_candidates(output, sources)
-    return JadxResult(output, len(sources), candidates, detail)
+    sources, candidates = _index_candidates(output)
+    return JadxResult(output, sources, candidates, detail)
 
 
 def _log_tail(log: BinaryIO, limit: int = 2000) -> str:
@@ -77,16 +82,37 @@ def _log_tail(log: BinaryIO, limit: int = 2000) -> str:
     return log.read().decode("utf-8", errors="replace").strip()
 
 
-def _index_candidates(output: Path, sources: tuple[Path, ...]) -> int:
+def _index_candidates(output: Path) -> tuple[int, int]:
     sites: list[dict[str, str | int]] = []
     needles = ("newMessageInfo(", "new RawMessageInfo(")
-    for source in sources:
+    source_count = 0
+    source_bytes = 0
+    for source in output.rglob("*.java"):
+        source_count += 1
+        if source_count > MAX_JADX_SOURCES:
+            raise JadxError(f"jadx produced more than {MAX_JADX_SOURCES} Java sources")
         try:
+            if source.is_symlink():
+                raise JadxError(f"jadx produced a symlinked Java source: {source}")
+            size = source.stat().st_size
+            if size > MAX_JADX_SOURCE_SIZE:
+                raise JadxError(
+                    f"jadx Java source exceeds {MAX_JADX_SOURCE_SIZE} bytes"
+                )
+            source_bytes += size
+            if source_bytes > MAX_JADX_SOURCE_TOTAL:
+                raise JadxError(
+                    f"jadx Java sources exceed {MAX_JADX_SOURCE_TOTAL} bytes"
+                )
             lines = source.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             continue
         for number, line in enumerate(lines, 1):
             if any(needle in line for needle in needles):
+                if len(sites) >= MAX_JADX_CANDIDATES:
+                    raise JadxError(
+                        f"jadx produced more than {MAX_JADX_CANDIDATES} candidates"
+                    )
                 sites.append(
                     {
                         "file": source.relative_to(output).as_posix(),
@@ -97,4 +123,4 @@ def _index_candidates(output: Path, sources: tuple[Path, ...]) -> int:
     (output / "protoloom-candidates.json").write_text(
         json.dumps({"candidate_sites": sites}, indent=2) + "\n", encoding="utf-8"
     )
-    return len(sites)
+    return source_count, len(sites)
