@@ -35,6 +35,8 @@ _MACHO_MAGICS = {
     b"\xca\xfe\xba\xbf",
     b"\xbf\xba\xfe\xca",
 }
+MAX_ZIP_DETECTION_ENTRIES = 100_000
+MAX_ZIP_DETECTION_NAME_BYTES = 16 * 1024 * 1024
 
 
 def detect_bytes(data: bytes | bytearray | memoryview) -> Detection:
@@ -72,18 +74,34 @@ def detect(path: str | Path) -> Detection:
         return result
     try:
         with ZipFile(source) as archive:
-            names = frozenset(archive.namelist())
+            android_manifest = False
+            root_dex = False
+            bundle = False
+            jar = False
+            name_bytes = 0
+            for index, info in enumerate(archive.infolist(), 1):
+                name = info.filename
+                name_bytes += len(name.encode("utf-8"))
+                if (
+                    index > MAX_ZIP_DETECTION_ENTRIES
+                    or name_bytes > MAX_ZIP_DETECTION_NAME_BYTES
+                ):
+                    return Detection(
+                        ContainerKind.ZIP, "archive metadata limit exceeded"
+                    )
+                android_manifest |= name == "AndroidManifest.xml"
+                root_dex |= _is_root_dex(name)
+                bundle |= name == "BundleConfig.pb" or name.endswith(
+                    "/manifest/AndroidManifest.xml"
+                )
+                jar |= name == "META-INF/MANIFEST.MF" or name.endswith(".class")
     except (BadZipFile, OSError):
         return Detection(ContainerKind.UNKNOWN)
-    if "AndroidManifest.xml" in names and any(_is_root_dex(name) for name in names):
+    if android_manifest and root_dex:
         return Detection(ContainerKind.APK)
-    if "BundleConfig.pb" in names or any(
-        name.endswith("/manifest/AndroidManifest.xml") for name in names
-    ):
+    if bundle:
         return Detection(ContainerKind.AAB)
-    if "META-INF/MANIFEST.MF" in names or any(
-        name.endswith(".class") for name in names
-    ):
+    if jar:
         return Detection(ContainerKind.JAR)
     return result
 

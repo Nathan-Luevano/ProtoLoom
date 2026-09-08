@@ -1,3 +1,4 @@
+import importlib
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -11,6 +12,8 @@ from protoloom.container.apk import (
     ArchiveInventory,
 )
 from protoloom.container.detect import ContainerKind, detect, detect_bytes
+
+detect_module = importlib.import_module("protoloom.container.detect")
 
 
 @pytest.mark.parametrize(
@@ -42,6 +45,38 @@ def test_apk_inventory(tmp_path: Path) -> None:
         "lib/arm64-v8a/libsample.so"
     ]
     assert AndroidArchive(path).read("assets/schema.pb") == b"proto"
+
+
+def test_zip_detection_does_not_copy_archive_names(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    path = tmp_path / "sample.apk"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("AndroidManifest.xml", b"")
+        archive.writestr("classes.dex", b"")
+
+    class BoundedZipFile(ZipFile):
+        def namelist(self) -> list[str]:
+            raise AssertionError("namelist called")
+
+    monkeypatch.setattr(detect_module, "ZipFile", BoundedZipFile)
+
+    assert detect(path).kind is ContainerKind.APK
+
+
+def test_zip_detection_bounds_metadata(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    path = tmp_path / "sample.apk"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("AndroidManifest.xml", b"")
+        archive.writestr("classes.dex", b"")
+    monkeypatch.setattr(detect_module, "MAX_ZIP_DETECTION_ENTRIES", 1)
+
+    result = detect(path)
+
+    assert result.kind is ContainerKind.ZIP
+    assert result.detail == "archive metadata limit exceeded"
 
 
 def test_archive_read_rejects_unsafe_and_oversized_names(tmp_path: Path) -> None:
