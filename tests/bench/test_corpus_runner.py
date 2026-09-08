@@ -87,6 +87,28 @@ def test_compilation_matrix_driver_visits_every_variant() -> None:
     assert {job.variant["runtime"] for job in visited} == {"cpp", "go"}
 
 
+def test_manifest_bounds_compilation_jobs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr("protoloom.bench.corpus.MAX_COMPILATION_JOBS", 3)
+
+    with pytest.raises(CorpusError, match="matrix expands beyond 3 jobs"):
+        load_manifest(path)
+
+
+def test_manifest_rejects_duplicate_matrix_values(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    payload["matrix"] = {"runtime": ["go", "go"]}
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CorpusError, match="axis values must be unique"):
+        load_manifest(path)
+
+
 def test_hash_mismatch_removes_bad_download(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     source = tmp_path / "source.json"
