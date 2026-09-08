@@ -110,6 +110,37 @@ def test_manifest_rejects_duplicate_matrix_values(tmp_path: Path) -> None:
         load_manifest(path)
 
 
+@pytest.mark.parametrize(
+    ("location", "message"),
+    [
+        ("corpus", "corpus name must be a string"),
+        ("target", "target name must be a string"),
+        ("hash", "artifact SHA-256 must be a string"),
+        ("path", "artifact path must be a string"),
+        ("matrix", "matrix value must be a string"),
+    ],
+)
+def test_manifest_rejects_non_string_values(
+    tmp_path: Path, location: str, message: str
+) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    if location == "corpus":
+        payload["name"] = 1
+    elif location == "target":
+        payload["targets"][0]["name"] = 1
+    elif location == "hash":
+        payload["targets"][0]["truth"]["sha256"] = 1
+    elif location == "path":
+        payload["targets"][0]["truth"]["path"] = 1
+    else:
+        payload["matrix"] = {"runtime": [1]}
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CorpusError, match=message):
+        load_manifest(path)
+
+
 def test_hash_mismatch_removes_bad_download(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     source = tmp_path / "source.json"
