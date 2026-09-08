@@ -4,6 +4,7 @@ import unicodedata
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from math import prod
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -16,6 +17,8 @@ class CorpusError(ValueError):
 
 MAX_CORPUS_NAME_BYTES = 255
 MAX_CORPUS_ARTIFACT_SIZE = 1024 * 1024 * 1024
+MAX_MATRIX_AXES = 32
+MAX_COMPILATION_JOBS = 100_000
 
 
 def _validate_name(name: str, label: str) -> None:
@@ -72,6 +75,19 @@ class CorpusManifest:
 
     def __post_init__(self) -> None:
         _validate_name(self.name, "corpus")
+        if not self.targets:
+            raise CorpusError("manifest must contain at least one target")
+        if len({target.name for target in self.targets}) != len(self.targets):
+            raise CorpusError("target names must be unique")
+        if len(self.matrix) > MAX_MATRIX_AXES:
+            raise CorpusError(f"matrix contains more than {MAX_MATRIX_AXES} axes")
+        if any(not values for values in self.matrix.values()):
+            raise CorpusError("matrix axes cannot be empty")
+        if any(len(set(values)) != len(values) for values in self.matrix.values()):
+            raise CorpusError("matrix axis values must be unique")
+        jobs = len(self.targets) * prod(len(values) for values in self.matrix.values())
+        if jobs > MAX_COMPILATION_JOBS:
+            raise CorpusError(f"matrix expands beyond {MAX_COMPILATION_JOBS} jobs")
 
     def variants(self) -> tuple[Mapping[str, str], ...]:
         keys = tuple(self.matrix)
@@ -79,10 +95,11 @@ class CorpusManifest:
         return tuple(dict(zip(keys, values, strict=True)) for values in products)
 
     def compilation_jobs(self) -> tuple[CompilationJob, ...]:
+        variants = self.variants()
         return tuple(
             CompilationJob(target, variant)
             for target in self.targets
-            for variant in self.variants()
+            for variant in variants
         )
 
 
