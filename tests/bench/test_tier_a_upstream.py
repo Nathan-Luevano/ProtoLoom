@@ -171,6 +171,45 @@ def test_manifest_refuses_duplicate_sources() -> None:
         validate_source_manifest(manifest)
 
 
+def test_manifest_bounds_source_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    manifest = _manifest()
+    manifest["sources"].append({**manifest["sources"][0], "name": "second"})
+    monkeypatch.setattr("protoloom.bench.upstream.MAX_UPSTREAM_SOURCES", 1)
+
+    with pytest.raises(ValueError, match="exceeds 1 sources"):
+        validate_source_manifest(manifest)
+
+
+def test_manifest_rejects_duplicate_source_paths() -> None:
+    manifest = _manifest()
+    artifact = {
+        "path": "proto/sample.proto",
+        "url": "https://example.test/sample.proto",
+        "sha256": "a" * 64,
+        "size": 1,
+    }
+    manifest["sources"][0]["files"] = [artifact, dict(artifact)]
+
+    with pytest.raises(ValueError, match="duplicate source file path"):
+        validate_source_manifest(manifest)
+
+
+def test_manifest_rejects_duplicate_include_roots() -> None:
+    manifest = _manifest()
+    manifest["sources"][0]["includes"] = ["src", "src"]
+
+    with pytest.raises(ValueError, match="duplicate include root"):
+        validate_source_manifest(manifest)
+
+
+def test_manifest_bounds_total_targets(monkeypatch: pytest.MonkeyPatch) -> None:
+    manifest = _manifest()
+    monkeypatch.setattr("protoloom.bench.upstream.MAX_UPSTREAM_TARGETS", 0)
+
+    with pytest.raises(ValueError, match="exceeds 0 targets"):
+        validate_source_manifest(manifest)
+
+
 def test_manifest_accepts_valid_archive_and_file_sources() -> None:
     archive_manifest = _manifest()
     assert validate_source_manifest(archive_manifest) is archive_manifest
