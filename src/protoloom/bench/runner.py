@@ -38,6 +38,11 @@ def load_schema(path: Path) -> BenchmarkSchema:
         raise ValueError(f"benchmark schema must be an object: {path}")
     messages = tuple(_message(item) for item in _items(raw, "messages"))
     enums = tuple(_enum(item) for item in _items(raw, "enums"))
+    _ensure_unique(
+        [message.name for message in messages if message.name is not None],
+        "message names",
+    )
+    _ensure_unique([enum.name for enum in enums], "enum names")
     round_trip = raw.get("round_trip", {})
     if not isinstance(round_trip, dict):
         raise ValueError("round_trip must be an object")
@@ -134,6 +139,9 @@ def _message(value: object) -> BenchmarkMessage:
         raise ValueError("message must be an object")
     fields = tuple(_field(item) for item in _items(value, "fields"))
     enums = tuple(_enum(item) for item in value.get("enums", []))
+    _ensure_unique([field.number for field in fields], "field numbers")
+    _ensure_unique([field.name for field in fields], "field names")
+    _ensure_unique([enum.name for enum in enums], "message enum names")
     return BenchmarkMessage(
         _optional_string(value.get("name"), "message name"),
         fields,
@@ -168,6 +176,7 @@ def _enum(value: object) -> BenchmarkEnum:
     if not isinstance(value, dict):
         raise ValueError("enum must be an object")
     values = tuple(_enum_value(item) for item in _items(value, "values"))
+    _ensure_unique([name for name, _ in values], "enum value names")
     return BenchmarkEnum(_string(value["name"], "enum name"), values)
 
 
@@ -209,3 +218,8 @@ def _string(value: object, label: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{label} must be a string")
     return value
+
+
+def _ensure_unique(values: list[object], label: str) -> None:
+    if len(set(values)) != len(values):
+        raise ValueError(f"{label} must be unique")

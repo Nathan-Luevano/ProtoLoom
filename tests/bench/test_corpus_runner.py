@@ -303,6 +303,50 @@ def test_schema_rejects_invalid_enum_values(tmp_path: Path, value: object) -> No
 
 
 @pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"messages": [{"name": "A"}, {"name": "A"}]}, "message names"),
+        ({"enums": [{"name": "E"}, {"name": "E"}]}, "enum names"),
+        (
+            {
+                "messages": [
+                    {
+                        "fields": [
+                            {
+                                "number": 1,
+                                "name": "a",
+                                "proto_type": "int32",
+                                "wire_type": 0,
+                            },
+                            {
+                                "number": 1,
+                                "name": "b",
+                                "proto_type": "int32",
+                                "wire_type": 0,
+                            },
+                        ]
+                    }
+                ]
+            },
+            "field numbers",
+        ),
+        (
+            {"enums": [{"name": "E", "values": [["A", 0], ["A", 1]]}]},
+            "enum value names",
+        ),
+    ],
+)
+def test_schema_rejects_ambiguous_duplicates(
+    tmp_path: Path, payload: object, message: str
+) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=f"{message} must be unique"):
+        load_schema(path)
+
+
+@pytest.mark.parametrize(
     "ambiguities",
     [
         '[["int32", "int32"]]',
