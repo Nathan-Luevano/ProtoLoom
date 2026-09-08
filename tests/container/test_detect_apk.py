@@ -113,6 +113,30 @@ def test_archive_inventory_rejects_duplicate_members(tmp_path: Path) -> None:
         AndroidArchive(path).inventory()
 
 
+def test_archive_inventory_bounds_entry_count(tmp_path: Path) -> None:
+    path = tmp_path / "many.zip"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("one", b"")
+        archive.writestr("two", b"")
+
+    with pytest.raises(ArchiveError, match="more than 1 entries"):
+        AndroidArchive(path).inventory(max_entries=1)
+
+
+def test_archive_inventory_bounds_name_bytes(tmp_path: Path) -> None:
+    path = tmp_path / "names.zip"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("long-name", b"")
+
+    with pytest.raises(ArchiveError, match="names exceed 8 bytes"):
+        AndroidArchive(path).inventory(max_name_bytes=8)
+
+
+def test_archive_inventory_rejects_nonpositive_limits(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="limits must be positive"):
+        AndroidArchive(tmp_path / "missing.zip").inventory(max_entries=0)
+
+
 @pytest.mark.parametrize("name", ["../classes.dex", "/classes.dex", "..\\classes.dex"])
 def test_archive_inventory_rejects_unsafe_members(tmp_path: Path, name: str) -> None:
     path = tmp_path / "unsafe.apk"
