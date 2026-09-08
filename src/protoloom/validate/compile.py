@@ -4,6 +4,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import BinaryIO
 MAX_PROTO_SOURCE_SIZE = 16 * 1024 * 1024
 MAX_DESCRIPTOR_SET_SIZE = 64 * 1024 * 1024
 MAX_COMPILER_DIAGNOSTIC_SIZE = 64 * 1024
+MAX_PROTO_NAME_BYTES = 255
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +39,14 @@ def compile_proto(
         [protoc] if protoc is not None else [sys.executable, "-m", "grpc_tools.protoc"]
     )
     safe_name = Path(name).name
+    if (
+        safe_name in {"", ".", ".."}
+        or len(os.fsencode(safe_name)) > MAX_PROTO_NAME_BYTES
+        or any(
+            unicodedata.category(character).startswith("C") for character in safe_name
+        )
+    ):
+        raise ValueError("unsafe proto file name")
     with tempfile.TemporaryDirectory(prefix="protoloom-") as directory:
         root = Path(directory)
         proto = root / safe_name

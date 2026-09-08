@@ -11,7 +11,7 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 from pytest import MonkeyPatch
 from typer.testing import CliRunner
 
-from protoloom.cli import _atomic_write, _dex_inputs, _find, app
+from protoloom.cli import _atomic_write, _dex_inputs, _find, _output_names, app
 from protoloom.container.detect import ContainerKind, Detection
 from protoloom.extract.gotags import GoTagExtraction
 from protoloom.extract.jadx import JadxError, JadxResult
@@ -479,6 +479,17 @@ def test_extract_rejects_output_name_collisions_before_writing(
     assert result.exit_code == 2
     assert "recovery failed: output name collision" in result.output
     assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["", ".", "..", "bad\n.proto", "bad\x1b.proto", f"{'a' * 256}.proto"],
+)
+def test_output_names_reject_unsafe_file_names(name: str) -> None:
+    schema = RecoveredSchema(name=name, messages=[Message("Record")])
+
+    with pytest.raises(ValueError, match="unsafe schema output name"):
+        _output_names([schema], "input.desc")
 
 
 def test_extract_replaces_file_symlink_without_following_it(tmp_path: Path) -> None:

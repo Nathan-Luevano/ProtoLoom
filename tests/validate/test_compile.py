@@ -93,6 +93,12 @@ def test_compile_rejects_nonpositive_timeout() -> None:
         compile_proto("", timeout_seconds=0)
 
 
+@pytest.mark.parametrize("name", ["", ".", "..", "bad\n.proto"])
+def test_compile_rejects_unsafe_file_name(name: str) -> None:
+    with pytest.raises(ValueError, match="unsafe proto file name"):
+        compile_proto("", name)
+
+
 def test_compile_rejects_oversized_source(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr("protoloom.validate.compile.MAX_PROTO_SOURCE_SIZE", 3)
 
