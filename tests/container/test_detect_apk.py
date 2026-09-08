@@ -3,7 +3,12 @@ from zipfile import ZipFile
 
 import pytest
 
-from protoloom.container.apk import AndroidArchive, ArchiveError
+from protoloom.container.apk import (
+    AndroidArchive,
+    ArchiveEntry,
+    ArchiveError,
+    ArchiveInventory,
+)
 from protoloom.container.detect import ContainerKind, detect, detect_bytes
 
 
@@ -47,3 +52,17 @@ def test_archive_read_rejects_unsafe_and_oversized_names(tmp_path: Path) -> None
         source.read("../large")
     with pytest.raises(ArchiveError, match="exceeds"):
         source.read("large", max_size=3)
+
+
+def test_archive_inventory_bounds_selected_uncompressed_size() -> None:
+    inventory = ArchiveInventory(
+        (
+            ArchiveEntry("classes.dex", 4, 2, "dex"),
+            ArchiveEntry("assets/schema.pb", 3, 1, "asset"),
+            ArchiveEntry("res/icon.png", 100, 10, "resource"),
+        )
+    )
+
+    assert inventory.select({"dex"}, max_total_size=4) == (inventory.entries[0],)
+    with pytest.raises(ArchiveError, match="uncompressed bytes"):
+        inventory.select({"dex", "asset"}, max_total_size=6)

@@ -107,9 +107,9 @@ def _find(path: Path) -> list[DescriptorFinding]:
     findings: list[DescriptorFinding] = []
     if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
         archive = AndroidArchive(path)
-        for entry in archive.inventory().entries:
-            if entry.kind in {"dex", "native", "asset", "class"}:
-                findings.extend(_scan_blob(archive.read(entry.name), entry.name))
+        entries = archive.inventory().select({"dex", "native", "asset", "class"})
+        for entry in entries:
+            findings.extend(_scan_blob(archive.read(entry.name), entry.name))
     elif detection.kind is ContainerKind.ELF:
         elf = ElfFile.from_path(path)
         for section in elf.sections:

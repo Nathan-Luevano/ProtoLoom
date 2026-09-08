@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from zipfile import BadZipFile, ZipFile, ZipInfo
@@ -8,6 +8,10 @@ from zipfile import BadZipFile, ZipFile, ZipInfo
 
 class ArchiveError(ValueError):
     pass
+
+
+MAX_ARCHIVE_MEMBER_SIZE = 256 * 1024 * 1024
+MAX_ARCHIVE_SCAN_SIZE = 512 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +34,20 @@ class ArchiveInventory:
     def native_libraries(self) -> tuple[ArchiveEntry, ...]:
         return tuple(entry for entry in self.entries if entry.kind == "native")
 
+    def select(
+        self,
+        kinds: Collection[str],
+        *,
+        max_total_size: int = MAX_ARCHIVE_SCAN_SIZE,
+    ) -> tuple[ArchiveEntry, ...]:
+        entries = tuple(entry for entry in self.entries if entry.kind in kinds)
+        total_size = sum(entry.size for entry in entries)
+        if total_size > max_total_size:
+            raise ArchiveError(
+                f"archive scan exceeds {max_total_size} uncompressed bytes"
+            )
+        return entries
+
 
 class AndroidArchive:
     def __init__(self, path: str | Path) -> None:
@@ -45,7 +63,7 @@ class AndroidArchive:
             raise ArchiveError(f"invalid archive: {self.path}") from error
         return ArchiveInventory(entries)
 
-    def read(self, name: str, *, max_size: int = 512 * 1024 * 1024) -> bytes:
+    def read(self, name: str, *, max_size: int = MAX_ARCHIVE_MEMBER_SIZE) -> bytes:
         _validate_name(name)
         try:
             with ZipFile(self.path) as archive:
@@ -65,7 +83,7 @@ class AndroidArchive:
         return data
 
     def iter_dex(self) -> Iterator[tuple[ArchiveEntry, bytes]]:
-        for entry in self.inventory().dex_files:
+        for entry in self.inventory().select({"dex"}):
             yield entry, self.read(entry.name)
 
 
