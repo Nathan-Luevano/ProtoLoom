@@ -51,6 +51,27 @@ def test_inspect_and_extract_reject_missing_input(tmp_path: Path) -> None:
         assert "file does not exist" in result.output
 
 
+@pytest.mark.parametrize(
+    ("command", "message"),
+    [("inspect", "inspection failed"), ("extract", "extraction failed")],
+)
+@pytest.mark.parametrize(
+    "payload",
+    [b"dex\n039\x00broken", b"\x7fELF" + bytes(12), b"\xcf\xfa\xed\xfebroken"],
+)
+def test_commands_report_malformed_containers_without_traceback(
+    tmp_path: Path, command: str, message: str, payload: bytes
+) -> None:
+    malformed = tmp_path / "malformed.dex"
+    malformed.write_bytes(payload)
+
+    result = runner.invoke(app, [command, str(malformed)], color=False)
+
+    assert result.exit_code == 2
+    assert message in result.output
+    assert "Traceback" not in result.output
+
+
 def test_extract_reports_absent_schema_evidence(tmp_path: Path) -> None:
     binary = tmp_path / "empty.bin"
     binary.write_bytes(b"not a protobuf descriptor")

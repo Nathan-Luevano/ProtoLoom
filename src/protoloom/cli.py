@@ -3,11 +3,13 @@ import os
 import re
 import tempfile
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import asdict
+from functools import wraps
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, ParamSpec
 
 import typer
 from google.protobuf.descriptor_pb2 import FileDescriptorProto, FileDescriptorSet
@@ -15,11 +17,11 @@ from google.protobuf.descriptor_pb2 import FileDescriptorProto, FileDescriptorSe
 from protoloom import __version__
 from protoloom.bench.corpus import CorpusError, load_manifest
 from protoloom.bench.runner import render_report, run_corpus
-from protoloom.container.apk import AndroidArchive
+from protoloom.container.apk import AndroidArchive, ArchiveError
 from protoloom.container.detect import ContainerKind, detect
-from protoloom.container.dex import DexFile
-from protoloom.container.elf import ElfFile
-from protoloom.container.macho import MachOFile
+from protoloom.container.dex import DexError, DexFile
+from protoloom.container.elf import ElfError, ElfFile
+from protoloom.container.macho import MachOError, MachOFile
 from protoloom.decode.descpb import decode_file_descriptor
 from protoloom.decode.lite import decode_lite_finding
 from protoloom.decode.wire import (
@@ -59,6 +61,31 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )
+P = ParamSpec("P")
+
+
+def _handle_command_errors(
+    label: str,
+) -> Callable[[Callable[P, None]], Callable[P, None]]:
+    def decorate(command: Callable[P, None]) -> Callable[P, None]:
+        @wraps(command)
+        def wrapped(*args: P.args, **kwargs: P.kwargs) -> None:
+            try:
+                command(*args, **kwargs)
+            except (
+                ArchiveError,
+                DexError,
+                ElfError,
+                MachOError,
+                OSError,
+                UnicodeError,
+            ) as error:
+                typer.echo(f"{label} failed: {error}", err=True)
+                raise typer.Exit(2) from error
+
+        return wrapped
+
+    return decorate
 
 
 def _version_callback(value: bool) -> None:
@@ -464,6 +491,7 @@ def _combined_lite_descriptors(
 
 
 @app.command()
+@_handle_command_errors("inspection")
 def inspect(path: Path) -> None:
     if not path.is_file():
         raise typer.BadParameter(f"file does not exist: {path}")
@@ -493,6 +521,7 @@ def inspect(path: Path) -> None:
 
 
 @app.command()
+@_handle_command_errors("extraction")
 def extract(
     path: Path,
     output: Annotated[Path, typer.Option("--output", "-o")] = Path("out"),
