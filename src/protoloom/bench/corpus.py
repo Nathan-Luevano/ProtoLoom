@@ -124,13 +124,21 @@ def load_manifest(path: Path) -> CorpusManifest:
         matrix_raw = raw.get("matrix", {})
         if not isinstance(matrix_raw, dict):
             raise CorpusError("matrix must be an object")
-        matrix = {
-            str(key): tuple(str(value) for value in _as_list(values, "matrix value"))
-            for key, values in matrix_raw.items()
-        }
+        matrix: dict[str, tuple[str, ...]] = {}
+        for key, values in matrix_raw.items():
+            axis = _string(key, "matrix axis")
+            matrix[axis] = tuple(
+                _string(value, "matrix value")
+                for value in _as_list(values, "matrix value")
+            )
         if any(not values for values in matrix.values()):
             raise CorpusError("matrix axes cannot be empty")
-        return CorpusManifest(str(raw["name"]), targets, matrix, path.parent.resolve())
+        return CorpusManifest(
+            _string(raw["name"], "corpus name"),
+            targets,
+            matrix,
+            path.parent.resolve(),
+        )
     except CorpusError:
         raise
     except (
@@ -233,7 +241,7 @@ def _target(value: object) -> CorpusTarget:
     if not isinstance(value, dict):
         raise CorpusError("target must be an object")
     return CorpusTarget(
-        str(value["name"]),
+        _string(value["name"], "target name"),
         _artifact(_mapping(value["truth"], "truth")),
         _artifact(_mapping(value["recovered"], "recovered")),
     )
@@ -241,10 +249,10 @@ def _target(value: object) -> CorpusTarget:
 
 def _artifact(value: Mapping[str, Any]) -> Artifact:
     return Artifact(
-        name=str(value["name"]),
-        sha256=str(value["sha256"]),
-        path=str(value["path"]) if "path" in value else None,
-        url=str(value["url"]) if "url" in value else None,
+        name=_string(value["name"], "artifact name"),
+        sha256=_string(value["sha256"], "artifact SHA-256"),
+        path=_string(value["path"], "artifact path") if "path" in value else None,
+        url=_string(value["url"], "artifact URL") if "url" in value else None,
     )
 
 
@@ -261,4 +269,10 @@ def _list(value: Mapping[str, Any], key: str) -> list[object]:
 def _as_list(value: object, label: str) -> list[Any]:
     if not isinstance(value, list):
         raise CorpusError(f"{label} must be an array")
+    return value
+
+
+def _string(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise CorpusError(f"{label} must be a string")
     return value
