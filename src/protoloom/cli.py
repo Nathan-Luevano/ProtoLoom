@@ -102,14 +102,22 @@ def _scan_blob(data: bytes, source: str) -> list[DescriptorFinding]:
     return scan_descriptors(data, source) + scan_gzip_descriptors(data, source)
 
 
-def _find(path: Path) -> list[DescriptorFinding]:
+def _find(
+    path: Path, *, dex_inputs: list[tuple[str, bytes]] | None = None
+) -> list[DescriptorFinding]:
     detection = detect(path)
     findings: list[DescriptorFinding] = []
     if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
         archive = AndroidArchive(path)
         entries = archive.inventory().select({"dex", "native", "asset", "class"})
+        cached = dict(dex_inputs or ())
         for entry in entries:
-            findings.extend(_scan_blob(archive.read(entry.name), entry.name))
+            data = cached.get(entry.name)
+            findings.extend(
+                _scan_blob(
+                    data if data is not None else archive.read(entry.name), entry.name
+                )
+            )
     elif detection.kind is ContainerKind.ELF:
         elf = ElfFile.from_path(path)
         for section in elf.sections:
@@ -160,6 +168,8 @@ def _wire_parent(owner: str) -> str | None:
 
 def _find_wire(
     path: Path,
+    *,
+    dex_inputs: list[tuple[str, bytes]] | None = None,
 ) -> tuple[
     list[RecoveredSchema],
     dict[tuple[str, str], tuple[str, str | None]],
@@ -168,7 +178,8 @@ def _find_wire(
     schemas = []
     lineage = {}
     enum_lineage = {}
-    for source, data in _dex_inputs(path):
+    inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
+    for source, data in inputs:
         dex = DexFile(data)
         message_types = set(extract_wire_messages(dex))
         annotations = extract_wire_annotations(dex)
@@ -214,7 +225,10 @@ def _find_wire(
 
 
 def _find_lite(
-    path: Path, *, allow_heuristic: bool = False
+    path: Path,
+    *,
+    allow_heuristic: bool = False,
+    dex_inputs: list[tuple[str, bytes]] | None = None,
 ) -> tuple[
     list[RecoveredSchema],
     list[str],
@@ -227,7 +241,8 @@ def _find_lite(
     # name across different packages (e.g. two distinct "Relay" classes).
     lineage: dict[tuple[str, str], tuple[str, str | None]] = {}
     enum_lineage: dict[tuple[str, str], dict[str, str | None]] = {}
-    for source, data in _dex_inputs(path):
+    inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
+    for source, data in inputs:
         dex = DexFile(data)
         extraction = extract_lite(dex, allow_heuristic=allow_heuristic)
         for finding in extraction.findings:
@@ -547,12 +562,15 @@ def extract(
 ) -> None:
     if not path.is_file():
         raise typer.BadParameter(f"file does not exist: {path}")
-    findings = _find(path)
+    dex_inputs = _dex_inputs(path)
+    findings = _find(path, dex_inputs=dex_inputs)
     go_tags = _find_go_tags(path) if not findings else GoTagExtraction((), ())
     lite_schemas, bailouts, lineage, enum_lineage = _find_lite(
-        path, allow_heuristic=allow_heuristic_lite
+        path, allow_heuristic=allow_heuristic_lite, dex_inputs=dex_inputs
     )
-    wire_schemas, wire_lineage, wire_enum_lineage = _find_wire(path)
+    wire_schemas, wire_lineage, wire_enum_lineage = _find_wire(
+        path, dex_inputs=dex_inputs
+    )
     lineage.update(wire_lineage)
     enum_lineage.update(wire_enum_lineage)
     bailouts.extend(f"{path.name}: {reason}" for reason in go_tags.bailouts)

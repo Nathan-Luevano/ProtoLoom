@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from zipfile import ZipFile
 
 import pytest
@@ -181,12 +182,12 @@ def test_extract_refuses_jadx_for_unsupported_container(tmp_path: Path) -> None:
 def test_extract_reports_jadx_failure(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     binary = tmp_path / "classes.dex"
     binary.write_bytes(b"dex")
-    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: [])
     monkeypatch.setattr(
         "protoloom.cli._find_lite",
-        lambda path, allow_heuristic: ([], [], {}, {}),
+        lambda path, allow_heuristic, **kwargs: ([], [], {}, {}),
     )
-    monkeypatch.setattr("protoloom.cli._find_wire", lambda path: ([], {}, {}))
+    monkeypatch.setattr("protoloom.cli._find_wire", lambda path, **kwargs: ([], {}, {}))
     monkeypatch.setattr(
         "protoloom.cli.detect", lambda path: Detection(ContainerKind.DEX)
     )
@@ -206,12 +207,12 @@ def test_extract_reports_retained_jadx_context(
 ) -> None:
     binary = tmp_path / "classes.dex"
     binary.write_bytes(b"dex")
-    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: [])
     monkeypatch.setattr(
         "protoloom.cli._find_lite",
-        lambda path, allow_heuristic: ([], [], {}, {}),
+        lambda path, allow_heuristic, **kwargs: ([], [], {}, {}),
     )
-    monkeypatch.setattr("protoloom.cli._find_wire", lambda path: ([], {}, {}))
+    monkeypatch.setattr("protoloom.cli._find_wire", lambda path, **kwargs: ([], {}, {}))
     monkeypatch.setattr(
         "protoloom.cli.detect", lambda path: Detection(ContainerKind.DEX)
     )
@@ -260,6 +261,44 @@ def test_dex_inputs_ignore_non_android_container(tmp_path: Path) -> None:
     assert _dex_inputs(binary) == []
 
 
+def test_extract_reuses_loaded_dex_inputs(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    binary = tmp_path / "input.bin"
+    binary.write_bytes(b"input")
+    shared = [("classes.dex", b"dex")]
+    loads = 0
+    received: list[list[tuple[str, bytes]]] = []
+
+    def load(path: Path) -> list[tuple[str, bytes]]:
+        nonlocal loads
+        loads += 1
+        return shared
+
+    def find(path: Path, *, dex_inputs: list[tuple[str, bytes]]) -> list[object]:
+        received.append(dex_inputs)
+        return []
+
+    def find_lite(path: Path, **kwargs: object) -> tuple[object, ...]:
+        received.append(cast(list[tuple[str, bytes]], kwargs["dex_inputs"]))
+        return [], [], {}, {}
+
+    def find_wire(path: Path, **kwargs: object) -> tuple[object, ...]:
+        received.append(cast(list[tuple[str, bytes]], kwargs["dex_inputs"]))
+        return [], {}, {}
+
+    monkeypatch.setattr("protoloom.cli._dex_inputs", load)
+    monkeypatch.setattr("protoloom.cli._find", find)
+    monkeypatch.setattr("protoloom.cli._find_lite", find_lite)
+    monkeypatch.setattr("protoloom.cli._find_wire", find_wire)
+
+    result = runner.invoke(app, ["extract", str(binary)])
+
+    assert result.exit_code == 2
+    assert loads == 1
+    assert all(item is shared for item in received)
+
+
 def test_extract_compiles_lite_schema_and_honors_heuristic_flag(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
@@ -277,12 +316,14 @@ def test_extract_compiles_lite_schema_and_honors_heuristic_flag(
     )
     flags: list[bool] = []
 
-    def find_lite(path: Path, *, allow_heuristic: bool = False) -> object:
+    def find_lite(
+        path: Path, *, allow_heuristic: bool = False, **kwargs: object
+    ) -> object:
         flags.append(allow_heuristic)
         lineage = {("demo", "lite.proto"): ("Ldemo/Lite;", None)}
         return [schema], [], lineage, {}
 
-    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: [])
     monkeypatch.setattr("protoloom.cli._find_lite", find_lite)
     output = tmp_path / "output"
     result = runner.invoke(
@@ -311,7 +352,7 @@ def test_extract_emits_descriptor_free_go_schema(
             )
         ],
     )
-    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: [])
     monkeypatch.setattr(
         "protoloom.cli._find_go_tags", lambda path: GoTagExtraction((schema,), ())
     )
@@ -349,10 +390,10 @@ def test_extract_reports_uncompilable_recovery(
     binary = tmp_path / "classes.dex"
     binary.write_bytes(b"dex")
     schema = RecoveredSchema(name="broken.proto", messages=[Message("Broken")])
-    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: [])
     monkeypatch.setattr(
         "protoloom.cli._find_lite",
-        lambda path, allow_heuristic: ([schema], [], {}, {}),
+        lambda path, allow_heuristic, **kwargs: ([schema], [], {}, {}),
     )
     monkeypatch.setattr(
         "protoloom.cli._compiled_descriptors",
@@ -373,7 +414,7 @@ def test_extract_reports_descriptor_assembly_failure(
     demo_dir = tmp_path / "demo"
     assert runner.invoke(app, ["demo", "-o", str(demo_dir)]).exit_code == 0
     findings = _find(demo_dir / "demo.desc")
-    monkeypatch.setattr("protoloom.cli._find", lambda path: findings)
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: findings)
     monkeypatch.setattr(
         "protoloom.cli._combined_lite_descriptors",
         lambda *args: (_ for _ in ()).throw(ValueError("duplicate descriptor")),
@@ -402,12 +443,12 @@ def test_extract_rejects_output_name_collisions_before_writing(
     schemas = [
         RecoveredSchema(name=name, messages=[Message("Record")]) for name in names
     ]
-    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: [])
     monkeypatch.setattr(
         "protoloom.cli._find_lite",
-        lambda path, allow_heuristic: (schemas, [], {}, {}),
+        lambda path, allow_heuristic, **kwargs: (schemas, [], {}, {}),
     )
-    monkeypatch.setattr("protoloom.cli._find_wire", lambda path: ([], {}, {}))
+    monkeypatch.setattr("protoloom.cli._find_wire", lambda path, **kwargs: ([], {}, {}))
     output = tmp_path / "output"
 
     result = runner.invoke(app, ["extract", str(binary), "-o", str(output)])
