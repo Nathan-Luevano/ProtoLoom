@@ -1,5 +1,6 @@
 import gzip
 
+import pytest
 from google.protobuf.descriptor_pb2 import FileDescriptorProto
 
 from protoloom.decode.descpb import decode_file_descriptor
@@ -44,6 +45,36 @@ def test_gzip_scan_ignores_false_magic_and_limits_inflation() -> None:
     assert scan_gzip_descriptors(b"prefix\x1f\x8bnot-gzip") == []
     compressed = gzip.compress(b"x" * 1024)
     assert scan_gzip_descriptors(compressed, max_inflated_size=100) == []
+
+
+def test_gzip_scan_applies_inflation_budget_across_members() -> None:
+    expected = _descriptor().SerializeToString()
+    packed = gzip.compress(expected)
+
+    findings = scan_gzip_descriptors(
+        packed + packed,
+        max_inflated_size=len(expected),
+    )
+
+    assert len(findings) == 1
+    assert findings[0].offset == 0
+
+
+def test_gzip_scan_bounds_candidate_members() -> None:
+    expected = _descriptor().SerializeToString()
+    packed = gzip.compress(expected)
+
+    findings = scan_gzip_descriptors(packed + packed, max_members=1)
+
+    assert len(findings) == 1
+    assert findings[0].offset == 0
+
+
+def test_gzip_scan_rejects_nonpositive_limits() -> None:
+    with pytest.raises(ValueError, match="inflated size"):
+        scan_gzip_descriptors(b"", max_inflated_size=0)
+    with pytest.raises(ValueError, match="gzip members"):
+        scan_gzip_descriptors(b"", max_members=0)
 
 
 def test_descriptor_conversion_and_emission() -> None:
