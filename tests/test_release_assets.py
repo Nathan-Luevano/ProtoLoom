@@ -1,7 +1,27 @@
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parents[1]
+
+
+def version_project(tmp_path: Path) -> tuple[Path, Path]:
+    project = tmp_path / "project"
+    package = project / "src/protoloom"
+    scripts = project / "scripts"
+    package.mkdir(parents=True)
+    scripts.mkdir()
+    (project / "pyproject.toml").write_text(
+        '[project]\nversion = "0.1.0"\n', encoding="utf-8"
+    )
+    module = package / "__init__.py"
+    module.write_text('__version__ = "0.1.0"\n', encoding="utf-8")
+    script = scripts / "set_version.py"
+    shutil.copyfile(ROOT / "scripts/set_version.py", script)
+    return script, module
 
 
 def test_release_workflow_has_every_distribution_channel() -> None:
@@ -14,6 +34,7 @@ def test_release_workflow_has_every_distribution_channel() -> None:
     assert "protoloom-macos-arm64" in workflow
     assert "id-token: write" in workflow
     assert "packages: write" in workflow
+    assert workflow.count('scripts/set_version.py "${RELEASE_VERSION#v}"') == 2
 
 
 def test_container_pins_jadx_and_drops_root() -> None:
@@ -21,8 +42,34 @@ def test_container_pins_jadx_and_drops_root() -> None:
     assert "ARG JADX_VERSION=" in dockerfile
     assert "ARG JADX_SHA256=" in dockerfile
     assert "sha256sum --check --strict" in dockerfile
+    assert "ARG VERSION=0.1.3" in dockerfile
     assert "USER protoloom" in dockerfile
     assert 'ENTRYPOINT ["protoloom"]' in dockerfile
+    assert 'scripts/set_version.py "${VERSION#v}"' in dockerfile
+
+
+def test_set_version_updates_package_and_runtime_metadata(tmp_path: Path) -> None:
+    script, module = version_project(tmp_path)
+
+    subprocess.run(
+        [sys.executable, script, "1.2.3rc4"], capture_output=True, check=True
+    )
+
+    pyproject = tmp_path / "project/pyproject.toml"
+    assert 'version = "1.2.3rc4"' in pyproject.read_text()
+    assert module.read_text() == '__version__ = "1.2.3rc4"\n'
+
+
+@pytest.mark.parametrize("version", ["v1.2.3", "1.2", "1.2.3; false", ""])
+def test_set_version_rejects_invalid_versions(tmp_path: Path, version: str) -> None:
+    script, _ = version_project(tmp_path)
+
+    result = subprocess.run(
+        [sys.executable, script, version], capture_output=True, check=False, text=True
+    )
+
+    assert result.returncode != 0
+    assert "invalid release version" in result.stderr
 
 
 def test_comparison_harness_records_both_tools(tmp_path: Path) -> None:

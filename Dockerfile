@@ -14,7 +14,7 @@ RUN apt-get update \
 
 FROM python:3.11-slim-bookworm
 
-ARG VERSION=0.1.0
+ARG VERSION=0.1.3
 LABEL org.opencontainers.image.title="PROTOLOOM" \
       org.opencontainers.image.description="Recover protobuf schemas from stripped binaries" \
       org.opencontainers.image.version="${VERSION}" \
@@ -31,7 +31,8 @@ RUN apt-get update \
 
 COPY --from=jadx /opt/jadx /opt/jadx
 COPY . /build/protoloom
-RUN python -m pip install --no-cache-dir /build/protoloom \
+RUN python /build/protoloom/scripts/set_version.py "${VERSION#v}" \
+    && python -m pip install --no-cache-dir /build/protoloom \
     && rm -r /build/protoloom \
     && ln -s /opt/jadx/bin/jadx /usr/local/bin/jadx
 

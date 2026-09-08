@@ -35,10 +35,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
-        run: |
-          version="${RELEASE_VERSION#v}"
-          sed -i -E "s/^version = \"[^\"]+\"/version = \"${version}\"/" pyproject.toml
-          grep -F "version = \"${version}\"" pyproject.toml
+        run: python scripts/set_version.py "${RELEASE_VERSION#v}"
       - run: python -m pip install --upgrade build twine
       - run: python -m build
       - run: python -m twine check dist/*
@@ -67,6 +64,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Set package version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: python scripts/set_version.py "${RELEASE_VERSION#v}"
       - run: python -m pip install . pyinstaller
       - run: pyinstaller --clean --noconfirm protoloom.spec
       - run: dist/protoloom --help

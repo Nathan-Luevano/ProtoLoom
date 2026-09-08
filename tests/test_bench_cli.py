@@ -13,7 +13,7 @@ FIXTURE = Path("tests/fixtures/bench/manifest.json")
 def test_version_matches_release() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.output.strip() == "0.1.0"
+    assert result.output.strip() == "0.1.3"
 
 
 def test_version_works_without_distribution_metadata(
@@ -25,7 +25,7 @@ def test_version_works_without_distribution_metadata(
     monkeypatch.setattr("protoloom.cli.package_version", missing_metadata)
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.output.strip() == "0.1.0"
+    assert result.output.strip() == "0.1.3"
 
 
 def test_bench_accepts_manifest_path(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
