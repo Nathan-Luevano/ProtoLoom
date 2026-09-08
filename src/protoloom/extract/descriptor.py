@@ -46,11 +46,11 @@ def _valid(descriptor: FileDescriptorProto) -> bool:
     return bool(descriptor.message_type or descriptor.enum_type or descriptor.service)
 
 
-def _field_ends(data: bytes, offset: int, limit: int) -> list[int]:
+def _field_ends(data: bytes, offset: int, limit: int, max_boundaries: int) -> list[int]:
     ends: list[int] = []
     cursor = offset
     boundary = min(len(data), offset + limit)
-    while cursor < boundary:
+    while cursor < boundary and len(ends) < max_boundaries:
         tag = _read_varint(data, cursor)
         if tag is None or tag[0] == 0:
             break
@@ -78,14 +78,31 @@ def _field_ends(data: bytes, offset: int, limit: int) -> list[int]:
     return ends
 
 
-def scan_descriptors(data: bytes, source: str = "binary") -> list[DescriptorFinding]:
+def scan_descriptors(
+    data: bytes,
+    source: str = "binary",
+    max_candidates: int = 4096,
+    max_boundaries: int = 4096,
+    max_parse_attempts: int = 8192,
+) -> list[DescriptorFinding]:
+    if min(max_candidates, max_boundaries, max_parse_attempts) <= 0:
+        raise ValueError("descriptor scan limits must be positive")
     findings: dict[str, DescriptorFinding] = {}
+    candidates = 0
+    attempts = 0
     for offset, byte in enumerate(data):
         if byte != 0x0A or not _candidate_name(data, offset):
             continue
+        if candidates >= max_candidates or attempts >= max_parse_attempts:
+            break
+        candidates += 1
         # descriptors have no outer length, so only try complete wire-field boundaries.
         best: DescriptorFinding | None = None
-        for end in _field_ends(data, offset, 64 * 1024 * 1024):
+        ends = _field_ends(data, offset, 64 * 1024 * 1024, max_boundaries)
+        for end in reversed(ends):
+            if attempts >= max_parse_attempts:
+                break
+            attempts += 1
             candidate = FileDescriptorProto()
             try:
                 consumed = candidate.MergeFromString(data[offset:end])
@@ -97,6 +114,7 @@ def scan_descriptors(data: bytes, source: str = "binary") -> list[DescriptorFind
             if data[offset : offset + len(canonical)] != canonical:
                 continue
             best = DescriptorFinding(candidate, offset, len(canonical), source)
+            break
         if best is not None:
             prior = findings.get(best.descriptor.name)
             if prior is None or best.length > prior.length:
