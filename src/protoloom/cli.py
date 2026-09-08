@@ -28,6 +28,7 @@ from protoloom.decode.wire import (
     decode_wire_enums,
     decode_wire_messages,
 )
+from protoloom.doctor import diagnose
 from protoloom.emit.dashboard import emit_dashboard
 from protoloom.emit.descset import emit_descriptor_set
 from protoloom.emit.jsonout import emit_json
@@ -622,9 +623,10 @@ def extract(
 def doctor() -> None:
     import shutil
 
+    dependencies = {item.name: item for item in diagnose().dependencies}
     checks = {
-        "protoc": shutil.which("protoc"),
-        "jadx (optional)": shutil.which("jadx"),
+        "protoc": dependencies["protoc"].location,
+        "jadx (optional)": dependencies["jadx"].location,
         "docker (optional)": shutil.which("docker"),
     }
     result = {name: value or "missing" for name, value in checks.items()}

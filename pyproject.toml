@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "Nathan Luevano" }]
 dependencies = [
+  "grpcio-tools>=1.66",
   "prompt-toolkit>=3.0.52",
   "protobuf>=5.27",
   "rich>=14.1",

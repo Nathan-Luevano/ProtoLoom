@@ -39,7 +39,7 @@ def diagnose(
 ) -> DoctorReport:
     lookup = module_available or _module_available
     dependencies = (
-        _executable("protoc", True, "compile recovered schemas", which),
+        _compiler(which, lookup),
         _module("google.protobuf", True, "descriptor serialization", lookup),
         _executable("jadx", False, "opt-in Android decompiler fallback", which),
         _executable("java", False, "run the jadx fallback", which),
@@ -47,6 +47,20 @@ def diagnose(
         _module("androguard", False, "DEX differential test oracle", lookup),
     )
     return DoctorReport(dependencies)
+
+
+def _compiler(
+    which: Callable[[str], str | None], available: Callable[[str], bool]
+) -> DependencyStatus:
+    location = which("protoc")
+    if location is not None:
+        return DependencyStatus(
+            "protoc", True, True, location, "compile recovered schemas"
+        )
+    found = available("grpc_tools.protoc")
+    return DependencyStatus(
+        "protoc", found, True, "python" if found else None, "compile recovered schemas"
+    )
 
 
 def format_report(report: DoctorReport) -> str:

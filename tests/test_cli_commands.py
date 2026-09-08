@@ -309,6 +309,7 @@ def test_doctor_reports_required_and_optional_tools() -> None:
     tools = json.loads(result.output)
     assert set(tools) == {"protoc", "jadx (optional)", "docker (optional)"}
     assert all(isinstance(value, str) for value in tools.values())
+    assert tools["protoc"] != "missing"
 
 
 def test_bench_reports_invalid_manifest(tmp_path: Path) -> None:
