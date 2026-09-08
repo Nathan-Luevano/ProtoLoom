@@ -166,9 +166,12 @@ def materialize(
             output = target_root / artifact.name
             if output.is_symlink():
                 raise CorpusError(f"artifact cache is a symlink: {output}")
-            if not output.exists() or sha256(output) != artifact.sha256:
+            if (
+                not output.exists()
+                or sha256(output, max_artifact_size) != artifact.sha256
+            ):
                 _copy_artifact(manifest.root, artifact, output, max_artifact_size)
-            digest = sha256(output)
+            digest = sha256(output, max_artifact_size)
             if digest != artifact.sha256:
                 output.unlink(missing_ok=True)
                 raise CorpusError(
@@ -179,10 +182,18 @@ def materialize(
     return resolved
 
 
-def sha256(path: Path) -> str:
+def sha256(path: Path, max_size: int = MAX_CORPUS_ARTIFACT_SIZE) -> str:
+    if max_size <= 0:
+        raise ValueError("maximum artifact size must be positive")
+    if path.stat().st_size > max_size:
+        raise CorpusError(f"artifact exceeds {max_size} bytes: {path}")
     digest = hashlib.sha256()
+    total = 0
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            total += len(chunk)
+            if total > max_size:
+                raise CorpusError(f"artifact exceeds {max_size} bytes: {path}")
             digest.update(chunk)
     return digest.hexdigest()
 
