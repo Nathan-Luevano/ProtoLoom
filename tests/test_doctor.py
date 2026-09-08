@@ -25,3 +25,18 @@ def test_doctor_is_unhealthy_without_required_dependency() -> None:
     report = diagnose(which=lambda _: None, module_available=lambda _: False)
     assert not report.healthy
     assert format_report(report).endswith("Missing required dependencies.\n")
+
+
+def test_doctor_accepts_bundled_protoc_without_system_executable() -> None:
+    modules = {"google.protobuf", "grpc_tools.protoc"}
+
+    report = diagnose(
+        which=lambda _: None,
+        module_available=lambda name: name in modules,
+    )
+
+    compiler = next(item for item in report.dependencies if item.name == "protoc")
+    assert report.healthy
+    assert compiler.available
+    assert compiler.location == "python"
+    assert "[ok] protoc — required (python)" in format_report(report)

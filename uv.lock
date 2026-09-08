@@ -784,6 +784,7 @@ name = "protoloom"
 version = "0.1.3"
 source = { editable = "." }
 dependencies = [
+    { name = "grpcio-tools" },
     { name = "prompt-toolkit" },
     { name = "protobuf" },
     { name = "rich" },
@@ -810,6 +811,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "grpcio-tools", specifier = ">=1.66" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.112" },
     { name = "import-linter", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },

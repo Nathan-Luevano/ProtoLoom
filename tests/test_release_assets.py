@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,12 @@ def test_release_workflow_has_every_distribution_channel() -> None:
     assert "id-token: write" in workflow
     assert "packages: write" in workflow
     assert workflow.count('scripts/set_version.py "${RELEASE_VERSION#v}"') == 2
+
+
+def test_runtime_install_includes_fallback_compiler() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = project["project"]["dependencies"]
+    assert any(item.startswith("grpcio-tools>=") for item in dependencies)
 
 
 def test_container_pins_jadx_and_drops_root() -> None:
