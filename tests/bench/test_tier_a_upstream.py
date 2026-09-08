@@ -276,6 +276,37 @@ def test_extract_refuses_empty_archive(tmp_path: Path) -> None:
         extract(archive, tmp_path / "empty")
 
 
+def test_extract_bounds_member_count(tmp_path: Path) -> None:
+    archive = tmp_path / "many.tar.gz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        for name in ("root/one", "root/two"):
+            member = tarfile.TarInfo(name)
+            member.size = 0
+            bundle.addfile(member, io.BytesIO())
+
+    with pytest.raises(ValueError, match="more than 1 members"):
+        extract(archive, tmp_path / "many", max_members=1)
+
+
+def test_extract_bounds_expanded_size(tmp_path: Path) -> None:
+    archive = tmp_path / "large.tar.gz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        member = tarfile.TarInfo("root/large")
+        member.size = 5
+        bundle.addfile(member, io.BytesIO(b"large"))
+
+    with pytest.raises(ValueError, match="expands beyond 4 bytes"):
+        extract(archive, tmp_path / "large", max_size=4)
+
+
+def test_extract_rejects_symlinked_destination(tmp_path: Path) -> None:
+    destination = tmp_path / "destination"
+    destination.symlink_to(tmp_path / "victim", target_is_directory=True)
+
+    with pytest.raises(ValueError, match="extraction path is a symlink"):
+        extract(tmp_path / "missing.tar.gz", destination)
+
+
 def test_extract_materializes_one_root_tree(tmp_path: Path) -> None:
     archive = tmp_path / "source.tar.gz"
     with tarfile.open(archive, "w:gz") as bundle:
