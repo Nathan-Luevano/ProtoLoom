@@ -574,6 +574,11 @@ def extract(
 ) -> None:
     if not path.is_file():
         raise typer.BadParameter(f"file does not exist: {path}")
+    try:
+        _validate_output(output)
+    except ValueError as error:
+        typer.echo(f"recovery failed: {error}", err=True)
+        raise typer.Exit(2) from error
     dex_inputs = _dex_inputs(path)
     findings = _find(path, dex_inputs=dex_inputs)
     go_tags = _find_go_tags(path) if not findings else GoTagExtraction((), ())
@@ -623,7 +628,6 @@ def extract(
     descriptor_name = f"{path.stem}.desc"
     try:
         output_names = _output_names(reconciled.schemas, descriptor_name)
-        _validate_output(output)
     except ValueError as error:
         typer.echo(f"recovery failed: {error}", err=True)
         raise typer.Exit(2) from error
@@ -648,16 +652,16 @@ def extract(
     except ValueError as error:
         typer.echo(f"descriptor-set assembly failed: {error}", err=True)
         raise typer.Exit(2) from error
-    output.mkdir(parents=True, exist_ok=True)
-    for (schema, source), name in zip(prepared, output_names, strict=True):
-        destination = output / name
-        _atomic_write(destination, source.encode())
-        typer.echo(f"recovered {schema.name} -> {destination}")
     try:
         descriptor_set = emit_descriptor_set(descriptors)
     except ValueError as error:
         typer.echo(f"descriptor-set assembly failed: {error}", err=True)
         raise typer.Exit(2) from error
+    output.mkdir(parents=True, exist_ok=True)
+    for (schema, source), name in zip(prepared, output_names, strict=True):
+        destination = output / name
+        _atomic_write(destination, source.encode())
+        typer.echo(f"recovered {schema.name} -> {destination}")
     _atomic_write(output / descriptor_name, descriptor_set)
     conflicts = [asdict(conflict) for conflict in reconciled.conflicts]
     _atomic_write(

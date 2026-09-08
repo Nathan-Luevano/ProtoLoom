@@ -427,6 +427,28 @@ def test_extract_reports_descriptor_assembly_failure(
     assert "descriptor-set assembly failed: duplicate descriptor" in result.output
 
 
+def test_extract_serializes_descriptor_set_before_writing(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    binary = tmp_path / "input.bin"
+    binary.write_bytes(b"descriptor")
+    demo_dir = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "-o", str(demo_dir)]).exit_code == 0
+    findings = _find(demo_dir / "demo.desc")
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: findings)
+    monkeypatch.setattr(
+        "protoloom.cli.emit_descriptor_set",
+        lambda descriptors: (_ for _ in ()).throw(ValueError("conflict")),
+    )
+    output = tmp_path / "output"
+
+    result = runner.invoke(app, ["extract", str(binary), "-o", str(output)])
+
+    assert result.exit_code == 2
+    assert "descriptor-set assembly failed: conflict" in result.output
+    assert not output.exists()
+
+
 @pytest.mark.parametrize(
     "names",
     [
@@ -508,4 +530,25 @@ def test_extract_rejects_symlinked_output_directories_before_writing(
 
     assert result.exit_code == 2
     assert "recovery failed:" in result.output
+    assert list(target.iterdir()) == []
+
+
+def test_extract_rejects_symlinked_output_before_jadx(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    binary = tmp_path / "input.dex"
+    binary.write_bytes(b"dex")
+    target = tmp_path / "target"
+    target.mkdir()
+    output = tmp_path / "output"
+    output.symlink_to(target, target_is_directory=True)
+    monkeypatch.setattr(
+        "protoloom.cli.decompile_with_jadx",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("called")),
+    )
+
+    result = runner.invoke(app, ["extract", str(binary), "-o", str(output), "--jadx"])
+
+    assert result.exit_code == 2
+    assert "recovery failed: output directory is a symlink" in result.output
     assert list(target.iterdir()) == []
