@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -47,6 +48,29 @@ def test_manifest_wraps_json_read_failures(tmp_path: Path) -> None:
     path.write_bytes(b"\xff")
 
     with pytest.raises(CorpusError, match="invalid corpus manifest"):
+        load_manifest(path)
+
+
+@pytest.mark.parametrize(
+    ("corpus_name", "target_name", "message"),
+    [
+        ("../escape", "target", "corpus name is unsafe"),
+        ("corpus", "../escape", "target name is unsafe"),
+        ("corpus", "bad\nname", "target name is unsafe"),
+    ],
+)
+def test_manifest_rejects_unsafe_cache_names(
+    tmp_path: Path, corpus_name: str, target_name: str, message: str
+) -> None:
+    artifact = {"name": "schema.json", "path": "schema.json", "sha256": "0" * 64}
+    payload = {
+        "name": corpus_name,
+        "targets": [{"name": target_name, "truth": artifact, "recovered": artifact}],
+    }
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CorpusError, match=message):
         load_manifest(path)
 
 
