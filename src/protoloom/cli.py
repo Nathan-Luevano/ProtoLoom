@@ -1,9 +1,11 @@
 import json
 import os
 import re
+import secrets
 import tempfile
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import asdict
 from functools import wraps
 from importlib.metadata import PackageNotFoundError
@@ -312,21 +314,30 @@ def _validate_output(output: Path) -> None:
         raise ValueError(f"dashboard directory is a symlink: {dashboard}")
 
 
+def _temporary_output(path: Path) -> tuple[Path, int]:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    for _ in range(100):
+        temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}")
+        try:
+            descriptor = os.open(temporary, flags, 0o666)
+        except FileExistsError:
+            continue
+        return temporary, descriptor
+    raise OSError(f"cannot allocate temporary output for {path}")
+
+
 def _atomic_write(path: Path, payload: bytes) -> None:
-    temporary: Path | None = None
+    temporary, descriptor = _temporary_output(path)
     try:
-        with tempfile.NamedTemporaryFile(
-            "wb", dir=path.parent, prefix=f".{path.name}.", delete=False
-        ) as stream:
-            temporary = Path(stream.name)
+        with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        temporary.chmod(0o644)
         temporary.replace(path)
     except BaseException:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+        with suppress(OSError):
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
         raise
 
 

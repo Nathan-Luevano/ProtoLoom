@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -10,7 +11,7 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 from pytest import MonkeyPatch
 from typer.testing import CliRunner
 
-from protoloom.cli import _dex_inputs, _find, app
+from protoloom.cli import _atomic_write, _dex_inputs, _find, app
 from protoloom.container.detect import ContainerKind, Detection
 from protoloom.extract.gotags import GoTagExtraction
 from protoloom.extract.jadx import JadxError, JadxResult
@@ -473,8 +474,19 @@ def test_extract_replaces_file_symlink_without_following_it(tmp_path: Path) -> N
     assert result.exit_code == 0, result.output
     assert victim.read_text() == "preserve"
     assert not recovery.is_symlink()
-    assert recovery.stat().st_mode & 0o777 == 0o644
     assert json.loads(recovery.read_text())["schemas"][0]["name"] == "demo.proto"
+
+
+def test_atomic_write_respects_process_umask(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    previous = os.umask(0o077)
+    try:
+        _atomic_write(output, b"private")
+    finally:
+        os.umask(previous)
+
+    assert output.read_bytes() == b"private"
+    assert output.stat().st_mode & 0o777 == 0o600
 
 
 @pytest.mark.parametrize("nested", [False, True])
