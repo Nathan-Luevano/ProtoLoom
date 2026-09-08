@@ -2,6 +2,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
+from pytest import MonkeyPatch
 
 from protoloom.container.apk import (
     AndroidArchive,
@@ -52,6 +53,37 @@ def test_archive_read_rejects_unsafe_and_oversized_names(tmp_path: Path) -> None
         source.read("../large")
     with pytest.raises(ArchiveError, match="exceeds"):
         source.read("large", max_size=3)
+
+
+def test_archive_iterator_opens_once_and_reuses_cached_data(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    path = tmp_path / "sample.zip"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("classes.dex", b"stored dex")
+        archive.writestr("assets/schema.pb", b"stored schema")
+    source = AndroidArchive(path)
+    entries = source.inventory().entries
+    real_zip = ZipFile
+    opens = 0
+
+    def open_zip(file: str | Path) -> ZipFile:
+        nonlocal opens
+        opens += 1
+        return real_zip(file)
+
+    monkeypatch.setattr("protoloom.container.apk.ZipFile", open_zip)
+    values = list(source.iter_read(entries, cached={"classes.dex": b"cached dex"}))
+
+    assert opens == 1
+    assert values == [
+        (entries[0], b"cached dex"),
+        (entries[1], b"stored schema"),
+    ]
+    with pytest.raises(ArchiveError, match="exceeds 3 bytes"):
+        list(
+            source.iter_read(entries[:1], cached={"classes.dex": b"large"}, max_size=3)
+        )
 
 
 def test_archive_inventory_bounds_selected_uncompressed_size() -> None:

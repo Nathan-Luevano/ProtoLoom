@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Collection, Iterator
+from collections.abc import Collection, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from zipfile import BadZipFile, ZipFile, ZipInfo
@@ -71,31 +71,69 @@ class AndroidArchive:
         return ArchiveInventory(tuple(entries))
 
     def read(self, name: str, *, max_size: int = MAX_ARCHIVE_MEMBER_SIZE) -> bytes:
-        _validate_name(name)
         try:
             with ZipFile(self.path) as archive:
-                info = archive.getinfo(name)
-                if info.file_size > max_size:
-                    raise ArchiveError(
-                        f"archive member exceeds {max_size} bytes: {name}"
-                    )
-                with archive.open(info) as stream:
-                    data = stream.read(max_size + 1)
-        except KeyError as error:
-            raise ArchiveError(f"archive member not found: {name}") from error
+                return _read_member(archive, name, max_size)
         except (BadZipFile, OSError) as error:
             raise ArchiveError(f"cannot read archive member: {name}") from error
-        if len(data) > max_size:
-            raise ArchiveError(f"archive member exceeds {max_size} bytes: {name}")
-        return data
+
+    def iter_read(
+        self,
+        entries: Collection[ArchiveEntry],
+        *,
+        cached: Mapping[str, bytes] | None = None,
+        max_size: int = MAX_ARCHIVE_MEMBER_SIZE,
+    ) -> Iterator[tuple[ArchiveEntry, bytes]]:
+        values = cached or {}
+        if all(entry.name in values for entry in entries):
+            for entry in entries:
+                yield entry, _cached_member(values, entry.name, max_size)
+            return
+        try:
+            with ZipFile(self.path) as archive:
+                for entry in entries:
+                    data = (
+                        _cached_member(values, entry.name, max_size)
+                        if entry.name in values
+                        else None
+                    )
+                    yield (
+                        entry,
+                        data
+                        if data is not None
+                        else _read_member(archive, entry.name, max_size),
+                    )
+        except (BadZipFile, OSError) as error:
+            raise ArchiveError(f"cannot read archive: {self.path}") from error
 
     def iter_dex(self) -> Iterator[tuple[ArchiveEntry, bytes]]:
-        for entry in self.inventory().select({"dex"}):
-            yield entry, self.read(entry.name)
+        yield from self.iter_read(self.inventory().select({"dex"}))
 
 
 def inventory(path: str | Path) -> ArchiveInventory:
     return AndroidArchive(path).inventory()
+
+
+def _cached_member(values: Mapping[str, bytes], name: str, max_size: int) -> bytes:
+    data = values[name]
+    if len(data) > max_size:
+        raise ArchiveError(f"archive member exceeds {max_size} bytes: {name}")
+    return data
+
+
+def _read_member(archive: ZipFile, name: str, max_size: int) -> bytes:
+    _validate_name(name)
+    try:
+        info = archive.getinfo(name)
+    except KeyError as error:
+        raise ArchiveError(f"archive member not found: {name}") from error
+    if info.file_size > max_size:
+        raise ArchiveError(f"archive member exceeds {max_size} bytes: {name}")
+    with archive.open(info) as stream:
+        data = stream.read(max_size + 1)
+    if len(data) > max_size:
+        raise ArchiveError(f"archive member exceeds {max_size} bytes: {name}")
+    return data
 
 
 def _entry(info: ZipInfo) -> ArchiveEntry:
