@@ -62,10 +62,15 @@ def test_manifest_wraps_json_read_failures(tmp_path: Path) -> None:
 def test_manifest_rejects_unsafe_cache_names(
     tmp_path: Path, corpus_name: str, target_name: str, message: str
 ) -> None:
-    artifact = {"name": "schema.json", "path": "schema.json", "sha256": "0" * 64}
+    truth = {"name": "truth.json", "path": "truth.json", "sha256": "0" * 64}
+    recovered = {
+        "name": "recovered.json",
+        "path": "recovered.json",
+        "sha256": "0" * 64,
+    }
     payload = {
         "name": corpus_name,
-        "targets": [{"name": target_name, "truth": artifact, "recovered": artifact}],
+        "targets": [{"name": target_name, "truth": truth, "recovered": recovered}],
     }
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -98,6 +103,30 @@ def test_hash_mismatch_removes_bad_download(tmp_path: Path) -> None:
     with pytest.raises(CorpusError, match="SHA-256 mismatch"):
         materialize(manifest, tmp_path / "cache")
     assert not (tmp_path / "cache" / "target" / "truth.json").exists()
+
+
+def test_materialize_rejects_symlinked_target_cache(tmp_path: Path) -> None:
+    manifest = load_manifest(FIXTURES / "manifest.json")
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (cache / manifest.targets[0].name).symlink_to(victim, target_is_directory=True)
+
+    with pytest.raises(CorpusError, match="target cache is a symlink"):
+        materialize(manifest, cache)
+
+    assert list(victim.iterdir()) == []
+
+
+def test_materialize_rejects_oversized_artifact(tmp_path: Path) -> None:
+    manifest = load_manifest(FIXTURES / "manifest.json")
+    cache = tmp_path / "cache"
+
+    with pytest.raises(CorpusError, match="artifact exceeds 2 bytes"):
+        materialize(manifest, cache, max_artifact_size=2)
+
+    assert not tuple(cache.rglob("*.part"))
 
 
 def test_report_renders_unmeasured_metrics_as_na() -> None:

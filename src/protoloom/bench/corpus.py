@@ -1,12 +1,11 @@
 import hashlib
 import itertools
-import shutil
 import unicodedata
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from protoloom.bench.jsonio import read_json
 
@@ -16,6 +15,7 @@ class CorpusError(ValueError):
 
 
 MAX_CORPUS_NAME_BYTES = 255
+MAX_CORPUS_ARTIFACT_SIZE = 1024 * 1024 * 1024
 
 
 def _validate_name(name: str, label: str) -> None:
@@ -53,6 +53,8 @@ class CorpusTarget:
 
     def __post_init__(self) -> None:
         _validate_name(self.name, "target")
+        if self.truth.name == self.recovered.name:
+            raise CorpusError(f"target {self.name!r} has duplicate artifact names")
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,16 +127,30 @@ def load_manifest(path: Path) -> CorpusManifest:
         raise CorpusError(f"invalid corpus manifest: {path}") from error
 
 
-def materialize(manifest: CorpusManifest, destination: Path) -> Mapping[str, Path]:
+def materialize(
+    manifest: CorpusManifest,
+    destination: Path,
+    *,
+    max_artifact_size: int = MAX_CORPUS_ARTIFACT_SIZE,
+) -> Mapping[str, Path]:
+    if max_artifact_size <= 0:
+        raise ValueError("maximum artifact size must be positive")
+    if destination.is_symlink():
+        raise CorpusError(f"corpus cache is a symlink: {destination}")
     destination.mkdir(parents=True, exist_ok=True)
     resolved: dict[str, Path] = {}
     for target in manifest.targets:
+        target_root = destination / target.name
+        if target_root.is_symlink():
+            raise CorpusError(f"target cache is a symlink: {target_root}")
+        target_root.mkdir(parents=True, exist_ok=True)
         for artifact in (target.truth, target.recovered):
             key = f"{target.name}/{artifact.name}"
-            output = destination / target.name / artifact.name
-            output.parent.mkdir(parents=True, exist_ok=True)
+            output = target_root / artifact.name
+            if output.is_symlink():
+                raise CorpusError(f"artifact cache is a symlink: {output}")
             if not output.exists() or sha256(output) != artifact.sha256:
-                _copy_artifact(manifest.root, artifact, output)
+                _copy_artifact(manifest.root, artifact, output, max_artifact_size)
             digest = sha256(output)
             if digest != artifact.sha256:
                 output.unlink(missing_ok=True)
@@ -154,7 +170,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _copy_artifact(root: Path, artifact: Artifact, output: Path) -> None:
+def _copy_artifact(root: Path, artifact: Artifact, output: Path, max_size: int) -> None:
     temporary = output.with_suffix(output.suffix + ".part")
     temporary.unlink(missing_ok=True)
     try:
@@ -163,17 +179,26 @@ def _copy_artifact(root: Path, artifact: Artifact, output: Path) -> None:
             if not source.is_relative_to(root):
                 raise CorpusError(f"artifact path escapes corpus root: {artifact.path}")
             with source.open("rb") as reader, temporary.open("wb") as writer:
-                shutil.copyfileobj(reader, writer)
+                _copy_bounded(reader, writer, max_size)
         else:
             assert artifact.url is not None
             with (
                 urllib.request.urlopen(artifact.url, timeout=30) as response,
                 temporary.open("wb") as writer,
             ):
-                shutil.copyfileobj(response, writer)
+                _copy_bounded(response, writer, max_size)
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _copy_bounded(reader: BinaryIO, writer: BinaryIO, max_size: int) -> None:
+    copied = 0
+    while chunk := reader.read(min(1024 * 1024, max_size - copied + 1)):
+        copied += len(chunk)
+        if copied > max_size:
+            raise CorpusError(f"artifact exceeds {max_size} bytes")
+        writer.write(chunk)
 
 
 def _target(value: object) -> CorpusTarget:
