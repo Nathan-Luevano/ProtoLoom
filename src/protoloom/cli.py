@@ -306,9 +306,21 @@ def _output_names(schemas: list[RecoveredSchema], descriptor_name: str) -> list[
 def _validate_output(output: Path) -> None:
     if output.is_symlink():
         raise ValueError(f"output directory is a symlink: {output}")
-    dashboard = output / "dashboard"
-    if dashboard.is_symlink():
-        raise ValueError(f"dashboard directory is a symlink: {dashboard}")
+    if output.exists() and not output.is_dir():
+        raise ValueError(f"output path is not a directory: {output}")
+    for name in ("dashboard", "jadx"):
+        directory = output / name
+        if directory.is_symlink():
+            raise ValueError(f"{name} directory is a symlink: {directory}")
+        if directory.exists() and not directory.is_dir():
+            raise ValueError(f"{name} path is not a directory: {directory}")
+
+
+def _validate_output_files(output: Path, names: list[str]) -> None:
+    for name in names:
+        destination = output / name
+        if destination.exists() and not destination.is_file():
+            raise ValueError(f"output file path is not a file: {destination}")
 
 
 def _temporary_output(path: Path) -> tuple[Path, int]:
@@ -574,8 +586,10 @@ def extract(
 ) -> None:
     if not path.is_file():
         raise typer.BadParameter(f"file does not exist: {path}")
+    descriptor_name = f"{path.stem}.desc"
     try:
         _validate_output(output)
+        _validate_output_files(output, [descriptor_name, "recovery.json", "report.md"])
     except ValueError as error:
         typer.echo(f"recovery failed: {error}", err=True)
         raise typer.Exit(2) from error
@@ -625,9 +639,12 @@ def extract(
     schemas.extend(lite_schemas)
     schemas.extend(wire_schemas)
     reconciled = reconcile(schemas)
-    descriptor_name = f"{path.stem}.desc"
     try:
         output_names = _output_names(reconciled.schemas, descriptor_name)
+        _validate_output_files(
+            output,
+            [*output_names, descriptor_name, "recovery.json", "report.md"],
+        )
     except ValueError as error:
         typer.echo(f"recovery failed: {error}", err=True)
         raise typer.Exit(2) from error
