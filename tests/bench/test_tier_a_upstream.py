@@ -358,10 +358,30 @@ def test_extract_refuses_nonempty_destination(tmp_path: Path) -> None:
     existing = destination / "existing"
     existing.write_text("preserve", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="extraction path is not empty"):
+    with pytest.raises(ValueError, match="extraction path already exists"):
         extract(tmp_path / "missing.tar.gz", destination)
 
     assert existing.read_text(encoding="utf-8") == "preserve"
+
+
+def test_extract_removes_partial_destination_after_copy_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        member = tarfile.TarInfo("root/item")
+        member.size = 1
+        bundle.addfile(member, io.BytesIO(b"x"))
+    monkeypatch.setattr(
+        "protoloom.bench.upstream._copy_member",
+        lambda *args: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    destination = tmp_path / "destination"
+
+    with pytest.raises(OSError, match="disk full"):
+        extract(archive, destination)
+
+    assert not destination.exists()
 
 
 def test_materialize_source_downloads_individual_files(
