@@ -4,6 +4,8 @@ import struct
 from dataclasses import dataclass
 from pathlib import Path
 
+from protoloom.container.read import read_limited
+
 
 class DexError(ValueError):
     pass
@@ -147,7 +149,7 @@ class DexFile:
 
     @classmethod
     def from_path(cls, path: str | Path) -> DexFile:
-        return cls(Path(path).read_bytes())
+        return cls(read_limited(path))
 
     @property
     def types(self) -> tuple[str, ...]:
