@@ -114,13 +114,8 @@ def _find(
     if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
         archive = AndroidArchive(path)
         entries = archive.inventory().select({"dex", "native", "asset", "class"})
-        for entry in entries:
-            data = cached.get(entry.name)
-            findings.extend(
-                _scan_blob(
-                    data if data is not None else archive.read(entry.name), entry.name
-                )
-            )
+        for entry, payload in archive.iter_read(entries, cached=cached):
+            findings.extend(_scan_blob(payload, entry.name))
     elif detection.kind is ContainerKind.ELF:
         elf = ElfFile.from_path(path)
         for section in elf.sections:
@@ -135,9 +130,11 @@ def _find(
         for index, region in enumerate(macho.protobuf_regions()):
             findings.extend(_scan_blob(bytes(region), f"Mach-O region {index}"))
     else:
-        data = cached.get(path.name)
+        raw_data = cached.get(path.name)
         findings.extend(
-            _scan_blob(data if data is not None else read_limited(path), path.name)
+            _scan_blob(
+                raw_data if raw_data is not None else read_limited(path), path.name
+            )
         )
     deduped: dict[str, DescriptorFinding] = {}
     for finding in findings:
