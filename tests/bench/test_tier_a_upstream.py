@@ -331,8 +331,37 @@ def test_extract_refuses_multiple_roots(tmp_path: Path) -> None:
             member = tarfile.TarInfo(name)
             member.size = 1
             bundle.addfile(member, io.BytesIO(b"x"))
+    destination = tmp_path / "multiple"
     with pytest.raises(ValueError, match="one root directory"):
-        extract(archive, tmp_path / "multiple")
+        extract(archive, destination)
+    assert not destination.exists()
+
+
+def test_extract_refuses_duplicate_normalized_paths(tmp_path: Path) -> None:
+    archive = tmp_path / "duplicate.tar.gz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        for name in ("root/item", "root//item"):
+            member = tarfile.TarInfo(name)
+            member.size = 1
+            bundle.addfile(member, io.BytesIO(b"x"))
+    destination = tmp_path / "duplicate"
+
+    with pytest.raises(ValueError, match="duplicate archive member"):
+        extract(archive, destination)
+
+    assert not destination.exists()
+
+
+def test_extract_refuses_nonempty_destination(tmp_path: Path) -> None:
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    existing = destination / "existing"
+    existing.write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="extraction path is not empty"):
+        extract(tmp_path / "missing.tar.gz", destination)
+
+    assert existing.read_text(encoding="utf-8") == "preserve"
 
 
 def test_materialize_source_downloads_individual_files(
