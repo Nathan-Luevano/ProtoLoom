@@ -238,6 +238,25 @@ def _walk_messages(messages: list[Message]) -> list[Message]:
     return result
 
 
+def _output_names(schemas: list[RecoveredSchema], descriptor_name: str) -> list[str]:
+    reserved = {
+        "dashboard",
+        "recovery.json",
+        "report.md",
+        descriptor_name.casefold(),
+    }
+    names: list[str] = []
+    seen: set[str] = set()
+    for schema in schemas:
+        name = Path(schema.name).name
+        key = name.casefold()
+        if key in reserved or key in seen:
+            raise ValueError(f"output name collision: {name}")
+        names.append(name)
+        seen.add(key)
+    return names
+
+
 def _apply_nested_renames(top_level: list[Message], renames: dict[str, str]) -> None:
     if not renames:
         return
@@ -515,6 +534,12 @@ def extract(
     schemas.extend(lite_schemas)
     schemas.extend(wire_schemas)
     reconciled = reconcile(schemas)
+    descriptor_name = f"{path.stem}.desc"
+    try:
+        output_names = _output_names(reconciled.schemas, descriptor_name)
+    except ValueError as error:
+        typer.echo(f"recovery failed: {error}", err=True)
+        raise typer.Exit(2) from error
     descriptors = [finding.descriptor for finding in findings]
     certain_names = {finding.descriptor.name for finding in findings}
     prepared: list[tuple[RecoveredSchema, str]] = []
@@ -537,12 +562,12 @@ def extract(
         typer.echo(f"descriptor-set assembly failed: {error}", err=True)
         raise typer.Exit(2) from error
     output.mkdir(parents=True, exist_ok=True)
-    for schema, source in prepared:
-        destination = output / Path(schema.name).name
+    for (schema, source), name in zip(prepared, output_names, strict=True):
+        destination = output / name
         destination.write_text(source, encoding="utf-8")
         typer.echo(f"recovered {schema.name} -> {destination}")
     descriptors_by_name = {item.name: item for item in descriptors}
-    (output / f"{path.stem}.desc").write_bytes(
+    (output / descriptor_name).write_bytes(
         emit_descriptor_set(list(descriptors_by_name.values()))
     )
     conflicts = [asdict(conflict) for conflict in reconciled.conflicts]

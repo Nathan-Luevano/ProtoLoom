@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from zipfile import ZipFile
 
+import pytest
 from click import unstyle
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 from pytest import MonkeyPatch
@@ -360,3 +361,35 @@ def test_extract_reports_descriptor_assembly_failure(
 
     assert result.exit_code == 2
     assert "descriptor-set assembly failed: duplicate descriptor" in result.output
+
+
+@pytest.mark.parametrize(
+    "names",
+    [
+        ("a/types.proto", "b/types.proto"),
+        ("Types.proto", "types.proto"),
+        ("report.md", "safe.proto"),
+        ("input.desc", "safe.proto"),
+    ],
+)
+def test_extract_rejects_output_name_collisions_before_writing(
+    tmp_path: Path, monkeypatch: MonkeyPatch, names: tuple[str, str]
+) -> None:
+    binary = tmp_path / "input.bin"
+    binary.write_bytes(b"input")
+    schemas = [
+        RecoveredSchema(name=name, messages=[Message("Record")]) for name in names
+    ]
+    monkeypatch.setattr("protoloom.cli._find", lambda path: [])
+    monkeypatch.setattr(
+        "protoloom.cli._find_lite",
+        lambda path, allow_heuristic: (schemas, [], {}, {}),
+    )
+    monkeypatch.setattr("protoloom.cli._find_wire", lambda path: ([], {}, {}))
+    output = tmp_path / "output"
+
+    result = runner.invoke(app, ["extract", str(binary), "-o", str(output)])
+
+    assert result.exit_code == 2
+    assert "recovery failed: output name collision" in result.output
+    assert not output.exists()
