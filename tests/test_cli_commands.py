@@ -552,3 +552,32 @@ def test_extract_rejects_symlinked_output_before_jadx(
     assert result.exit_code == 2
     assert "recovery failed: output directory is a symlink" in result.output
     assert list(target.iterdir()) == []
+
+
+@pytest.mark.parametrize("name", ["dashboard", "jadx"])
+def test_extract_rejects_output_subdirectory_files(tmp_path: Path, name: str) -> None:
+    demo = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "-o", str(demo)]).exit_code == 0
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / name).write_text("occupied", encoding="utf-8")
+
+    result = runner.invoke(app, ["extract", str(demo / "demo.desc"), "-o", str(output)])
+
+    assert result.exit_code == 2
+    assert f"recovery failed: {name} path is not a directory" in result.output
+
+
+def test_extract_rejects_directory_at_artifact_path(tmp_path: Path) -> None:
+    demo = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "-o", str(demo)]).exit_code == 0
+    output = tmp_path / "output"
+    output.mkdir()
+    occupied = output / "demo.proto"
+    occupied.mkdir()
+
+    result = runner.invoke(app, ["extract", str(demo / "demo.desc"), "-o", str(output)])
+
+    assert result.exit_code == 2
+    assert "recovery failed: output file path is not a file" in result.output
+    assert occupied.is_dir()
