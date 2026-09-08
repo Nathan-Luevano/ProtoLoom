@@ -1,7 +1,10 @@
 import argparse
 import json
+import os
+import signal
 import subprocess
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +78,20 @@ BENCHMARK_TOOL_TIMEOUT = 120.0
 
 
 def _run(command: list[str]) -> None:
-    subprocess.run(command, check=True, timeout=BENCHMARK_TOOL_TIMEOUT)
+    process = subprocess.Popen(command, start_new_session=True)
+    try:
+        process.wait(timeout=BENCHMARK_TOOL_TIMEOUT)
+    except BaseException:
+        _kill_process_group(process)
+        raise
+    if process.returncode:
+        raise subprocess.CalledProcessError(process.returncode, command)
+
+
+def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
+    with suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
 
 
 def _enum(value: EnumDescriptorProto, prefix: str) -> dict[str, Any]:
