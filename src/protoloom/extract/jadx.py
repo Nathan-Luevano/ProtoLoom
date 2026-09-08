@@ -4,6 +4,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -82,6 +83,30 @@ def _log_tail(log: BinaryIO, limit: int = 2000) -> str:
     return log.read().decode("utf-8", errors="replace").strip()
 
 
+def _write_candidates(output: Path, sites: list[dict[str, str | int]]) -> None:
+    destination = output / "protoloom-candidates.json"
+    payload = json.dumps({"candidate_sites": sites}, indent=2) + "\n"
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=output,
+            prefix=".protoloom-candidates.",
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(payload)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        temporary_path.replace(destination)
+    except BaseException:
+        if temporary_path is not None:
+            with suppress(OSError):
+                temporary_path.unlink()
+        raise
+
+
 def _index_candidates(output: Path) -> tuple[int, int]:
     sites: list[dict[str, str | int]] = []
     needles = ("newMessageInfo(", "new RawMessageInfo(")
@@ -120,7 +145,5 @@ def _index_candidates(output: Path) -> tuple[int, int]:
                         "context": line.strip()[:500],
                     }
                 )
-    (output / "protoloom-candidates.json").write_text(
-        json.dumps({"candidate_sites": sites}, indent=2) + "\n", encoding="utf-8"
-    )
+    _write_candidates(output, sites)
     return source_count, len(sites)
