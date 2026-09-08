@@ -66,3 +66,26 @@ def test_archive_inventory_bounds_selected_uncompressed_size() -> None:
     assert inventory.select({"dex"}, max_total_size=4) == (inventory.entries[0],)
     with pytest.raises(ArchiveError, match="uncompressed bytes"):
         inventory.select({"dex", "asset"}, max_total_size=6)
+
+
+def test_archive_inventory_rejects_duplicate_members(tmp_path: Path) -> None:
+    path = tmp_path / "duplicate.apk"
+    with (
+        pytest.warns(UserWarning, match="Duplicate name"),
+        ZipFile(path, "w") as archive,
+    ):
+        archive.writestr("classes.dex", b"first")
+        archive.writestr("classes.dex", b"second")
+
+    with pytest.raises(ArchiveError, match="duplicate archive member"):
+        AndroidArchive(path).inventory()
+
+
+@pytest.mark.parametrize("name", ["../classes.dex", "/classes.dex", "..\\classes.dex"])
+def test_archive_inventory_rejects_unsafe_members(tmp_path: Path, name: str) -> None:
+    path = tmp_path / "unsafe.apk"
+    with ZipFile(path, "w") as archive:
+        archive.writestr(name, b"dex")
+
+    with pytest.raises(ArchiveError, match="unsafe archive member"):
+        AndroidArchive(path).inventory()

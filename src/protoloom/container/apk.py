@@ -56,12 +56,19 @@ class AndroidArchive:
     def inventory(self) -> ArchiveInventory:
         try:
             with ZipFile(self.path) as archive:
-                entries = tuple(
-                    _entry(info) for info in archive.infolist() if not info.is_dir()
-                )
+                entries: list[ArchiveEntry] = []
+                names: set[str] = set()
+                for info in archive.infolist():
+                    if info.is_dir():
+                        continue
+                    _validate_name(info.filename)
+                    if info.filename in names:
+                        raise ArchiveError(f"duplicate archive member: {info.filename}")
+                    names.add(info.filename)
+                    entries.append(_entry(info))
         except (BadZipFile, OSError) as error:
             raise ArchiveError(f"invalid archive: {self.path}") from error
-        return ArchiveInventory(entries)
+        return ArchiveInventory(tuple(entries))
 
     def read(self, name: str, *, max_size: int = MAX_ARCHIVE_MEMBER_SIZE) -> bytes:
         _validate_name(name)
@@ -109,5 +116,5 @@ def _entry(info: ZipInfo) -> ArchiveEntry:
 
 def _validate_name(name: str) -> None:
     path = PurePosixPath(name)
-    if path.is_absolute() or ".." in path.parts:
+    if not path.name or path.is_absolute() or ".." in path.parts or "\\" in name:
         raise ArchiveError(f"unsafe archive member: {name}")
