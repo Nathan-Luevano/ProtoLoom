@@ -28,6 +28,12 @@ MAX_JADX_SOURCE_TOTAL = 512 * 1024 * 1024
 MAX_JADX_CANDIDATES = 100_000
 
 
+def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
+    with suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
+
+
 def decompile_with_jadx(
     input_path: Path,
     output: Path,
@@ -59,13 +65,15 @@ def decompile_with_jadx(
         try:
             process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired as error:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
+            _kill_process_group(process)
             detail = _log_tail(log)
             raise JadxError(
                 f"jadx exceeded {timeout_seconds:g}s timeout"
                 + (f": {detail}" if detail else "")
             ) from error
+        except BaseException:
+            _kill_process_group(process)
+            raise
         detail = _log_tail(log)
     if process.returncode != 0:
         raise JadxError(
