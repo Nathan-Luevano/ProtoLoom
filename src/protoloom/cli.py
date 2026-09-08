@@ -691,9 +691,16 @@ def extract(
         typer.echo(f"recovered {schema.name} -> {destination}")
     _atomic_write(output / descriptor_name, descriptor_set)
     conflicts = [asdict(conflict) for conflict in reconciled.conflicts]
+    artifacts = [
+        *output_names,
+        descriptor_name,
+        "dashboard/index.html",
+        "recovery.json",
+        "report.md",
+    ]
     _atomic_write(
         output / "recovery.json",
-        emit_json(reconciled.schemas, conflicts).encode(),
+        emit_json(reconciled.schemas, conflicts, artifacts).encode(),
     )
     _atomic_write(
         output / "report.md",
