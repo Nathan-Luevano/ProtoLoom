@@ -87,3 +87,28 @@ def test_jadx_rejects_oversized_source(
 
     with pytest.raises(JadxError, match="source exceeds 4 bytes"):
         decompile_with_jadx(tmp_path / "x.apk", tmp_path / "out", executable=str(tool))
+
+
+def test_jadx_candidate_index_replaces_symlink(tmp_path: Path) -> None:
+    tool = _executable(
+        tmp_path / "jadx",
+        'out=""\n'
+        'while [ "$#" -gt 0 ]; do\n'
+        '  [ "$1" = "-d" ] && out="$2" && shift\n'
+        "  shift\n"
+        "done\n"
+        'mkdir -p "$out"\n'
+        'printf "newMessageInfo(x);" > "$out/A.java"\n',
+    )
+    output = tmp_path / "out"
+    output.mkdir()
+    victim = tmp_path / "victim"
+    victim.write_text("preserve", encoding="utf-8")
+    index = output / "protoloom-candidates.json"
+    index.symlink_to(victim)
+
+    result = decompile_with_jadx(tmp_path / "x.apk", output, executable=str(tool))
+
+    assert result.candidate_sites == 1
+    assert victim.read_text(encoding="utf-8") == "preserve"
+    assert not index.is_symlink()
