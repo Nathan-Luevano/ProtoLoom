@@ -9,6 +9,7 @@ from protoloom.bench.corpus import (
     load_manifest,
     materialize,
 )
+from protoloom.bench.jsonio import read_json
 from protoloom.bench.metrics import (
     BenchmarkMessage,
     BenchmarkSchema,
@@ -31,6 +32,22 @@ def test_local_corpus_runs_end_to_end(tmp_path: Path) -> None:
     assert "local-descriptor:" in output
     assert "macro" in output and "micro" in output and "lead" in output
     assert "type_fidelity_ceiling" in output
+
+
+def test_benchmark_json_reader_bounds_input(tmp_path: Path) -> None:
+    path = tmp_path / "large.json"
+    path.write_bytes(b"{} ")
+
+    with pytest.raises(ValueError, match="JSON input exceeds 2 bytes"):
+        read_json(path, max_size=2)
+
+
+def test_manifest_wraps_json_read_failures(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_bytes(b"\xff")
+
+    with pytest.raises(CorpusError, match="invalid corpus manifest"):
+        load_manifest(path)
 
 
 def test_compilation_matrix_driver_visits_every_variant() -> None:

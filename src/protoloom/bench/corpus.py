@@ -1,12 +1,13 @@
 import hashlib
 import itertools
-import json
 import shutil
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from protoloom.bench.jsonio import read_json
 
 
 class CorpusError(ValueError):
@@ -73,7 +74,7 @@ def drive_compilation_matrix(
 
 def load_manifest(path: Path) -> CorpusManifest:
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = read_json(path)
         if not isinstance(raw, dict):
             raise CorpusError("manifest root must be an object")
         targets = tuple(_target(item) for item in _list(raw, "targets"))
@@ -92,7 +93,14 @@ def load_manifest(path: Path) -> CorpusManifest:
         if any(not values for values in matrix.values()):
             raise CorpusError("matrix axes cannot be empty")
         return CorpusManifest(str(raw["name"]), targets, matrix, path.parent.resolve())
-    except (KeyError, TypeError, json.JSONDecodeError) as error:
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        UnicodeError,
+        OSError,
+        RecursionError,
+    ) as error:
         raise CorpusError(f"invalid corpus manifest: {path}") from error
 
 
