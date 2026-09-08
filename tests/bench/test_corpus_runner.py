@@ -256,6 +256,53 @@ def test_schema_rejects_coerced_metadata(
 
 
 @pytest.mark.parametrize(
+    ("field", "message"),
+    [
+        (
+            {"number": "1", "name": "x", "proto_type": "int32", "wire_type": 0},
+            "field number must be an integer",
+        ),
+        (
+            {"number": 1, "name": 2, "proto_type": "int32", "wire_type": 0},
+            "field name must be a string",
+        ),
+        (
+            {"number": 1, "name": "x", "proto_type": "int32", "wire_type": 6},
+            "field wire_type is invalid",
+        ),
+        (
+            {
+                "number": 1,
+                "name": "x",
+                "proto_type": "int32",
+                "wire_type": 0,
+                "label": "many",
+            },
+            "field label is invalid",
+        ),
+    ],
+)
+def test_schema_rejects_invalid_fields(
+    tmp_path: Path, field: object, message: str
+) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(json.dumps({"messages": [{"fields": [field]}]}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        load_schema(path)
+
+
+@pytest.mark.parametrize("value", ["READY", ["READY"], ["READY", "1"]])
+def test_schema_rejects_invalid_enum_values(tmp_path: Path, value: object) -> None:
+    path = tmp_path / "schema.json"
+    payload = {"enums": [{"name": "State", "values": [value]}]}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="enum value"):
+        load_schema(path)
+
+
+@pytest.mark.parametrize(
     "ambiguities",
     [
         '[["int32", "int32"]]',

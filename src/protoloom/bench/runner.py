@@ -145,22 +145,39 @@ def _message(value: object) -> BenchmarkMessage:
 def _field(value: object) -> BenchmarkField:
     if not isinstance(value, dict):
         raise ValueError("field must be an object")
-    oneof = value.get("oneof")
+    number = _integer(value["number"], "field number")
+    wire_type = _integer(value["wire_type"], "field wire_type")
+    label = _string(value.get("label", "optional"), "field label")
+    if number <= 0 or number > 536_870_911 or 19_000 <= number <= 19_999:
+        raise ValueError("field number is invalid")
+    if wire_type not in range(6):
+        raise ValueError("field wire_type is invalid")
+    if label not in {"optional", "required", "repeated"}:
+        raise ValueError("field label is invalid")
     return BenchmarkField(
-        int(value["number"]),
-        str(value["name"]),
-        str(value["proto_type"]),
-        int(value["wire_type"]),
-        str(value.get("label", "optional")),
-        str(oneof) if oneof is not None else None,
+        number,
+        _string(value["name"], "field name"),
+        _string(value["proto_type"], "field proto_type"),
+        wire_type,
+        label,
+        _optional_string(value.get("oneof"), "field oneof"),
     )
 
 
 def _enum(value: object) -> BenchmarkEnum:
     if not isinstance(value, dict):
         raise ValueError("enum must be an object")
-    values = tuple((str(item[0]), int(item[1])) for item in _items(value, "values"))
-    return BenchmarkEnum(str(value["name"]), values)
+    values = tuple(_enum_value(item) for item in _items(value, "values"))
+    return BenchmarkEnum(_string(value["name"], "enum name"), values)
+
+
+def _enum_value(value: object) -> tuple[str, int]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise ValueError("enum value must be a name and integer pair")
+    return (
+        _string(value[0], "enum value name"),
+        _integer(value[1], "enum value number"),
+    )
 
 
 def _items(value: Mapping[str, Any], key: str) -> list[Any]:
@@ -185,4 +202,10 @@ def _boolean(value: object, label: str) -> bool:
 def _optional_string(value: object, label: str) -> str | None:
     if value is not None and not isinstance(value, str):
         raise ValueError(f"{label} must be a string or null")
+    return value
+
+
+def _string(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string")
     return value
