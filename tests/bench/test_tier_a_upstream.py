@@ -98,6 +98,42 @@ def test_manifest_requires_valid_remote_pins(
         validate_source_manifest(manifest)
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("name", "", "source name"),
+        ("name", "bad\nname", "source name"),
+        ("commit", "g" * 40, "full commit SHA"),
+        ("sha256", "g" * 64, "SHA-256"),
+        ("size", True, "positive pinned size"),
+        ("url", 1, "URL must be a string"),
+    ],
+)
+def test_manifest_rejects_coerced_source_values(
+    field: str, value: object, error: str
+) -> None:
+    manifest = _manifest()
+    manifest["sources"][0][field] = value
+
+    with pytest.raises(ValueError, match=error):
+        validate_source_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    ("location", "error"),
+    [("include", "include root"), ("proto", "target proto")],
+)
+def test_manifest_rejects_non_string_paths(location: str, error: str) -> None:
+    manifest = _manifest()
+    if location == "include":
+        manifest["sources"][0]["includes"] = [1]
+    else:
+        manifest["sources"][0]["targets"][0]["proto"] = 1
+
+    with pytest.raises(ValueError, match=f"{error} must be a string"):
+        validate_source_manifest(manifest)
+
+
 def test_manifest_refuses_unsafe_file_and_include_paths() -> None:
     manifest = _manifest()
     manifest["sources"][0]["files"] = [

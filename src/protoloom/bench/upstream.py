@@ -3,6 +3,7 @@ import os
 import shutil
 import tarfile
 import tempfile
+import unicodedata
 import urllib.request
 from pathlib import Path
 from typing import IO, Any
@@ -10,6 +11,8 @@ from urllib.parse import urlparse
 
 MAX_SOURCE_ARCHIVE_MEMBERS = 100_000
 MAX_SOURCE_EXTRACTED_SIZE = 1024 * 1024 * 1024
+MAX_UPSTREAM_NAME_BYTES = 255
+LOWER_HEX = frozenset("0123456789abcdef")
 
 
 def sha256(path: Path) -> str:
@@ -35,12 +38,16 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
     for source in value["sources"]:
         if not isinstance(source, dict):
             raise ValueError("source entry must be an object")
-        name = source.get("name")
+        name = _safe_name(source.get("name"), "source")
         commit = source.get("commit")
-        if not isinstance(name, str) or Path(name).name != name or name in names:
+        if name in names:
             raise ValueError(f"unsafe or duplicate source name: {name}")
         names.add(name)
-        if not isinstance(commit, str) or len(commit) != 40:
+        if (
+            not isinstance(commit, str)
+            or len(commit) != 40
+            or any(character not in LOWER_HEX for character in commit)
+        ):
             raise ValueError(f"source {name} needs a full commit SHA")
         files = source.get("files")
         if files is None:
@@ -49,7 +56,7 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
             for artifact in files:
                 if not isinstance(artifact, dict):
                     raise ValueError("source file must be an object")
-                path = Path(str(artifact.get("path", "")))
+                path = Path(_string(artifact.get("path"), "source file path"))
                 if path.is_absolute() or ".." in path.parts or not path.name:
                     raise ValueError(f"unsafe source file path: {path}")
                 _validate_remote(artifact, f"source file {path}")
@@ -59,7 +66,7 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
         if not isinstance(includes, list) or not includes:
             raise ValueError(f"source {name} needs include roots")
         for include in includes:
-            path = Path(str(include))
+            path = Path(_string(include, "include root"))
             if path.is_absolute() or ".." in path.parts:
                 raise ValueError(f"unsafe include root: {include}")
         entries = source.get("targets")
@@ -68,13 +75,9 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
         for target in entries:
             if not isinstance(target, dict):
                 raise ValueError("target entry must be an object")
-            target_name = target.get("name")
-            proto = Path(str(target.get("proto", "")))
-            if (
-                not isinstance(target_name, str)
-                or Path(target_name).name != target_name
-                or target_name in targets
-            ):
+            target_name = _safe_name(target.get("name"), "target")
+            proto = Path(_string(target.get("proto"), "target proto"))
+            if target_name in targets:
                 raise ValueError(f"unsafe or duplicate target name: {target_name}")
             if proto.is_absolute() or ".." in proto.parts or proto.suffix != ".proto":
                 raise ValueError(f"unsafe target proto: {proto}")
@@ -87,11 +90,33 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
 def _validate_remote(value: dict[str, Any], label: str) -> None:
     digest = value.get("sha256")
     size = value.get("size")
-    if not isinstance(digest, str) or len(digest) != 64:
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in LOWER_HEX for character in digest)
+    ):
         raise ValueError(f"{label} needs a SHA-256")
-    if not isinstance(size, int) or size <= 0:
+    if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
         raise ValueError(f"{label} needs a positive pinned size")
-    https_url(str(value.get("url", "")))
+    https_url(_string(value.get("url"), f"{label} URL"))
+
+
+def _string(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string")
+    return value
+
+
+def _safe_name(value: object, label: str) -> str:
+    name = _string(value, f"{label} name")
+    if (
+        name in {"", ".", ".."}
+        or Path(name).name != name
+        or len(name.encode("utf-8")) > MAX_UPSTREAM_NAME_BYTES
+        or any(unicodedata.category(character).startswith("C") for character in name)
+    ):
+        raise ValueError(f"unsafe or duplicate {label} name: {name}")
+    return name
 
 
 def download(url: str, expected: str, size: int, destination: Path) -> None:
