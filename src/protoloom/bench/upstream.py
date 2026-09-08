@@ -147,6 +147,10 @@ def extract(
         raise ValueError("source extraction limits must be positive")
     if destination.is_symlink():
         raise ValueError(f"source extraction path is a symlink: {destination}")
+    if destination.exists() and not destination.is_dir():
+        raise ValueError(f"source extraction path is not a directory: {destination}")
+    if destination.exists() and any(destination.iterdir()):
+        raise ValueError(f"source extraction path is not empty: {destination}")
     with tarfile.open(archive, "r:gz") as bundle:
         members = bundle.getmembers()
         if not members:
@@ -156,12 +160,20 @@ def extract(
         total_size = sum(member.size for member in members if member.isfile())
         if total_size > max_size:
             raise ValueError(f"archive expands beyond {max_size} bytes")
+        paths: set[tuple[str, ...]] = set()
+        roots: set[str] = set()
         for member in members:
             path = Path(member.name)
-            if path.is_absolute() or ".." in path.parts:
+            if not path.parts or path.is_absolute() or ".." in path.parts:
                 raise ValueError(f"unsafe archive member: {member.name}")
             if not (member.isfile() or member.isdir()):
                 raise ValueError(f"non-file archive member refused: {member.name}")
+            if path.parts in paths:
+                raise ValueError(f"duplicate archive member: {member.name}")
+            paths.add(path.parts)
+            roots.add(path.parts[0])
+        if len(roots) != 1:
+            raise ValueError(f"archive needs one root directory: {archive}")
         for member in members:
             output = destination / member.name
             if member.isdir():
@@ -173,9 +185,6 @@ def extract(
                 raise ValueError(f"cannot read archive member: {member.name}")
             with source, output.open("xb") as stream:
                 _copy_member(source, stream, member.size)
-    roots = {Path(member.name).parts[0] for member in members if member.name}
-    if len(roots) != 1:
-        raise ValueError(f"archive needs one root directory: {archive}")
     return destination / roots.pop()
 
 
