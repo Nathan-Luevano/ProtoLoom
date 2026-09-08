@@ -12,6 +12,8 @@ class ArchiveError(ValueError):
 
 MAX_ARCHIVE_MEMBER_SIZE = 256 * 1024 * 1024
 MAX_ARCHIVE_SCAN_SIZE = 512 * 1024 * 1024
+MAX_ARCHIVE_ENTRIES = 100_000
+MAX_ARCHIVE_NAME_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,12 +55,30 @@ class AndroidArchive:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
 
-    def inventory(self) -> ArchiveInventory:
+    def inventory(
+        self,
+        *,
+        max_entries: int = MAX_ARCHIVE_ENTRIES,
+        max_name_bytes: int = MAX_ARCHIVE_NAME_BYTES,
+    ) -> ArchiveInventory:
+        if max_entries <= 0 or max_name_bytes <= 0:
+            raise ValueError("archive inventory limits must be positive")
         try:
             with ZipFile(self.path) as archive:
+                infos = archive.infolist()
+                if len(infos) > max_entries:
+                    raise ArchiveError(
+                        f"archive contains more than {max_entries} entries"
+                    )
                 entries: list[ArchiveEntry] = []
                 names: set[str] = set()
-                for info in archive.infolist():
+                name_bytes = 0
+                for info in infos:
+                    name_bytes += len(info.filename.encode("utf-8"))
+                    if name_bytes > max_name_bytes:
+                        raise ArchiveError(
+                            f"archive names exceed {max_name_bytes} bytes"
+                        )
                     if info.is_dir():
                         continue
                     _validate_name(info.filename)
