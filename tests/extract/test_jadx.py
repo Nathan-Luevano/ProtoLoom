@@ -49,3 +49,41 @@ def test_jadx_kills_timed_out_process(tmp_path: Path) -> None:
             executable=str(tool),
             timeout_seconds=0.05,
         )
+
+
+def test_jadx_rejects_too_many_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tool = _executable(
+        tmp_path / "jadx",
+        'out=""\n'
+        'while [ "$#" -gt 0 ]; do\n'
+        '  [ "$1" = "-d" ] && out="$2" && shift\n'
+        "  shift\n"
+        "done\n"
+        'mkdir -p "$out"\n'
+        'touch "$out/A.java" "$out/B.java"\n',
+    )
+    monkeypatch.setattr("protoloom.extract.jadx.MAX_JADX_SOURCES", 1)
+
+    with pytest.raises(JadxError, match="more than 1 Java sources"):
+        decompile_with_jadx(tmp_path / "x.apk", tmp_path / "out", executable=str(tool))
+
+
+def test_jadx_rejects_oversized_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tool = _executable(
+        tmp_path / "jadx",
+        'out=""\n'
+        'while [ "$#" -gt 0 ]; do\n'
+        '  [ "$1" = "-d" ] && out="$2" && shift\n'
+        "  shift\n"
+        "done\n"
+        'mkdir -p "$out"\n'
+        'printf "large" > "$out/A.java"\n',
+    )
+    monkeypatch.setattr("protoloom.extract.jadx.MAX_JADX_SOURCE_SIZE", 4)
+
+    with pytest.raises(JadxError, match="source exceeds 4 bytes"):
+        decompile_with_jadx(tmp_path / "x.apk", tmp_path / "out", executable=str(tool))
