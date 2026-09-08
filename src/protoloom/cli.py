@@ -22,6 +22,7 @@ from protoloom.container.detect import ContainerKind, detect
 from protoloom.container.dex import DexError, DexFile
 from protoloom.container.elf import ElfError, ElfFile
 from protoloom.container.macho import MachOError, MachOFile
+from protoloom.container.read import read_limited
 from protoloom.decode.descpb import decode_file_descriptor
 from protoloom.decode.lite import decode_lite_finding
 from protoloom.decode.wire import (
@@ -107,10 +108,10 @@ def _find(
 ) -> list[DescriptorFinding]:
     detection = detect(path)
     findings: list[DescriptorFinding] = []
+    cached = dict(dex_inputs or ())
     if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
         archive = AndroidArchive(path)
         entries = archive.inventory().select({"dex", "native", "asset", "class"})
-        cached = dict(dex_inputs or ())
         for entry in entries:
             data = cached.get(entry.name)
             findings.extend(
@@ -132,7 +133,10 @@ def _find(
         for index, region in enumerate(macho.protobuf_regions()):
             findings.extend(_scan_blob(bytes(region), f"Mach-O region {index}"))
     else:
-        findings.extend(_scan_blob(path.read_bytes(), path.name))
+        data = cached.get(path.name)
+        findings.extend(
+            _scan_blob(data if data is not None else read_limited(path), path.name)
+        )
     deduped: dict[str, DescriptorFinding] = {}
     for finding in findings:
         current = deduped.get(finding.descriptor.name)
@@ -144,7 +148,7 @@ def _find(
 def _dex_inputs(path: Path) -> list[tuple[str, bytes]]:
     detection = detect(path)
     if detection.kind is ContainerKind.DEX:
-        return [(path.name, path.read_bytes())]
+        return [(path.name, read_limited(path))]
     if detection.kind not in {ContainerKind.APK, ContainerKind.AAB}:
         return []
     archive = AndroidArchive(path)

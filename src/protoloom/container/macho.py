@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from protoloom.container.read import read_limited
+
 
 class MachOError(ValueError):
     pass
@@ -27,7 +29,7 @@ class MachOFile:
 
     @classmethod
     def from_path(cls, path: str | Path) -> MachOFile:
-        return cls(Path(path).read_bytes())
+        return cls(read_limited(path))
 
     def section_data(self, segment: str, section: str) -> memoryview:
         for item in self.sections:

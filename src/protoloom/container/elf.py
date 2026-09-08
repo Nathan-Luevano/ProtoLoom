@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from protoloom.container.read import read_limited
+
 
 class ElfError(ValueError):
     pass
@@ -45,7 +47,7 @@ class ElfFile:
 
     @classmethod
     def from_path(cls, path: str | Path) -> ElfFile:
-        return cls(Path(path).read_bytes())
+        return cls(read_limited(path))
 
     @property
     def is_go_binary(self) -> bool:
