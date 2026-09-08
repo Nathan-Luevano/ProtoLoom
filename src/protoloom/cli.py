@@ -3,6 +3,7 @@ import os
 import re
 import secrets
 import tempfile
+import unicodedata
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
@@ -65,6 +66,7 @@ app = typer.Typer(
     pretty_exceptions_show_locals=False,
 )
 P = ParamSpec("P")
+MAX_OUTPUT_NAME_BYTES = 255
 
 
 def _handle_command_errors(
@@ -295,6 +297,14 @@ def _output_names(schemas: list[RecoveredSchema], descriptor_name: str) -> list[
     seen: set[str] = set()
     for schema in schemas:
         name = Path(schema.name).name
+        if (
+            name in {"", ".", ".."}
+            or len(os.fsencode(name)) > MAX_OUTPUT_NAME_BYTES
+            or any(
+                unicodedata.category(character).startswith("C") for character in name
+            )
+        ):
+            raise ValueError("unsafe schema output name")
         key = name.casefold()
         if key in reserved or key in seen:
             raise ValueError(f"output name collision: {name}")
