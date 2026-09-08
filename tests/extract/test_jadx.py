@@ -1,4 +1,5 @@
 import stat
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -49,6 +50,38 @@ def test_jadx_kills_timed_out_process(tmp_path: Path) -> None:
             executable=str(tool),
             timeout_seconds=0.05,
         )
+
+
+def test_jadx_kills_interrupted_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    waits: list[float | None] = []
+    kills: list[tuple[int, int]] = []
+
+    class Process:
+        pid = 42
+        returncode = 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            waits.append(timeout)
+            if len(waits) == 1:
+                raise KeyboardInterrupt
+            return 0
+
+    def start(*args: object, **kwargs: object) -> Process:
+        return Process()
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(
+        "protoloom.extract.jadx.os.killpg",
+        lambda pid, sig: kills.append((pid, sig)),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        decompile_with_jadx(tmp_path / "x.apk", tmp_path / "out", executable="jadx")
+
+    assert waits == [120.0, None]
+    assert kills == [(42, 9)]
 
 
 def test_jadx_rejects_too_many_sources(
