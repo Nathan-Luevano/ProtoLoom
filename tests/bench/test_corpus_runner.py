@@ -236,6 +236,26 @@ def test_schema_rejects_invalid_type_ambiguities(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"compiled": 1}, "compiled must be a boolean"),
+        ({"round_trip": {"passed": "1"}}, "round_trip.passed must be an integer"),
+        ({"round_trip": {"total": True}}, "round_trip.total must be an integer"),
+        ({"messages": [{"name": 1}]}, "message name must be a string or null"),
+        ({"messages": [{"parent": False}]}, "message parent must be a string or null"),
+    ],
+)
+def test_schema_rejects_coerced_metadata(
+    tmp_path: Path, payload: object, message: str
+) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        load_schema(path)
+
+
+@pytest.mark.parametrize(
     "ambiguities",
     [
         '[["int32", "int32"]]',
