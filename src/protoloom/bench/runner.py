@@ -41,13 +41,18 @@ def load_schema(path: Path) -> BenchmarkSchema:
     round_trip = raw.get("round_trip", {})
     if not isinstance(round_trip, dict):
         raise ValueError("round_trip must be an object")
-    passed = int(round_trip.get("passed", 0))
-    total = int(round_trip.get("total", 0))
+    passed = _integer(round_trip.get("passed", 0), "round_trip.passed")
+    total = _integer(round_trip.get("total", 0), "round_trip.total")
     if passed < 0 or total < 0 or passed > total:
         raise ValueError("round-trip counts are invalid")
     ambiguities = _ambiguities(raw.get("type_fidelity_ambiguities"))
     return BenchmarkSchema(
-        messages, bool(raw.get("compiled", True)), passed, total, enums, ambiguities
+        messages,
+        _boolean(raw.get("compiled", True), "compiled"),
+        passed,
+        total,
+        enums,
+        ambiguities,
     )
 
 
@@ -129,12 +134,10 @@ def _message(value: object) -> BenchmarkMessage:
         raise ValueError("message must be an object")
     fields = tuple(_field(item) for item in _items(value, "fields"))
     enums = tuple(_enum(item) for item in value.get("enums", []))
-    name = value.get("name")
-    parent = value.get("parent")
     return BenchmarkMessage(
-        str(name) if name is not None else None,
+        _optional_string(value.get("name"), "message name"),
         fields,
-        str(parent) if parent is not None else None,
+        _optional_string(value.get("parent"), "message parent"),
         enums,
     )
 
@@ -165,3 +168,21 @@ def _items(value: Mapping[str, Any], key: str) -> list[Any]:
     if not isinstance(items, list):
         raise ValueError(f"{key} must be an array")
     return items
+
+
+def _integer(value: object, label: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{label} must be an integer")
+    return value
+
+
+def _boolean(value: object, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label} must be a boolean")
+    return value
+
+
+def _optional_string(value: object, label: str) -> str | None:
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"{label} must be a string or null")
+    return value
