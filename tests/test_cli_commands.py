@@ -592,3 +592,26 @@ def test_extract_rejects_directory_at_artifact_path(tmp_path: Path) -> None:
     assert result.exit_code == 2
     assert "recovery failed: output file path is not a file" in result.output
     assert occupied.is_dir()
+
+
+def test_extract_removes_only_manifested_stale_artifacts(tmp_path: Path) -> None:
+    demo = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "-o", str(demo)]).exit_code == 0
+    output = tmp_path / "output"
+    first = runner.invoke(app, ["extract", str(demo / "demo.desc"), "-o", str(output)])
+    assert first.exit_code == 0, first.output
+    unrelated = output / "notes.txt"
+    unrelated.write_text("preserve", encoding="utf-8")
+    descriptor = FileDescriptorSet.FromString((demo / "demo.desc").read_bytes())
+    descriptor.file[0].name = "other.proto"
+    other = tmp_path / "other.desc"
+    other.write_bytes(descriptor.SerializeToString())
+
+    second = runner.invoke(app, ["extract", str(other), "-o", str(output)])
+
+    assert second.exit_code == 0, second.output
+    assert not (output / "demo.proto").exists()
+    assert not (output / "demo.desc").exists()
+    assert (output / "other.proto").is_file()
+    assert (output / "other.desc").is_file()
+    assert unrelated.read_text(encoding="utf-8") == "preserve"

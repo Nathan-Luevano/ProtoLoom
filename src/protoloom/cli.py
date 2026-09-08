@@ -67,6 +67,7 @@ app = typer.Typer(
 )
 P = ParamSpec("P")
 MAX_OUTPUT_NAME_BYTES = 255
+MAX_ARTIFACT_MANIFEST_SIZE = 16 * 1024 * 1024
 
 
 def _handle_command_errors(
@@ -331,6 +332,40 @@ def _validate_output_files(output: Path, names: list[str]) -> None:
         destination = output / name
         if destination.exists() and not destination.is_file():
             raise ValueError(f"output file path is not a file: {destination}")
+
+
+def _previous_artifacts(output: Path) -> set[str]:
+    manifest = output / "recovery.json"
+    if manifest.is_symlink() or not manifest.is_file():
+        return set()
+    try:
+        if manifest.stat().st_size > MAX_ARTIFACT_MANIFEST_SIZE:
+            return set()
+        with manifest.open("rb") as stream:
+            encoded = stream.read(MAX_ARTIFACT_MANIFEST_SIZE + 1)
+        if len(encoded) > MAX_ARTIFACT_MANIFEST_SIZE:
+            return set()
+        payload = json.loads(encoded)
+    except (OSError, UnicodeError, json.JSONDecodeError, RecursionError):
+        return set()
+    if not isinstance(payload, dict) or not isinstance(payload.get("artifacts"), list):
+        return set()
+    return {
+        name
+        for name in payload["artifacts"]
+        if isinstance(name, str)
+        and Path(name).name == name
+        and Path(name).suffix in {".proto", ".desc"}
+    }
+
+
+def _remove_stale_artifacts(
+    output: Path, previous: set[str], current: set[str]
+) -> None:
+    for name in sorted(previous - current):
+        destination = output / name
+        if destination.is_symlink() or destination.is_file():
+            destination.unlink()
 
 
 def _temporary_output(path: Path) -> tuple[Path, int]:
@@ -603,6 +638,7 @@ def extract(
     except ValueError as error:
         typer.echo(f"recovery failed: {error}", err=True)
         raise typer.Exit(2) from error
+    previous_artifacts = _previous_artifacts(output)
     dex_inputs = _dex_inputs(path)
     findings = _find(path, dex_inputs=dex_inputs)
     go_tags = _find_go_tags(path) if not findings else GoTagExtraction((), ())
@@ -699,10 +735,6 @@ def extract(
         "report.md",
     ]
     _atomic_write(
-        output / "recovery.json",
-        emit_json(reconciled.schemas, conflicts, artifacts).encode(),
-    )
-    _atomic_write(
         output / "report.md",
         emit_report(reconciled.schemas, bailouts).encode(),
     )
@@ -712,6 +744,11 @@ def extract(
         dashboard / "index.html",
         emit_dashboard(reconciled.schemas, reconciled.conflicts).encode(),
     )
+    _atomic_write(
+        output / "recovery.json",
+        emit_json(reconciled.schemas, conflicts, artifacts).encode(),
+    )
+    _remove_stale_artifacts(output, previous_artifacts, set(artifacts))
     typer.echo(
         f"bail-outs: {len(bailouts)}; recovered files: {len(reconciled.schemas)}"
     )
