@@ -1,6 +1,7 @@
 import hashlib
 import itertools
 import shutil
+import unicodedata
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -14,6 +15,19 @@ class CorpusError(ValueError):
     pass
 
 
+MAX_CORPUS_NAME_BYTES = 255
+
+
+def _validate_name(name: str, label: str) -> None:
+    if (
+        name in {"", ".", ".."}
+        or Path(name).name != name
+        or len(name.encode("utf-8")) > MAX_CORPUS_NAME_BYTES
+        or any(unicodedata.category(character).startswith("C") for character in name)
+    ):
+        raise CorpusError(f"{label} name is unsafe")
+
+
 @dataclass(frozen=True, slots=True)
 class Artifact:
     name: str
@@ -22,14 +36,13 @@ class Artifact:
     url: str | None = None
 
     def __post_init__(self) -> None:
+        _validate_name(self.name, "artifact")
         if (self.path is None) == (self.url is None):
             raise CorpusError(f"artifact {self.name!r} needs exactly one source")
         if len(self.sha256) != 64 or any(
             character not in "0123456789abcdef" for character in self.sha256
         ):
             raise CorpusError(f"artifact {self.name!r} has an invalid SHA-256")
-        if Path(self.name).name != self.name:
-            raise CorpusError(f"artifact name is unsafe: {self.name!r}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +50,9 @@ class CorpusTarget:
     name: str
     truth: Artifact
     recovered: Artifact
+
+    def __post_init__(self) -> None:
+        _validate_name(self.name, "target")
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +67,9 @@ class CorpusManifest:
     targets: tuple[CorpusTarget, ...]
     matrix: Mapping[str, tuple[str, ...]]
     root: Path
+
+    def __post_init__(self) -> None:
+        _validate_name(self.name, "corpus")
 
     def variants(self) -> tuple[Mapping[str, str], ...]:
         keys = tuple(self.matrix)
@@ -93,6 +112,8 @@ def load_manifest(path: Path) -> CorpusManifest:
         if any(not values for values in matrix.values()):
             raise CorpusError("matrix axes cannot be empty")
         return CorpusManifest(str(raw["name"]), targets, matrix, path.parent.resolve())
+    except CorpusError:
+        raise
     except (
         KeyError,
         TypeError,
