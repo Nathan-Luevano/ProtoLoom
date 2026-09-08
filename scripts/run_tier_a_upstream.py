@@ -13,11 +13,13 @@ from google.protobuf.descriptor_pb2 import (
     FileDescriptorSet,
 )
 
+from protoloom.bench.jsonio import read_json
 from protoloom.bench.upstream import (
     materialize_source,
     sha256,
     validate_source_manifest,
 )
+from protoloom.container.read import read_limited
 from protoloom.decode.descpb import decode_file_descriptor
 from protoloom.emit.proto import emit_proto
 from protoloom.extract.descriptor import scan_descriptors
@@ -69,6 +71,11 @@ _LABELS = {
     FieldDescriptorProto.LABEL_REQUIRED: "required",
     FieldDescriptorProto.LABEL_REPEATED: "repeated",
 }
+BENCHMARK_TOOL_TIMEOUT = 120.0
+
+
+def _run(command: list[str]) -> None:
+    subprocess.run(command, check=True, timeout=BENCHMARK_TOOL_TIMEOUT)
 
 
 def _enum(value: EnumDescriptorProto, prefix: str) -> dict[str, Any]:
@@ -128,7 +135,7 @@ def _schema(descriptor: FileDescriptorProto) -> dict[str, Any]:
 def _compile(
     protoc: Path, includes: list[Path], proto: str, output: Path
 ) -> FileDescriptorProto:
-    subprocess.run(
+    _run(
         [
             str(protoc),
             *(f"--proto_path={include}" for include in includes),
@@ -136,9 +143,8 @@ def _compile(
             "--include_imports",
             proto,
         ],
-        check=True,
     )
-    files = FileDescriptorSet.FromString(output.read_bytes()).file
+    files = FileDescriptorSet.FromString(read_limited(output)).file
     descriptor = next((item for item in files if item.name == proto), None)
     if descriptor is None:
         raise ValueError(f"protoc did not emit selected root {proto}")
@@ -156,7 +162,7 @@ def _compile_recovered(
     source.parent.mkdir(parents=True, exist_ok=True)
     schema = decode_file_descriptor(descriptor, "tier-a-upstream", "embedded")
     source.write_text(emit_proto(schema), encoding="utf-8")
-    subprocess.run(
+    _run(
         [
             str(protoc),
             f"--proto_path={root}",
@@ -164,7 +170,6 @@ def _compile_recovered(
             f"--descriptor_set_out={root / 'recompiled.desc'}",
             proto,
         ],
-        check=True,
     )
 
 
@@ -179,18 +184,17 @@ def _compile_cpp_object(
 ) -> tuple[bool, bool]:
     generated = root / "generated"
     generated.mkdir(parents=True)
-    subprocess.run(
+    _run(
         [
             str(protoc),
             *(f"--proto_path={include}" for include in includes),
             f"--cpp_out={generated}",
             proto,
         ],
-        check=True,
     )
     source = generated / Path(proto).with_suffix(".pb.cc")
     output = root / "generated.o"
-    subprocess.run(
+    _run(
         [
             str(cxx),
             "-std=c++17",
@@ -202,12 +206,11 @@ def _compile_cpp_object(
             "-o",
             str(output),
         ],
-        check=True,
     )
     recovered = next(
         (
             item.descriptor
-            for item in scan_descriptors(output.read_bytes(), "cpp-object")
+            for item in scan_descriptors(read_limited(output), "cpp-object")
             if item.descriptor.name == proto
         ),
         None,
@@ -240,9 +243,7 @@ def main() -> None:
     parser.add_argument("--cxx", type=Path, default=Path("c++"))
     parser.add_argument("--protobuf-include", type=Path)
     args = parser.parse_args()
-    manifest = validate_source_manifest(
-        json.loads(args.sources.read_text(encoding="utf-8"))
-    )
+    manifest = validate_source_manifest(read_json(args.sources))
     args.cache.mkdir(parents=True, exist_ok=True)
     args.output.mkdir(parents=True, exist_ok=True)
     protobuf_include = args.protobuf_include or args.protoc.parent.parent / "include"
