@@ -1,6 +1,8 @@
 import hashlib
 import os
+import shutil
 import tarfile
+import tempfile
 import urllib.request
 from pathlib import Path
 from typing import IO, Any
@@ -147,44 +149,51 @@ def extract(
         raise ValueError("source extraction limits must be positive")
     if destination.is_symlink():
         raise ValueError(f"source extraction path is a symlink: {destination}")
-    if destination.exists() and not destination.is_dir():
-        raise ValueError(f"source extraction path is not a directory: {destination}")
-    if destination.exists() and any(destination.iterdir()):
-        raise ValueError(f"source extraction path is not empty: {destination}")
-    with tarfile.open(archive, "r:gz") as bundle:
-        members = bundle.getmembers()
-        if not members:
-            raise ValueError(f"empty archive: {archive}")
-        if len(members) > max_members:
-            raise ValueError(f"archive contains more than {max_members} members")
-        total_size = sum(member.size for member in members if member.isfile())
-        if total_size > max_size:
-            raise ValueError(f"archive expands beyond {max_size} bytes")
-        paths: set[tuple[str, ...]] = set()
-        roots: set[str] = set()
-        for member in members:
-            path = Path(member.name)
-            if not path.parts or path.is_absolute() or ".." in path.parts:
-                raise ValueError(f"unsafe archive member: {member.name}")
-            if not (member.isfile() or member.isdir()):
-                raise ValueError(f"non-file archive member refused: {member.name}")
-            if path.parts in paths:
-                raise ValueError(f"duplicate archive member: {member.name}")
-            paths.add(path.parts)
-            roots.add(path.parts[0])
-        if len(roots) != 1:
-            raise ValueError(f"archive needs one root directory: {archive}")
-        for member in members:
-            output = destination / member.name
-            if member.isdir():
-                output.mkdir(parents=True, exist_ok=True)
-                continue
-            output.parent.mkdir(parents=True, exist_ok=True)
-            source = bundle.extractfile(member)
-            if source is None:
-                raise ValueError(f"cannot read archive member: {member.name}")
-            with source, output.open("xb") as stream:
-                _copy_member(source, stream, member.size)
+    if destination.exists():
+        raise ValueError(f"source extraction path already exists: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{destination.name}.", dir=destination.parent)
+    )
+    try:
+        with tarfile.open(archive, "r:gz") as bundle:
+            members = bundle.getmembers()
+            if not members:
+                raise ValueError(f"empty archive: {archive}")
+            if len(members) > max_members:
+                raise ValueError(f"archive contains more than {max_members} members")
+            total_size = sum(member.size for member in members if member.isfile())
+            if total_size > max_size:
+                raise ValueError(f"archive expands beyond {max_size} bytes")
+            paths: set[tuple[str, ...]] = set()
+            roots: set[str] = set()
+            for member in members:
+                path = Path(member.name)
+                if not path.parts or path.is_absolute() or ".." in path.parts:
+                    raise ValueError(f"unsafe archive member: {member.name}")
+                if not (member.isfile() or member.isdir()):
+                    raise ValueError(f"non-file archive member refused: {member.name}")
+                if path.parts in paths:
+                    raise ValueError(f"duplicate archive member: {member.name}")
+                paths.add(path.parts)
+                roots.add(path.parts[0])
+            if len(roots) != 1:
+                raise ValueError(f"archive needs one root directory: {archive}")
+            for member in members:
+                output = staging / member.name
+                if member.isdir():
+                    output.mkdir(parents=True, exist_ok=True)
+                    continue
+                output.parent.mkdir(parents=True, exist_ok=True)
+                source = bundle.extractfile(member)
+                if source is None:
+                    raise ValueError(f"cannot read archive member: {member.name}")
+                with source, output.open("xb") as stream:
+                    _copy_member(source, stream, member.size)
+        staging.replace(destination)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     return destination / roots.pop()
 
 
