@@ -1,3 +1,4 @@
+from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from math import nan
@@ -205,28 +206,35 @@ def _match_messages(
     truth: tuple[BenchmarkMessage, ...], recovered: tuple[BenchmarkMessage, ...]
 ) -> list[tuple[BenchmarkMessage, BenchmarkMessage]]:
     matches: list[tuple[BenchmarkMessage, BenchmarkMessage]] = []
-    unused = list(recovered)
-    fallback = []
+    recovered_by_name: dict[str, list[int]] = defaultdict(list)
+    for index, message in enumerate(recovered):
+        if message.name is not None:
+            recovered_by_name[message.name].append(index)
+    used: set[int] = set()
+    fallback: list[BenchmarkMessage] = []
     for expected in truth:
-        named = [
-            item
-            for item in unused
-            if expected.name is not None and item.name == expected.name
-        ]
-        if len(named) == 1:
-            actual = named[0]
-            matches.append((expected, actual))
-            unused.remove(actual)
-        elif not named:
+        named = (
+            recovered_by_name.get(expected.name, [])
+            if expected.name is not None
+            else []
+        )
+        if len(named) == 1 and named[0] not in used:
+            index = named[0]
+            matches.append((expected, recovered[index]))
+            used.add(index)
+        elif not named or all(index in used for index in named):
             fallback.append(expected)
+    recovered_by_signature: dict[tuple[tuple[int, int], ...], list[int]] = defaultdict(
+        list
+    )
+    for index, message in enumerate(recovered):
+        if index not in used:
+            recovered_by_signature[_signature(message)].append(index)
     for expected in fallback:
-        candidates = [
-            item for item in unused if _signature(item) == _signature(expected)
-        ]
+        candidates = recovered_by_signature[_signature(expected)]
         if len(candidates) == 1:
-            actual = candidates[0]
-            matches.append((expected, actual))
-            unused.remove(actual)
+            index = candidates.pop()
+            matches.append((expected, recovered[index]))
     return matches
 
 
