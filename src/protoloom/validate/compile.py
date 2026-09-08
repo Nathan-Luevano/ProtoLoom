@@ -1,12 +1,17 @@
+import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 MAX_PROTO_SOURCE_SIZE = 16 * 1024 * 1024
 MAX_DESCRIPTOR_SET_SIZE = 64 * 1024 * 1024
+MAX_COMPILER_DIAGNOSTIC_SIZE = 64 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,25 +42,45 @@ def compile_proto(
         proto = root / safe_name
         output = root / "compiled.desc"
         proto.write_bytes(encoded_source)
-        try:
-            process = subprocess.run(
+        with tempfile.TemporaryFile() as diagnostic:
+            process = subprocess.Popen(
                 [
                     *command,
                     f"--proto_path={root}",
                     f"--descriptor_set_out={output}",
                     str(proto),
                 ],
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=timeout_seconds,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=diagnostic,
+                start_new_session=True,
             )
-        except subprocess.TimeoutExpired:
-            return CompileResult(
-                False, f"compiler exceeded {timeout_seconds:g}s timeout"
-            )
+            try:
+                process.wait(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                _kill_process_group(process)
+                return CompileResult(
+                    False, f"compiler exceeded {timeout_seconds:g}s timeout"
+                )
+            except BaseException:
+                _kill_process_group(process)
+                raise
+            stderr = _read_diagnostic(diagnostic)
         payload = _read_descriptor(output) if process.returncode == 0 else None
-        return CompileResult(process.returncode == 0, process.stderr, payload)
+        return CompileResult(process.returncode == 0, stderr, payload)
+
+
+def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
+    with suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
+
+
+def _read_diagnostic(stream: BinaryIO) -> str:
+    stream.seek(0, 2)
+    size = stream.tell()
+    stream.seek(max(0, size - MAX_COMPILER_DIAGNOSTIC_SIZE))
+    return stream.read().decode("utf-8", errors="replace")
 
 
 def _read_descriptor(path: Path) -> bytes:
