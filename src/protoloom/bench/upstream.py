@@ -12,6 +12,10 @@ from urllib.parse import urlparse
 MAX_SOURCE_ARCHIVE_MEMBERS = 100_000
 MAX_SOURCE_EXTRACTED_SIZE = 1024 * 1024 * 1024
 MAX_UPSTREAM_NAME_BYTES = 255
+MAX_UPSTREAM_SOURCES = 100
+MAX_UPSTREAM_FILES = 10_000
+MAX_UPSTREAM_INCLUDES = 1_000
+MAX_UPSTREAM_TARGETS = 10_000
 LOWER_HEX = frozenset("0123456789abcdef")
 
 
@@ -33,6 +37,8 @@ def https_url(value: str) -> str:
 def validate_source_manifest(value: object) -> dict[str, Any]:
     if not isinstance(value, dict) or not isinstance(value.get("sources"), list):
         raise ValueError("source manifest needs a sources array")
+    if len(value["sources"]) > MAX_UPSTREAM_SOURCES:
+        raise ValueError(f"source manifest exceeds {MAX_UPSTREAM_SOURCES} sources")
     names: set[str] = set()
     targets: set[str] = set()
     for source in value["sources"]:
@@ -53,25 +59,39 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
         if files is None:
             _validate_remote(source, f"source {name}")
         elif isinstance(files, list) and files:
+            if len(files) > MAX_UPSTREAM_FILES:
+                raise ValueError(f"source {name} exceeds {MAX_UPSTREAM_FILES} files")
+            file_paths: set[Path] = set()
             for artifact in files:
                 if not isinstance(artifact, dict):
                     raise ValueError("source file must be an object")
                 path = Path(_string(artifact.get("path"), "source file path"))
                 if path.is_absolute() or ".." in path.parts or not path.name:
                     raise ValueError(f"unsafe source file path: {path}")
+                if path in file_paths:
+                    raise ValueError(f"duplicate source file path: {path}")
+                file_paths.add(path)
                 _validate_remote(artifact, f"source file {path}")
         else:
             raise ValueError(f"source {name} files must be a non-empty array")
         includes = source.get("includes")
         if not isinstance(includes, list) or not includes:
             raise ValueError(f"source {name} needs include roots")
+        if len(includes) > MAX_UPSTREAM_INCLUDES:
+            raise ValueError(f"source {name} exceeds {MAX_UPSTREAM_INCLUDES} includes")
+        include_paths: set[Path] = set()
         for include in includes:
             path = Path(_string(include, "include root"))
             if path.is_absolute() or ".." in path.parts:
                 raise ValueError(f"unsafe include root: {include}")
+            if path in include_paths:
+                raise ValueError(f"duplicate include root: {include}")
+            include_paths.add(path)
         entries = source.get("targets")
         if not isinstance(entries, list) or not entries:
             raise ValueError(f"source {name} needs targets")
+        if len(targets) + len(entries) > MAX_UPSTREAM_TARGETS:
+            raise ValueError(f"source manifest exceeds {MAX_UPSTREAM_TARGETS} targets")
         for target in entries:
             if not isinstance(target, dict):
                 raise ValueError("target entry must be an object")
