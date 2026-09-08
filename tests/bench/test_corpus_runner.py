@@ -9,6 +9,7 @@ from protoloom.bench.corpus import (
     drive_compilation_matrix,
     load_manifest,
     materialize,
+    sha256,
 )
 from protoloom.bench.jsonio import read_json
 from protoloom.bench.metrics import (
@@ -149,6 +150,25 @@ def test_materialize_rejects_oversized_artifact(tmp_path: Path) -> None:
         materialize(manifest, cache, max_artifact_size=2)
 
     assert not tuple(cache.rglob("*.part"))
+
+
+def test_hash_rejects_oversized_cached_artifact(tmp_path: Path) -> None:
+    path = tmp_path / "cached.bin"
+    path.write_bytes(b"large")
+
+    with pytest.raises(CorpusError, match="artifact exceeds 4 bytes"):
+        sha256(path, max_size=4)
+
+
+def test_materialize_bounds_existing_cache_reads(tmp_path: Path) -> None:
+    manifest = load_manifest(FIXTURES / "manifest.json")
+    cache = tmp_path / "cache"
+    target = cache / manifest.targets[0].name
+    target.mkdir(parents=True)
+    (target / manifest.targets[0].truth.name).write_bytes(b"large")
+
+    with pytest.raises(CorpusError, match="artifact exceeds 4 bytes"):
+        materialize(manifest, cache, max_artifact_size=4)
 
 
 def test_report_renders_unmeasured_metrics_as_na() -> None:
