@@ -257,6 +257,32 @@ def _output_names(schemas: list[RecoveredSchema], descriptor_name: str) -> list[
     return names
 
 
+def _validate_output(output: Path) -> None:
+    if output.is_symlink():
+        raise ValueError(f"output directory is a symlink: {output}")
+    dashboard = output / "dashboard"
+    if dashboard.is_symlink():
+        raise ValueError(f"dashboard directory is a symlink: {dashboard}")
+
+
+def _atomic_write(path: Path, payload: bytes) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "wb", dir=path.parent, prefix=f".{path.name}.", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.chmod(0o644)
+        temporary.replace(path)
+    except BaseException:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise
+
+
 def _apply_nested_renames(top_level: list[Message], renames: dict[str, str]) -> None:
     if not renames:
         return
@@ -537,6 +563,7 @@ def extract(
     descriptor_name = f"{path.stem}.desc"
     try:
         output_names = _output_names(reconciled.schemas, descriptor_name)
+        _validate_output(output)
     except ValueError as error:
         typer.echo(f"recovery failed: {error}", err=True)
         raise typer.Exit(2) from error
@@ -564,23 +591,27 @@ def extract(
     output.mkdir(parents=True, exist_ok=True)
     for (schema, source), name in zip(prepared, output_names, strict=True):
         destination = output / name
-        destination.write_text(source, encoding="utf-8")
+        _atomic_write(destination, source.encode())
         typer.echo(f"recovered {schema.name} -> {destination}")
     descriptors_by_name = {item.name: item for item in descriptors}
-    (output / descriptor_name).write_bytes(
-        emit_descriptor_set(list(descriptors_by_name.values()))
+    _atomic_write(
+        output / descriptor_name,
+        emit_descriptor_set(list(descriptors_by_name.values())),
     )
     conflicts = [asdict(conflict) for conflict in reconciled.conflicts]
-    (output / "recovery.json").write_text(
-        emit_json(reconciled.schemas, conflicts), encoding="utf-8"
+    _atomic_write(
+        output / "recovery.json",
+        emit_json(reconciled.schemas, conflicts).encode(),
     )
-    (output / "report.md").write_text(
-        emit_report(reconciled.schemas, bailouts), encoding="utf-8"
+    _atomic_write(
+        output / "report.md",
+        emit_report(reconciled.schemas, bailouts).encode(),
     )
     dashboard = output / "dashboard"
     dashboard.mkdir(exist_ok=True)
-    (dashboard / "index.html").write_text(
-        emit_dashboard(reconciled.schemas, reconciled.conflicts), encoding="utf-8"
+    _atomic_write(
+        dashboard / "index.html",
+        emit_dashboard(reconciled.schemas, reconciled.conflicts).encode(),
     )
     typer.echo(
         f"bail-outs: {len(bailouts)}; recovered files: {len(reconciled.schemas)}"
@@ -623,8 +654,8 @@ def demo(
     output.mkdir(parents=True, exist_ok=True)
     finding = scan_descriptors(blob, "built-in demo")[0]
     schema = decode_file_descriptor(finding.descriptor, finding.source, "0x10")
-    (output / "demo.proto").write_text(emit_proto(schema), encoding="utf-8")
-    (output / "demo.desc").write_bytes(emit_descriptor_set([finding.descriptor]))
+    _atomic_write(output / "demo.proto", emit_proto(schema).encode())
+    _atomic_write(output / "demo.desc", emit_descriptor_set([finding.descriptor]))
     typer.echo(f"PASS: recovered 1/1 schema with certain confidence -> {output}")
 
 

@@ -393,3 +393,44 @@ def test_extract_rejects_output_name_collisions_before_writing(
     assert result.exit_code == 2
     assert "recovery failed: output name collision" in result.output
     assert not output.exists()
+
+
+def test_extract_replaces_file_symlink_without_following_it(tmp_path: Path) -> None:
+    demo = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "-o", str(demo)]).exit_code == 0
+    output = tmp_path / "output"
+    output.mkdir()
+    victim = tmp_path / "victim"
+    victim.write_text("preserve", encoding="utf-8")
+    recovery = output / "recovery.json"
+    recovery.symlink_to(victim)
+
+    result = runner.invoke(app, ["extract", str(demo / "demo.desc"), "-o", str(output)])
+
+    assert result.exit_code == 0, result.output
+    assert victim.read_text() == "preserve"
+    assert not recovery.is_symlink()
+    assert recovery.stat().st_mode & 0o777 == 0o644
+    assert json.loads(recovery.read_text())["schemas"][0]["name"] == "demo.proto"
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_extract_rejects_symlinked_output_directories_before_writing(
+    tmp_path: Path, nested: bool
+) -> None:
+    demo = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "-o", str(demo)]).exit_code == 0
+    target = tmp_path / "target"
+    target.mkdir()
+    output = tmp_path / "output"
+    if nested:
+        output.mkdir()
+        (output / "dashboard").symlink_to(target, target_is_directory=True)
+    else:
+        output.symlink_to(target, target_is_directory=True)
+
+    result = runner.invoke(app, ["extract", str(demo / "demo.desc"), "-o", str(output)])
+
+    assert result.exit_code == 2
+    assert "recovery failed:" in result.output
+    assert list(target.iterdir()) == []
