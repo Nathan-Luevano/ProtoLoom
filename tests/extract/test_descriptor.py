@@ -5,7 +5,7 @@ from google.protobuf.descriptor_pb2 import FileDescriptorProto
 
 from protoloom.decode.descpb import decode_file_descriptor
 from protoloom.emit.proto import emit_proto
-from protoloom.extract.descriptor import scan_descriptors
+from protoloom.extract.descriptor import _field_ends, scan_descriptors
 from protoloom.extract.gozip import scan_gzip_descriptors
 from protoloom.validate.compile import compile_proto
 
@@ -32,6 +32,31 @@ def test_scan_recovers_exact_descriptor_from_noise() -> None:
 def test_scan_rejects_proto_name_without_schema() -> None:
     descriptor = FileDescriptorProto(name="empty.proto")
     assert scan_descriptors(descriptor.SerializeToString()) == []
+
+
+def test_descriptor_scan_bounds_candidates_before_valid_schema() -> None:
+    decoy = FileDescriptorProto(name="decoy.proto").SerializeToString()
+    expected = _descriptor().SerializeToString()
+    data = decoy * 3 + expected
+
+    assert scan_descriptors(data, max_candidates=3) == []
+    assert len(scan_descriptors(data, max_candidates=4)) == 1
+
+
+def test_descriptor_scan_bounds_wire_boundaries() -> None:
+    data = b"\x08\x01" * 10
+
+    assert len(_field_ends(data, 0, len(data), 3)) == 3
+    assert len(_field_ends(data, 0, len(data), 20)) == 10
+
+
+def test_descriptor_scan_rejects_nonpositive_limits() -> None:
+    with pytest.raises(ValueError, match="scan limits"):
+        scan_descriptors(b"", max_candidates=0)
+    with pytest.raises(ValueError, match="scan limits"):
+        scan_descriptors(b"", max_boundaries=0)
+    with pytest.raises(ValueError, match="scan limits"):
+        scan_descriptors(b"", max_parse_attempts=0)
 
 
 def test_gzip_scan_recovers_go_blob() -> None:
