@@ -1,10 +1,10 @@
-import json
 from collections.abc import Mapping
 from math import isnan
 from pathlib import Path
 from typing import Any
 
 from protoloom.bench.corpus import CorpusManifest, materialize
+from protoloom.bench.jsonio import read_json
 from protoloom.bench.metrics import (
     METRIC_NAMES,
     TYPE_FIDELITY_AMBIGUITIES,
@@ -33,7 +33,7 @@ def run_corpus(manifest: CorpusManifest, workdir: Path) -> AggregateReport:
 
 
 def load_schema(path: Path) -> BenchmarkSchema:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = read_json(path)
     if not isinstance(raw, dict):
         raise ValueError(f"benchmark schema must be an object: {path}")
     messages = tuple(_message(item) for item in _items(raw, "messages"))
