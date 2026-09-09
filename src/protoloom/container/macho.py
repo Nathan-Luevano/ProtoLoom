@@ -67,6 +67,8 @@ class MachOFile:
         )
         if limit > len(self._data):
             raise MachOError("truncated Mach-O load commands")
+        if commands > command_bytes // 8:
+            raise MachOError("Mach-O load command count exceeds its byte region")
         sections: list[MachOSection] = []
         segment_command = 0x19 if is_64 else 0x1
         for _ in range(commands):
@@ -76,17 +78,22 @@ class MachOFile:
             if command == segment_command:
                 sections.extend(self._parse_segment(offset, int(size), prefix, is_64))
             offset += int(size)
+        if offset != limit:
+            raise MachOError("Mach-O load commands do not fill their byte region")
         return tuple(sections)
 
     def _parse_segment(
         self, offset: int, command_size: int, prefix: str, is_64: bool
     ) -> list[MachOSection]:
         segment_fmt = prefix + ("II16sQQQQiiII" if is_64 else "II16sIIIIiiII")
+        segment_size = struct.calcsize(segment_fmt)
+        if command_size < segment_size:
+            raise MachOError("truncated Mach-O segment command")
         raw = self._unpack(segment_fmt, offset)
         segment_name, count = _name(raw[2]), int(raw[-2])
         section_fmt = prefix + ("16s16sQQIIIIIIII" if is_64 else "16s16sIIIIIIIII")
         section_size = struct.calcsize(section_fmt)
-        cursor = offset + struct.calcsize(segment_fmt)
+        cursor = offset + segment_size
         if cursor + count * section_size > offset + command_size:
             raise MachOError("sections exceed their load command")
         result: list[MachOSection] = []
@@ -98,7 +105,9 @@ class MachOFile:
                 int(item[4]),
                 int(item[8]),
             )
-            self._slice(file_offset, size)
+            section_type = flags & 0xFF
+            if size and section_type not in {1, 0xC, 0x12}:
+                self._slice(file_offset, size)
             result.append(
                 MachOSection(
                     _name(item[1]) or segment_name,
@@ -150,6 +159,14 @@ def _thin_slice(data: memoryview) -> memoryview:
         raise MachOError("truncated fat Mach-O table")
     arch = struct.unpack_from(fmt, data, 8)
     offset, length = int(arch[2]), int(arch[3])
-    if offset < 0 or length <= 0 or offset + length > len(data):
+    alignment = int(arch[4])
+    table_end = 8 + count * size
+    if (
+        offset < table_end
+        or length <= 0
+        or offset + length > len(data)
+        or alignment > 62
+        or offset % (1 << alignment)
+    ):
         raise MachOError("fat Mach-O architecture lies outside the file")
     return data[offset : offset + length]
