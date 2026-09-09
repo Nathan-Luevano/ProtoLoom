@@ -113,6 +113,25 @@ def test_sibling_declaration_names_are_uniquified() -> None:
     assert compile_proto(emitted).success
 
 
+def test_type_references_follow_uniquified_declarations() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        package="demo",
+        messages=[
+            Message(
+                "Record-Type",
+                fields=[
+                    Field("second", 2, ".demo.Record_Type", Confidence.CERTAIN),
+                ],
+            ),
+            Message("Record_Type"),
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert ".demo.Record_Type_2 second = 2;" in emitted
+    assert compile_proto(emitted).success
+
+
 def test_nested_references_do_not_create_placeholders() -> None:
     schema = RecoveredSchema(
         name="fixture",
