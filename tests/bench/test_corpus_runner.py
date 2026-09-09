@@ -1,3 +1,4 @@
+import io
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,15 @@ from protoloom.bench.metrics import (
 from protoloom.bench.runner import load_schema, render_report, run_corpus
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "bench"
+
+
+class Response(io.BytesIO):
+    def __init__(self, data: bytes, url: str) -> None:
+        super().__init__(data)
+        self.url = url
+
+    def geturl(self) -> str:
+        return self.url
 
 
 def test_local_corpus_runs_end_to_end(tmp_path: Path) -> None:
@@ -153,6 +163,39 @@ def test_manifest_rejects_non_string_values(
 
     with pytest.raises(CorpusError, match=message):
         load_manifest(path)
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://example.test/artifact", "file:///etc/passwd", "https://user@host/file"],
+)
+def test_manifest_rejects_unsafe_artifact_urls(tmp_path: Path, url: str) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    artifact = payload["targets"][0]["truth"]
+    artifact.pop("path")
+    artifact["url"] = url
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(CorpusError, match="unauthenticated HTTPS"):
+        load_manifest(path)
+
+
+def test_materialize_refuses_non_https_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    artifact = payload["targets"][0]["truth"]
+    artifact.pop("path")
+    artifact["url"] = "https://example.test/artifact"
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(
+        "protoloom.bench.corpus.urllib.request.urlopen",
+        lambda url, timeout: Response(b"{}", "http://example.test/artifact"),
+    )
+    with pytest.raises(CorpusError, match="unauthenticated HTTPS"):
+        materialize(load_manifest(path), tmp_path / "cache")
+    assert not tuple((tmp_path / "cache").rglob(".*"))
 
 
 def test_hash_mismatch_removes_bad_download(tmp_path: Path) -> None:
