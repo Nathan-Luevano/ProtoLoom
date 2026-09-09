@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from rich.text import Text
 
 from protoloom.tui.render import render_schema, render_summary
@@ -53,3 +54,35 @@ def test_deep_schema_display_is_bounded() -> None:
     assert "Further" in detail
     assert "omitted" in detail
     assert "bottom" not in detail
+
+
+def test_wide_schema_display_is_bounded() -> None:
+    schema = SchemaRecord(
+        "wide.proto",
+        "",
+        {
+            "messages": [
+                {
+                    "name": "Record",
+                    "fields": [
+                        {"number": index, "name": f"field_{index}"}
+                        for index in range(100)
+                    ],
+                }
+            ]
+        },
+    )
+
+    detail = _plain(render_schema(schema, width=200, max_items=3))
+
+    assert "field_0" in detail
+    assert "field_1" in detail
+    assert "field_2" not in detail
+    assert detail.count("Further items omitted") == 1
+
+
+def test_schema_display_rejects_nonpositive_limit() -> None:
+    schema = SchemaRecord("empty.proto", "", {})
+
+    with pytest.raises(ValueError, match="limit must be positive"):
+        render_schema(schema, max_items=0)
