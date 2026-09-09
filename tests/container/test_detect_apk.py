@@ -81,6 +81,17 @@ def test_apk_inventory(tmp_path: Path) -> None:
     assert AndroidArchive(path).read("assets/schema.pb") == b"proto"
 
 
+def test_archive_operations_reject_special_files() -> None:
+    source = AndroidArchive(Path(os.devnull))
+
+    with pytest.raises(ArchiveError, match="invalid archive"):
+        source.inventory()
+    with pytest.raises(ArchiveError, match="cannot read archive member"):
+        source.read("classes.dex")
+    with pytest.raises(ArchiveError, match="cannot read archive"):
+        list(source.iter_read((ArchiveEntry("classes.dex", 0, 0, "dex"),)))
+
+
 def test_archive_inventory_uses_valid_multidex_names(tmp_path: Path) -> None:
     path = tmp_path / "multidex.apk"
     with ZipFile(path, "w") as archive:

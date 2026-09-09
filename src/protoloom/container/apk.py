@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
+from protoloom.container.read import open_limited
+
 
 class ArchiveError(ValueError):
     pass
@@ -66,7 +68,7 @@ class AndroidArchive:
         if max_entries <= 0 or max_name_bytes <= 0:
             raise ValueError("archive inventory limits must be positive")
         try:
-            with ZipFile(self.path) as archive:
+            with open_limited(self.path) as source, ZipFile(source) as archive:
                 infos = archive.infolist()
                 if len(infos) > max_entries:
                     raise ArchiveError(
@@ -95,7 +97,7 @@ class AndroidArchive:
     def read(self, name: str, *, max_size: int = MAX_ARCHIVE_MEMBER_SIZE) -> bytes:
         _validate_member_limit(max_size)
         try:
-            with ZipFile(self.path) as archive:
+            with open_limited(self.path) as source, ZipFile(source) as archive:
                 return _read_member(archive, name, max_size)
         except (BadZipFile, NotImplementedError, OSError, RuntimeError) as error:
             raise ArchiveError(f"cannot read archive member: {name}") from error
@@ -114,7 +116,7 @@ class AndroidArchive:
                 yield entry, _cached_member(values, entry.name, max_size)
             return
         try:
-            with ZipFile(self.path) as archive:
+            with open_limited(self.path) as source, ZipFile(source) as archive:
                 for entry in entries:
                     data = (
                         _cached_member(values, entry.name, max_size)
