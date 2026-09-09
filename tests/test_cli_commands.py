@@ -474,6 +474,34 @@ def test_extract_renders_all_outputs_before_writing(
     assert not output.exists()
 
 
+@pytest.mark.parametrize("existing_output", [False, True])
+def test_extract_reports_reconciliation_limit_before_writing(
+    tmp_path: Path, monkeypatch: MonkeyPatch, existing_output: bool
+) -> None:
+    binary = tmp_path / "input.bin"
+    binary.write_bytes(b"descriptor")
+    demo_dir = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "-o", str(demo_dir)]).exit_code == 0
+    findings = _find(demo_dir / "demo.desc")
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: findings)
+
+    def fail(*args: object, **kwargs: object) -> object:
+        raise ValueError("item limit")
+
+    monkeypatch.setattr("protoloom.cli.reconcile", fail)
+    output = tmp_path / "output"
+    sentinel = output / "existing.txt"
+    if existing_output:
+        output.mkdir()
+        sentinel.write_text("preserve")
+    result = runner.invoke(app, ["extract", str(binary), "-o", str(output)])
+    assert result.exit_code == 2
+    assert "reconciliation failed: item limit" in result.output
+    assert output.exists() is existing_output
+    if existing_output:
+        assert sentinel.read_text() == "preserve"
+
+
 @pytest.mark.parametrize(
     "names",
     [
