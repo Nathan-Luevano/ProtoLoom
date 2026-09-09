@@ -36,10 +36,20 @@ _RANK = {
     Confidence.HIGH: 2,
     Confidence.CERTAIN: 3,
 }
+MAX_RECONCILE_SCHEMAS = 100_000
+MAX_RECONCILE_ITEMS = 1_000_000
+MAX_RECONCILE_DEPTH = 100
 T = TypeVar("T")
 
 
-def reconcile(schemas: list[RecoveredSchema]) -> ReconciliationResult:
+def reconcile(
+    schemas: list[RecoveredSchema],
+    *,
+    max_schemas: int = MAX_RECONCILE_SCHEMAS,
+    max_items: int = MAX_RECONCILE_ITEMS,
+    max_depth: int = MAX_RECONCILE_DEPTH,
+) -> ReconciliationResult:
+    _validate_budget(schemas, max_schemas, max_items, max_depth)
     # Two unrelated classes can share a bare file name (e.g. two distinct
     # "Relay" classes in different Java packages); the package qualifies
     # that identity so they merge only when they're actually the same type,
@@ -54,6 +64,40 @@ def reconcile(schemas: list[RecoveredSchema]) -> ReconciliationResult:
             continue
         _merge_schema(merged[key], source, conflicts)
     return ReconciliationResult(list(merged.values()), conflicts)
+
+
+def _validate_budget(
+    schemas: list[RecoveredSchema],
+    max_schemas: int,
+    max_items: int,
+    max_depth: int,
+) -> None:
+    if max_schemas <= 0 or max_items <= 0 or max_depth <= 0:
+        raise ValueError("reconciliation limits must be positive")
+    if len(schemas) > max_schemas:
+        raise ValueError(f"reconciliation exceeds {max_schemas} schemas")
+    count = sum(
+        1 + len(schema.dependencies) + len(schema.evidence) for schema in schemas
+    )
+    pending = [(message, 1) for schema in schemas for message in schema.messages]
+    while pending:
+        message, depth = pending.pop()
+        if depth > max_depth:
+            raise ValueError(f"reconciliation exceeds message depth {max_depth}")
+        count += 1 + len(message.evidence)
+        count += sum(1 + len(field.evidence) for field in message.fields)
+        count += sum(
+            1 + len(enum.values) + len(enum.evidence) for enum in message.enums
+        )
+        if count > max_items:
+            raise ValueError(f"reconciliation exceeds {max_items} items")
+        pending.extend((child, depth + 1) for child in message.messages)
+    count += sum(
+        sum(1 + len(enum.values) + len(enum.evidence) for enum in schema.enums)
+        for schema in schemas
+    )
+    if count > max_items:
+        raise ValueError(f"reconciliation exceeds {max_items} items")
 
 
 def _merge_schema(

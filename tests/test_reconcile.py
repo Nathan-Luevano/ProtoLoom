@@ -1,3 +1,5 @@
+import pytest
+
 from protoloom.model import (
     Confidence,
     EnumType,
@@ -96,3 +98,38 @@ def test_equal_confidence_keeps_first_result_deterministically() -> None:
     result = reconcile([first, second])
     assert result.schemas[0].messages[0].fields[0].name == "first"
     assert result.conflicts[0].kept_confidence is Confidence.HIGH
+
+
+def test_reconcile_bounds_schema_count() -> None:
+    schemas = [RecoveredSchema("a"), RecoveredSchema("b")]
+    with pytest.raises(ValueError, match="exceeds 1 schemas"):
+        reconcile(schemas, max_schemas=1)
+
+
+def test_reconcile_bounds_total_items() -> None:
+    schema = RecoveredSchema(
+        "a",
+        messages=[Message("M", [Field("f", 1, "string", Confidence.HIGH)])],
+    )
+    with pytest.raises(ValueError, match="exceeds 2 items"):
+        reconcile([schema], max_items=2)
+
+
+def test_reconcile_bounds_message_depth() -> None:
+    schema = RecoveredSchema("deep", messages=[Message("one")])
+    schema.messages[0].messages.append(Message("two"))
+    with pytest.raises(ValueError, match="message depth 1"):
+        reconcile([schema], max_depth=1)
+
+
+@pytest.mark.parametrize(
+    "limits",
+    [
+        {"max_schemas": 0},
+        {"max_items": 0},
+        {"max_depth": 0},
+    ],
+)
+def test_reconcile_rejects_nonpositive_limits(limits: dict[str, int]) -> None:
+    with pytest.raises(ValueError, match="limits must be positive"):
+        reconcile([], **limits)
