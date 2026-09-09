@@ -450,6 +450,31 @@ def test_extract_serializes_descriptor_set_before_writing(
 
 
 @pytest.mark.parametrize(
+    "emitter",
+    ["emit_report", "emit_dashboard", "emit_json"],
+)
+def test_extract_renders_all_outputs_before_writing(
+    tmp_path: Path, monkeypatch: MonkeyPatch, emitter: str
+) -> None:
+    binary = tmp_path / "input.bin"
+    binary.write_bytes(b"descriptor")
+    demo_dir = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "-o", str(demo_dir)]).exit_code == 0
+    findings = _find(demo_dir / "demo.desc")
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: findings)
+
+    def fail(*args: object, **kwargs: object) -> str:
+        raise ValueError("output limit")
+
+    monkeypatch.setattr(f"protoloom.cli.{emitter}", fail)
+    output = tmp_path / "output"
+    result = runner.invoke(app, ["extract", str(binary), "-o", str(output)])
+    assert result.exit_code == 2
+    assert "output generation failed: output limit" in result.output
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
     "names",
     [
         ("a/types.proto", "b/types.proto"),
