@@ -86,3 +86,33 @@ def test_schema_display_rejects_nonpositive_limit() -> None:
 
     with pytest.raises(ValueError, match="limit must be positive"):
         render_schema(schema, max_items=0)
+
+
+def test_schema_display_truncates_untrusted_text() -> None:
+    oversized = "x" * 2000
+    schema = SchemaRecord(
+        oversized,
+        oversized,
+        {
+            "messages": [
+                {
+                    "name": oversized,
+                    "fields": [
+                        {
+                            "number": 1,
+                            "name": oversized,
+                            "type_name": oversized,
+                            "confidence": oversized,
+                        }
+                    ],
+                }
+            ],
+            "enums": [{"name": oversized, "values": [{"name": oversized}]}],
+        },
+    )
+
+    detail = _plain(render_schema(schema, width=100_000))
+
+    assert oversized not in detail
+    assert detail.count("...") >= 8
+    assert max(map(len, detail.splitlines())) <= 5000
