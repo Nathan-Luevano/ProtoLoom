@@ -236,11 +236,15 @@ def recover_enum_evidence_from_field(
 def _enum_accessor_evidence(
     dex: DexFile, method: Any, code: CodeItem, field_index: int
 ) -> LiteEnumEvidence | None:
-    instructions = _instructions(code.instructions)
+    instructions = _recoverable_instructions(code.instructions)
+    if instructions is None:
+        return None
     if dex.method_parameter_types(method) or len(instructions) < 2:
         return None
     read, call = instructions[:2]
     if read.opcode != 0x52 or call.opcode != 0x71 or read.units[1] != field_index:
+        return None
+    if call.units[1] >= len(dex.methods):
         return None
     called = dex.methods[call.units[1]]
     return_type = dex.method_return_type(method)
@@ -267,7 +271,9 @@ def recover_enum_evidence_from_owner(
         raw_method = dex.methods[method.method_index]
         if raw_method.class_index not in owner_indexes:
             continue
-        instructions = _instructions(code.instructions)
+        instructions = _recoverable_instructions(code.instructions)
+        if instructions is None:
+            continue
         if len(instructions) < 2 or instructions[0].opcode != 0x52:
             continue
         item = _enum_accessor_evidence(dex, raw_method, code, instructions[0].units[1])
@@ -311,7 +317,10 @@ def _enum_values(
         ):
             continue
         registers: dict[int, Any] = {}
-        for instruction in _instructions(code.instructions):
+        instructions = _recoverable_instructions(code.instructions)
+        if instructions is None:
+            continue
+        for instruction in instructions:
             opcode = instruction.opcode
             units = instruction.units
             if opcode == 0x12:
@@ -422,7 +431,10 @@ def recover_map_evidence(dex: DexFile, field_index: int) -> LiteMapEvidence | No
         registers.clear()
         pending = None
         ready_to_store = None
-        for instruction in _instructions(code.instructions):
+        instructions = _recoverable_instructions(code.instructions)
+        if instructions is None:
+            continue
+        for instruction in instructions:
             units = instruction.units
             if pending is not None and instruction.opcode != 0x0C:
                 pending = None
@@ -539,7 +551,10 @@ def _static_constructor_name(dex: DexFile, field_index: int) -> str | None:
         ):
             continue
         registers: dict[int, str | tuple[str, str]] = {}
-        for instruction in _instructions(code.instructions):
+        instructions = _recoverable_instructions(code.instructions)
+        if instructions is None:
+            continue
+        for instruction in instructions:
             units = instruction.units
             destination = _written_register(instruction)
             if destination is not None:
@@ -901,6 +916,15 @@ def _instructions(code: tuple[int, ...]) -> tuple[_Instruction, ...]:
         result.append(_Instruction(offset, opcode, code[offset : offset + width]))
         offset += width
     return tuple(result)
+
+
+def _recoverable_instructions(
+    code: tuple[int, ...],
+) -> tuple[_Instruction, ...] | None:
+    try:
+        return _instructions(code)
+    except ValueError:
+        return None
 
 
 def _instruction_width(code: tuple[int, ...], offset: int, opcode: int) -> int:
