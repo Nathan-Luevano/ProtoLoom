@@ -1,5 +1,7 @@
 import hashlib
 import itertools
+import os
+import stat
 import unicodedata
 import urllib.request
 from collections.abc import Callable, Mapping
@@ -193,11 +195,12 @@ def materialize(
 def sha256(path: Path, max_size: int = MAX_CORPUS_ARTIFACT_SIZE) -> str:
     if max_size <= 0:
         raise ValueError("maximum artifact size must be positive")
-    if path.stat().st_size > max_size:
-        raise CorpusError(f"artifact exceeds {max_size} bytes: {path}")
     digest = hashlib.sha256()
     total = 0
     with path.open("rb") as stream:
+        _require_regular(stream, path)
+        if os.fstat(stream.fileno()).st_size > max_size:
+            raise CorpusError(f"artifact exceeds {max_size} bytes: {path}")
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             total += len(chunk)
             if total > max_size:
@@ -215,6 +218,7 @@ def _copy_artifact(root: Path, artifact: Artifact, output: Path, max_size: int) 
             if not source.is_relative_to(root):
                 raise CorpusError(f"artifact path escapes corpus root: {artifact.path}")
             with source.open("rb") as reader, temporary.open("wb") as writer:
+                _require_regular(reader, source)
                 _copy_bounded(reader, writer, max_size)
         else:
             assert artifact.url is not None
@@ -226,6 +230,11 @@ def _copy_artifact(root: Path, artifact: Artifact, output: Path, max_size: int) 
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _require_regular(stream: BinaryIO, path: Path) -> None:
+    if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+        raise CorpusError(f"artifact is not a regular file: {path}")
 
 
 def _copy_bounded(reader: BinaryIO, writer: BinaryIO, max_size: int) -> None:
