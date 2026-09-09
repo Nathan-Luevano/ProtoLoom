@@ -1,3 +1,5 @@
+import pytest
+
 from protoloom.emit.proto import emit_proto
 from protoloom.model import (
     Confidence,
@@ -25,6 +27,30 @@ def test_synthetic_zero_does_not_imply_allow_alias() -> None:
 
     assert "allow_alias" not in emitted
     assert "MODE_UNSPECIFIED = 0;" in emitted
+    assert compile_proto(emitted).success
+
+
+def test_proto2_enum_preserves_nonzero_first_value() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto2",
+        enums=[EnumType("Mode", [EnumValue("ACTIVE", 1)])],
+    )
+    emitted = emit_proto(schema)
+    assert "MODE_UNSPECIFIED" not in emitted
+    assert "ACTIVE = 1;" in emitted
+    assert compile_proto(emitted).success
+
+
+@pytest.mark.parametrize("syntax", ["proto2", "proto3"])
+def test_empty_enum_receives_compilable_zero_value(syntax: str) -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax=syntax,
+        enums=[EnumType("Empty")],
+    )
+    emitted = emit_proto(schema)
+    assert "EMPTY_UNSPECIFIED = 0;" in emitted
     assert compile_proto(emitted).success
 
 
