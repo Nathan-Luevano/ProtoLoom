@@ -288,9 +288,10 @@ def extract_wire_oneofs(dex: DexFile, owners: set[str]) -> tuple[WireOneofFindin
             for instruction in _instructions(
                 dex.code_item(method.code_offset).instructions
             ):
-                if instruction.opcode != 0x1A:
+                value = _string_constant(dex, instruction)
+                if value is None:
                     continue
-                match = _ONEOF_MESSAGE.fullmatch(dex.strings[instruction.units[1]])
+                match = _ONEOF_MESSAGE.fullmatch(value)
                 if match is not None:
                     fields = tuple(match.group(1).split(", "))
                     if len(fields) > 1:
@@ -328,18 +329,16 @@ def extract_wire_names(dex: DexFile) -> tuple[WireNameFinding, ...]:
             instructions = _instructions(dex.code_item(method.code_offset).instructions)
             message_name = next(
                 (
-                    dex.strings[instruction.units[1]].removesuffix("{")
+                    value.removesuffix("{")
                     for instruction in instructions
-                    if instruction.opcode == 0x1A
-                    and dex.strings[instruction.units[1]].endswith("{")
+                    if (value := _string_constant(dex, instruction)) is not None
+                    and value.endswith("{")
                 ),
                 None,
             )
             for index, instruction in enumerate(instructions):
-                if instruction.opcode != 0x1A:
-                    continue
-                value = dex.strings[instruction.units[1]]
-                if not value.endswith("="):
+                value = _string_constant(dex, instruction)
+                if value is None or not value.endswith("="):
                     continue
                 nearby = (
                     *reversed(instructions[max(0, index - 2) : index]),
@@ -348,7 +347,9 @@ def extract_wire_names(dex: DexFile) -> tuple[WireNameFinding, ...]:
                 field_instruction = next(
                     (item for item in nearby if 0x52 <= item.opcode <= 0x58), None
                 )
-                if field_instruction is not None:
+                if field_instruction is not None and field_instruction.units[1] < len(
+                    dex.fields
+                ):
                     findings.append(
                         WireNameFinding(
                             owner,
@@ -375,7 +376,10 @@ def extract_wire_syntaxes(dex: DexFile, owners: set[str]) -> dict[str, str]:
             ):
                 if not 0x60 <= instruction.opcode <= 0x66:
                     continue
-                field = dex.fields[instruction.units[1]]
+                field_index = instruction.units[1]
+                if field_index >= len(dex.fields):
+                    continue
+                field = dex.fields[field_index]
                 if dex.types[field.class_index] == "Lcom/squareup/wire/Syntax;":
                     values.add(dex.field_name(field).lower().replace("_", ""))
         if len(values) == 1:
@@ -402,6 +406,13 @@ def _constant(instruction: _Instruction) -> tuple[int, int] | None:
     return None
 
 
+def _string_constant(dex: DexFile, instruction: _Instruction) -> str | None:
+    if instruction.opcode != 0x1A:
+        return None
+    index = instruction.units[1]
+    return dex.strings[index] if index < len(dex.strings) else None
+
+
 def _wire_enum_method(
     dex: DexFile, method: EncodedMethod, descriptor: str
 ) -> WireEnumFinding | None:
@@ -418,10 +429,18 @@ def _wire_enum_method(
             index = (
                 units[1] if instruction.opcode == 0x1A else units[1] | units[2] << 16
             )
+            if index >= len(dex.strings):
+                continue
             registers[units[0] >> 8] = dex.strings[index]
-        elif instruction.opcode == 0x22 and dex.types[units[1]] == descriptor:
+        elif (
+            instruction.opcode == 0x22
+            and units[1] < len(dex.types)
+            and dex.types[units[1]] == descriptor
+        ):
             registers[(units[0] >> 8) & 0xF] = ("instance", descriptor)
         elif instruction.opcode == 0x70:
+            if units[1] >= len(dex.methods):
+                continue
             target = dex.methods[units[1]]
             if dex.method_name(target) != "<init>":
                 continue
@@ -445,6 +464,8 @@ def _wire_enum_method(
                 registers[arguments[0]] = ("enum", name, number)
         elif instruction.opcode == 0x69:
             value = registers.get(units[0] >> 8)
+            if units[1] >= len(dex.fields):
+                continue
             field = dex.fields[units[1]]
             if (
                 field.class_index == field.type_index
@@ -481,6 +502,8 @@ def _method_writes(dex: DexFile, method: EncodedMethod) -> list[WireAdapterFindi
             pending = None
             continue
         if instruction.opcode not in {*range(0x6E, 0x73), *range(0x74, 0x79)}:
+            continue
+        if units[1] >= len(dex.methods):
             continue
         target = dex.methods[units[1]]
         parameters = dex.method_parameter_types(target)
