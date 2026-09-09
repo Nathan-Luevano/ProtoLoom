@@ -128,7 +128,7 @@ def test_field_replacement_uses_number_positions(
     ]
     conflicts: list[Conflict] = []
 
-    _merge_fields(target, source, "Record", conflicts)
+    _merge_fields(target, source, "Record", conflicts, {})
 
     assert comparisons == 0
     assert target[0].name == "new_1"
@@ -157,7 +157,7 @@ def test_equal_confidence_enum_merges_do_not_recopy_accumulated_values(
             [EnumValue(f"VALUE_{number}", number)],
             Confidence.HIGH,
         )
-        _merge_named_enums(target, [incoming], "Schema", conflicts)
+        _merge_named_enums(target, [incoming], "Schema", conflicts, {})
 
     assert copied_lists == 0
     assert len(target[0].values) == 1001
@@ -172,10 +172,36 @@ def test_higher_confidence_enum_replaces_order_without_mutating_source() -> None
         Confidence.CERTAIN,
     )
 
-    _merge_named_enums(target, [incoming], "Schema", [])
+    _merge_named_enums(target, [incoming], "Schema", [], {})
 
     assert target[0].values == [EnumValue("NEW", 2), EnumValue("OLD", 1)]
     assert incoming.values == [EnumValue("NEW", 2)]
+
+
+def test_evidence_deduplication_indexes_accumulated_values_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hash_calls = 0
+    real_hash = Evidence.__hash__
+
+    def counted(value: Evidence) -> int:
+        nonlocal hash_calls
+        hash_calls += 1
+        return real_hash(value)
+
+    monkeypatch.setattr(Evidence, "__hash__", counted)
+    schemas = [
+        RecoveredSchema(
+            "same",
+            evidence=[Evidence("source", f"location-{index}")],
+        )
+        for index in range(1000)
+    ]
+
+    result = reconcile(schemas)
+
+    assert len(result.schemas[0].evidence) == 1000
+    assert hash_calls <= 3000
 
 
 def test_reconcile_bounds_schema_count() -> None:
