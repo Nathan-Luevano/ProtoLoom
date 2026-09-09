@@ -146,9 +146,7 @@ class DexFile:
         self.header = self._parse_header()
         self._validate_tables()
         self.strings = self._parse_strings()
-        self.type_ids = self._uint_table(
-            self.header.type_ids_offset, self.header.type_ids_size
-        )
+        self.type_ids = self._parse_type_ids()
         self.prototypes = self._parse_prototypes()
         self.fields = self._parse_fields()
         self.methods = self._parse_methods()
@@ -534,6 +532,14 @@ class DexFile:
             )
         return tuple(result)
 
+    def _parse_type_ids(self) -> tuple[int, ...]:
+        result = self._uint_table(
+            self.header.type_ids_offset, self.header.type_ids_size
+        )
+        if any(index >= len(self.strings) for index in result):
+            raise DexError("type descriptor string index is out of range")
+        return result
+
     def _parse_prototypes(self) -> tuple[DexPrototype, ...]:
         result: list[DexPrototype] = []
         for index in range(self.header.proto_ids_size):
@@ -574,6 +580,16 @@ class DexFile:
             raw = self._unpack("<8I", self.header.class_defs_offset + index * 32)
             if raw[0] >= len(self.type_ids):
                 raise DexError("class type identifier is out of range")
+            if raw[2] != self.NO_INDEX and raw[2] >= len(self.type_ids):
+                raise DexError("class superclass identifier is out of range")
+            if raw[4] != self.NO_INDEX and raw[4] >= len(self.strings):
+                raise DexError("class source file string index is out of range")
+            if raw[3]:
+                (count,) = self._unpack("<I", int(raw[3]))
+                self._validate_collection_size(int(count), "class interfaces")
+                interfaces = self._unpack(f"<{int(count)}H", int(raw[3]) + 4)
+                if any(item >= len(self.type_ids) for item in interfaces):
+                    raise DexError("class interface identifier is out of range")
             result.append(DexClass(*(int(value) for value in raw)))
         return tuple(result)
 
