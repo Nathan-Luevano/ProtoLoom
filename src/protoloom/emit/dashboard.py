@@ -9,6 +9,7 @@ from typing import Protocol
 from protoloom.model import Confidence, Field, Message, RecoveredSchema
 
 MAX_DASHBOARD_ITEMS = 1_000_000
+MAX_DASHBOARD_DEPTH = 10_000
 MAX_DASHBOARD_OUTPUT_BYTES = 256 * 1024 * 1024
 
 
@@ -31,15 +32,18 @@ def emit_dashboard(
     conflicts: Iterable[Mapping[str, object] | ConflictLike] = (),
     *,
     max_items: int = MAX_DASHBOARD_ITEMS,
+    max_depth: int = MAX_DASHBOARD_DEPTH,
     max_bytes: int = MAX_DASHBOARD_OUTPUT_BYTES,
 ) -> str:
-    if max_items <= 0 or max_bytes <= 0:
+    if min(max_items, max_depth, max_bytes) <= 0:
         raise ValueError("dashboard limits must be positive")
     if len(schemas) > max_items:
         raise ValueError(f"dashboard exceeds {max_items} schemas")
-    messages = [message for schema in schemas for message in _messages(schema.messages)]
-    if len(messages) > max_items:
-        raise ValueError(f"dashboard exceeds {max_items} messages")
+    messages = _messages(
+        [message for schema in schemas for message in schema.messages],
+        max_items,
+        max_depth,
+    )
     fields = [field for message in messages for field in message.fields]
     if len(fields) > max_items:
         raise ValueError(f"dashboard exceeds {max_items} fields")
@@ -113,12 +117,18 @@ def emit_dashboard(
     return result
 
 
-def _messages(items: list[Message]) -> Iterable[Message]:
-    pending = list(reversed(items))
+def _messages(items: list[Message], max_items: int, max_depth: int) -> list[Message]:
+    pending = [(item, 1) for item in reversed(items)]
+    result: list[Message] = []
     while pending:
-        item = pending.pop()
-        yield item
-        pending.extend(reversed(item.messages))
+        item, depth = pending.pop()
+        if depth > max_depth:
+            raise ValueError(f"dashboard exceeds message depth {max_depth}")
+        if len(result) >= max_items:
+            raise ValueError(f"dashboard exceeds {max_items} messages")
+        result.append(item)
+        pending.extend((child, depth + 1) for child in reversed(item.messages))
+    return result
 
 
 def _qualified_fields(
