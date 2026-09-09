@@ -3,7 +3,7 @@ import io
 import os
 import tarfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import pytest
 
@@ -485,6 +485,31 @@ def test_extract_bounds_member_count(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="more than 1 members"):
         extract(archive, tmp_path / "many", max_members=1)
+
+
+def test_extract_stops_reading_members_at_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive = tmp_path / "archive.tar.gz"
+    archive.write_bytes(b"archive")
+
+    class Bundle:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def __iter__(self) -> object:
+            for name in ("root/one", "root/two"):
+                yield tarfile.TarInfo(name)
+            raise AssertionError("member limit was not enforced while reading")
+
+    monkeypatch.setattr(
+        "protoloom.bench.upstream.tarfile.open", lambda **kwargs: Bundle()
+    )
+    with pytest.raises(ValueError, match="more than 1 members"):
+        extract(archive, tmp_path / "output", max_members=1)
 
 
 def test_extract_bounds_expanded_size(tmp_path: Path) -> None:
