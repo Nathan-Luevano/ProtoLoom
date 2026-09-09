@@ -1,16 +1,21 @@
 from protoloom.model import Confidence, Message, RecoveredSchema
 
 MAX_REPORT_ITEMS = 1_000_000
+MAX_REPORT_DEPTH = 10_000
 MAX_REPORT_OUTPUT_BYTES = 64 * 1024 * 1024
 
 
-def _messages(schema: RecoveredSchema) -> list[Message]:
-    pending = list(schema.messages)
-    result = []
+def _messages(schema: RecoveredSchema, max_items: int, max_depth: int) -> list[Message]:
+    pending = [(message, 1) for message in schema.messages]
+    result: list[Message] = []
     while pending:
-        message = pending.pop()
+        message, depth = pending.pop()
+        if depth > max_depth:
+            raise ValueError(f"report exceeds message depth {max_depth}")
+        if len(result) >= max_items:
+            raise ValueError(f"report exceeds {max_items} messages")
         result.append(message)
-        pending.extend(message.messages)
+        pending.extend((child, depth + 1) for child in message.messages)
     return result
 
 
@@ -19,9 +24,10 @@ def emit_report(
     bailouts: list[str],
     *,
     max_items: int = MAX_REPORT_ITEMS,
+    max_depth: int = MAX_REPORT_DEPTH,
     max_bytes: int = MAX_REPORT_OUTPUT_BYTES,
 ) -> str:
-    if max_items <= 0 or max_bytes <= 0:
+    if min(max_items, max_depth, max_bytes) <= 0:
         raise ValueError("report limits must be positive")
     if len(schemas) > max_items:
         raise ValueError(f"report exceeds {max_items} schemas")
@@ -31,7 +37,7 @@ def emit_report(
     message_count = 0
     field_count = 0
     for schema in schemas:
-        messages = _messages(schema)
+        messages = _messages(schema, max_items - message_count, max_depth)
         message_count += len(messages)
         if message_count > max_items:
             raise ValueError(f"report exceeds {max_items} messages")
