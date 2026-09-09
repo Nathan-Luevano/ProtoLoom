@@ -125,6 +125,19 @@ def test_resolves_wire_adapter_types() -> None:
     assert wire_adapter_type("example.Custom#OTHER") is None
 
 
+def test_wire_dex_type_rejects_out_of_range_fields() -> None:
+    dex: Any = _wire_dex()
+    assert wire_dex_type(dex, -1, 1) is None
+    assert wire_dex_type(dex, 0, 99) is None
+
+
+def test_wire_decoder_skips_stale_field_findings() -> None:
+    dex: Any = _wire_dex()
+    stale = DexField(0, 2, 99)
+    finding = WireAdapterFinding("Lexample/Record;", stale, 1, dex.fields[1], 0, 0)
+    assert decode_wire_adapter_fields(dex, (finding,), (), (), "test.dex") == {}
+
+
 def test_decodes_annotated_wire_message() -> None:
     dex = _wire_dex()
     schemas = decode_wire_annotations(dex, extract_wire_annotations(dex), "classes.dex")

@@ -198,7 +198,11 @@ def _field_oneof(item: InfoField, is_proto2: bool) -> str | None:
 
 def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> DecodedLite:
     info = decode_info_string(finding.info_string)
+    if not 0 <= finding.containing_method < len(dex.methods):
+        raise ValueError("lite finding method index is out of range")
     method = dex.methods[finding.containing_method]
+    if not 0 <= method.class_index < len(dex.types):
+        raise ValueError("lite finding class index is out of range")
     descriptor = dex.types[method.class_index]
     declared_field_types = {
         dex.field_name(item): dex.types[item.type_index]
