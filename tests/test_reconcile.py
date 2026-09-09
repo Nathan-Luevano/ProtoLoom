@@ -9,7 +9,7 @@ from protoloom.model import (
     Message,
     RecoveredSchema,
 )
-from protoloom.reconcile import reconcile
+from protoloom.reconcile import Conflict, _merge_fields, reconcile
 
 
 def test_reconcile_prefers_higher_confidence_and_combines_evidence() -> None:
@@ -98,6 +98,35 @@ def test_equal_confidence_keeps_first_result_deterministically() -> None:
     result = reconcile([first, second])
     assert result.schemas[0].messages[0].fields[0].name == "first"
     assert result.conflicts[0].kept_confidence is Confidence.HIGH
+
+
+def test_field_replacement_uses_number_positions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    comparisons = 0
+
+    def compare(left: Field, right: object) -> bool:
+        nonlocal comparisons
+        comparisons += 1
+        return left is right
+
+    monkeypatch.setattr(Field, "__eq__", compare)
+    target = [
+        Field(f"old_{index}", index, "bytes", Confidence.SPECULATIVE)
+        for index in range(1, 1001)
+    ]
+    source = [
+        Field(f"new_{index}", index, "string", Confidence.CERTAIN)
+        for index in range(1, 1001)
+    ]
+    conflicts: list[Conflict] = []
+
+    _merge_fields(target, source, "Record", conflicts)
+
+    assert comparisons == 0
+    assert target[0].name == "new_1"
+    assert target[-1].name == "new_1000"
+    assert len(conflicts) == 2000
 
 
 def test_reconcile_bounds_schema_count() -> None:
