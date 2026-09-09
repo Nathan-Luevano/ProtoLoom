@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+MAX_JOB_OUTPUT_LINE_BYTES = 4096
+
 
 @dataclass(frozen=True, slots=True)
 class ExtractionRequest:
@@ -57,12 +59,19 @@ class ExtractionJob:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             start_new_session=os.name == "posix",
+            limit=MAX_JOB_OUTPUT_LINE_BYTES + 1,
         )
         assert self._process.stdout is not None
         try:
             while line := await self._process.stdout.readline():
                 on_line(line.decode(errors="replace").rstrip())
             returncode = await self._process.wait()
+        except ValueError:
+            on_line(f"Process output line exceeded {MAX_JOB_OUTPUT_LINE_BYTES} bytes")
+            await asyncio.shield(self._stop())
+            await self._drain_output()
+            assert self._process.returncode is not None
+            returncode = self._process.returncode
         except asyncio.CancelledError:
             await asyncio.shield(self.cancel())
             raise
@@ -73,12 +82,25 @@ class ExtractionJob:
         if process is None or process.returncode is not None:
             return
         self._cancelled = True
+        await self._stop()
+
+    async def _stop(self) -> None:
+        process = self._process
+        if process is None or process.returncode is not None:
+            return
         self._signal(process, signal.SIGTERM)
         try:
             await asyncio.wait_for(process.wait(), timeout=2)
         except TimeoutError:
             self._signal(process, signal.SIGKILL)
             await process.wait()
+
+    async def _drain_output(self) -> None:
+        process = self._process
+        if process is None or process.stdout is None:
+            return
+        while await process.stdout.read(MAX_JOB_OUTPUT_LINE_BYTES):
+            pass
 
     @staticmethod
     def _signal(process: asyncio.subprocess.Process, value: signal.Signals) -> None:
