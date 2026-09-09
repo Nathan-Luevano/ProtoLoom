@@ -24,6 +24,9 @@ from protoloom.extract.wire import (
     _wire_enum_method,
     extract_wire_annotations,
     extract_wire_messages,
+    extract_wire_names,
+    extract_wire_oneofs,
+    extract_wire_syntaxes,
     wire_adapter_type,
 )
 
@@ -87,6 +90,33 @@ def test_extracts_empty_wire_message() -> None:
     dex = _wire_dex()
 
     assert extract_wire_messages(dex) == ("Lexample/Record;",)
+
+
+def _wire_dex_with_code(method_name: str, instructions: tuple[int, ...]) -> Any:
+    owner = DexClass(0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    method = SimpleNamespace(code_offset=1, method_index=0)
+    return SimpleNamespace(
+        classes=(owner,),
+        types=("Lexample/Record;",),
+        strings=(),
+        fields=(),
+        methods=(),
+        class_methods=lambda _: (method,),
+        method_name=lambda _: method_name,
+        code_item=lambda _: SimpleNamespace(instructions=instructions),
+    )
+
+
+def test_wire_extractors_skip_invalid_string_operands() -> None:
+    oneof_dex = _wire_dex_with_code("<init>", (0x001A, 99))
+    names_dex = _wire_dex_with_code("toString", (0x001A, 99))
+    assert extract_wire_oneofs(oneof_dex, {"Lexample/Record;"}) == ()
+    assert extract_wire_names(names_dex) == ()
+
+
+def test_wire_syntax_extraction_skips_invalid_field_operand() -> None:
+    dex = _wire_dex_with_code("<clinit>", (0x0060, 99))
+    assert extract_wire_syntaxes(dex, {"Lexample/Record;"}) == {}
 
 
 def test_resolves_wire_adapter_types() -> None:
