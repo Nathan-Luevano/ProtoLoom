@@ -720,12 +720,6 @@ def extract(
     except ValueError as error:
         typer.echo(f"descriptor-set assembly failed: {error}", err=True)
         raise typer.Exit(2) from error
-    output.mkdir(parents=True, exist_ok=True)
-    for (schema, source), name in zip(prepared, output_names, strict=True):
-        destination = output / name
-        _atomic_write(destination, source.encode())
-        typer.echo(f"recovered {schema.name} -> {destination}")
-    _atomic_write(output / descriptor_name, descriptor_set)
     conflicts = [asdict(conflict) for conflict in reconciled.conflicts]
     artifacts = [
         *output_names,
@@ -734,20 +728,26 @@ def extract(
         "recovery.json",
         "report.md",
     ]
-    _atomic_write(
-        output / "report.md",
-        emit_report(reconciled.schemas, bailouts).encode(),
-    )
+    try:
+        report = emit_report(reconciled.schemas, bailouts).encode()
+        dashboard_page = emit_dashboard(
+            reconciled.schemas, reconciled.conflicts
+        ).encode()
+        recovery_json = emit_json(reconciled.schemas, conflicts, artifacts).encode()
+    except ValueError as error:
+        typer.echo(f"output generation failed: {error}", err=True)
+        raise typer.Exit(2) from error
+    output.mkdir(parents=True, exist_ok=True)
+    for (schema, source), name in zip(prepared, output_names, strict=True):
+        destination = output / name
+        _atomic_write(destination, source.encode())
+        typer.echo(f"recovered {schema.name} -> {destination}")
+    _atomic_write(output / descriptor_name, descriptor_set)
+    _atomic_write(output / "report.md", report)
     dashboard = output / "dashboard"
     dashboard.mkdir(exist_ok=True)
-    _atomic_write(
-        dashboard / "index.html",
-        emit_dashboard(reconciled.schemas, reconciled.conflicts).encode(),
-    )
-    _atomic_write(
-        output / "recovery.json",
-        emit_json(reconciled.schemas, conflicts, artifacts).encode(),
-    )
+    _atomic_write(dashboard / "index.html", dashboard_page)
+    _atomic_write(output / "recovery.json", recovery_json)
     _remove_stale_artifacts(output, previous_artifacts, set(artifacts))
     typer.echo(
         f"bail-outs: {len(bailouts)}; recovered files: {len(reconciled.schemas)}"
