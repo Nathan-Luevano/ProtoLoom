@@ -3,9 +3,13 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from html import escape
+from itertools import islice
 from typing import Protocol
 
 from protoloom.model import Confidence, Field, Message, RecoveredSchema
+
+MAX_DASHBOARD_ITEMS = 1_000_000
+MAX_DASHBOARD_OUTPUT_BYTES = 256 * 1024 * 1024
 
 
 class ConflictLike(Protocol):
@@ -25,11 +29,24 @@ class ConflictLike(Protocol):
 def emit_dashboard(
     schemas: list[RecoveredSchema],
     conflicts: Iterable[Mapping[str, object] | ConflictLike] = (),
+    *,
+    max_items: int = MAX_DASHBOARD_ITEMS,
+    max_bytes: int = MAX_DASHBOARD_OUTPUT_BYTES,
 ) -> str:
+    if max_items <= 0 or max_bytes <= 0:
+        raise ValueError("dashboard limits must be positive")
+    if len(schemas) > max_items:
+        raise ValueError(f"dashboard exceeds {max_items} schemas")
     messages = [message for schema in schemas for message in _messages(schema.messages)]
+    if len(messages) > max_items:
+        raise ValueError(f"dashboard exceeds {max_items} messages")
     fields = [field for message in messages for field in message.fields]
+    if len(fields) > max_items:
+        raise ValueError(f"dashboard exceeds {max_items} fields")
     counts = Counter(field.confidence for field in fields)
-    conflict_rows = list(conflicts)
+    conflict_rows = list(islice(conflicts, max_items + 1))
+    if len(conflict_rows) > max_items:
+        raise ValueError(f"dashboard exceeds {max_items} conflicts")
     parts = [
         "<!doctype html>",
         '<html lang="en"><head><meta charset="utf-8">',
@@ -90,23 +107,30 @@ def emit_dashboard(
     else:
         parts.append('<p class="empty">No conflicts recorded.</p>')
     parts.append("</section></main></body></html>\n")
-    return "".join(parts)
+    result = "".join(parts)
+    if len(result.encode("utf-8")) > max_bytes:
+        raise ValueError(f"dashboard exceeds {max_bytes} bytes")
+    return result
 
 
 def _messages(items: list[Message]) -> Iterable[Message]:
-    for item in items:
+    pending = list(reversed(items))
+    while pending:
+        item = pending.pop()
         yield item
-        yield from _messages(item.messages)
+        pending.extend(reversed(item.messages))
 
 
 def _qualified_fields(
     items: list[Message], prefix: str = ""
 ) -> Iterable[tuple[str, Field]]:
-    for item in items:
-        qualified = f"{prefix}.{item.name}" if prefix else item.name
+    pending = [(item, prefix) for item in reversed(items)]
+    while pending:
+        item, parent = pending.pop()
+        qualified = f"{parent}.{item.name}" if parent else item.name
         for field in item.fields:
             yield qualified, field
-        yield from _qualified_fields(item.messages, qualified)
+        pending.extend((child, qualified) for child in reversed(item.messages))
 
 
 def _metric(label: str, value: int) -> str:
