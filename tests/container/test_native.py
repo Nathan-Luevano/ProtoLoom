@@ -1,7 +1,9 @@
 import struct
 from pathlib import Path
 
-from protoloom.container.elf import ElfFile
+import pytest
+
+from protoloom.container.elf import ElfError, ElfFile
 from protoloom.container.macho import MachOFile
 
 
@@ -14,6 +16,45 @@ def test_parses_host_elf() -> None:
     assert elf.sections
     assert elf.segments
     assert len(elf.section_data(elf.sections[0])) == elf.sections[0].size
+
+
+def _host_elf_with_extended_sections(section_count: int | None = None) -> bytes:
+    path = next(
+        path for path in (Path("/bin/sh"), Path("/usr/bin/env")) if path.exists()
+    )
+    raw = bytearray(path.read_bytes())
+    prefix = "<" if raw[5] == 1 else ">"
+    if raw[4] == 2:
+        section_offset = struct.unpack_from(prefix + "Q", raw, 40)[0]
+        count_offset, index_offset = 60, 62
+        size_offset, link_offset = section_offset + 32, section_offset + 40
+        size_format = "Q"
+    else:
+        section_offset = struct.unpack_from(prefix + "I", raw, 32)[0]
+        count_offset, index_offset = 48, 50
+        size_offset, link_offset = section_offset + 20, section_offset + 24
+        size_format = "I"
+    original_count = struct.unpack_from(prefix + "H", raw, count_offset)[0]
+    original_index = struct.unpack_from(prefix + "H", raw, index_offset)[0]
+    struct.pack_into(prefix + "H", raw, count_offset, 0)
+    struct.pack_into(prefix + "H", raw, index_offset, 0xFFFF)
+    struct.pack_into(
+        prefix + size_format, raw, size_offset, section_count or original_count
+    )
+    struct.pack_into(prefix + "I", raw, link_offset, original_index)
+    return bytes(raw)
+
+
+def test_parses_extended_elf_section_numbering() -> None:
+    regular = ElfFile.from_path("/bin/sh")
+    extended = ElfFile(_host_elf_with_extended_sections())
+    assert len(extended.sections) == len(regular.sections)
+    assert extended.sections[1:] == regular.sections[1:]
+
+
+def test_rejects_extended_elf_table_outside_file() -> None:
+    with pytest.raises(ElfError, match="section table"):
+        ElfFile(_host_elf_with_extended_sections(0x100000))
 
 
 def _macho_with_const_section() -> bytes:

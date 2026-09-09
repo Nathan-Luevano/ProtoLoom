@@ -77,12 +77,17 @@ class ElfFile:
         phoff, shoff = int(header[4]), int(header[5])
         phentsize, phnum = int(header[8]), int(header[9])
         shentsize, shnum, shstrndx = int(header[10]), int(header[11]), int(header[12])
-        raw_sections = self._raw_sections(shoff, shentsize, shnum)
+        initial_section_count = 1 if shnum == 0 and shoff else shnum
+        raw_sections = self._raw_sections(shoff, shentsize, initial_section_count)
         if shnum == 0 and raw_sections:
             shnum = int(raw_sections[0][5])
             raw_sections = self._raw_sections(shoff, shentsize, shnum)
         if shstrndx == 0xFFFF and raw_sections:
             shstrndx = int(raw_sections[0][6])
+        if phnum == 0xFFFF:
+            if not raw_sections:
+                raise ElfError("extended program header count has no section table")
+            phnum = int(raw_sections[0][7])
         names = memoryview(b"")
         if raw_sections and shstrndx < len(raw_sections):
             names = self._slice(
@@ -109,6 +114,7 @@ class ElfFile:
         expected = struct.calcsize(fmt)
         if count and entry_size < expected:
             raise ElfError("invalid section header size")
+        self._validate_table(offset, entry_size, count, "section")
         return [
             tuple(
                 int(value) for value in self._unpack(fmt, offset + index * entry_size)
@@ -123,6 +129,7 @@ class ElfFile:
         expected = struct.calcsize(fmt)
         if count and entry_size < expected:
             raise ElfError("invalid program header size")
+        self._validate_table(offset, entry_size, count, "program header")
         result: list[ElfSegment] = []
         for index in range(count):
             raw = self._unpack(fmt, offset + index * entry_size)
@@ -142,6 +149,12 @@ class ElfFile:
                 )
             )
         return tuple(result)
+
+    def _validate_table(
+        self, offset: int, entry_size: int, count: int, name: str
+    ) -> None:
+        if count and (entry_size <= 0 or offset + entry_size * count > len(self._data)):
+            raise ElfError(f"{name} table lies outside the file")
 
     def _unpack(self, fmt: str, offset: int) -> tuple[int, ...]:
         size = struct.calcsize(fmt)
