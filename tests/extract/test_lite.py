@@ -516,6 +516,23 @@ def test_enum_recovery_rejects_hostile_constructor_index() -> None:
     assert evidence is None
 
 
+def test_enum_recovery_skips_malformed_instruction_stream() -> None:
+    dex = EnumFakeDex()
+    method, code = dex._items[0]
+    dex._items = (
+        (
+            method,
+            CodeItem(code.offset, 1, 0, 0, 0, 0, (0x0100,)),
+        ),
+    )
+    evidence = recover_enum_evidence(
+        dex,  # type: ignore[arg-type]
+        "Lmatrix/MatrixProto$Everything;",
+        "mode_",
+    )
+    assert evidence is None
+
+
 def test_enum_recovery_rejects_wrong_constructor_signature() -> None:
     evidence = recover_enum_evidence(
         EnumFakeDex(  # type: ignore[arg-type]
@@ -620,6 +637,17 @@ def test_enum_accessor_links_obfuscated_field_and_type() -> None:
         )
         == evidence
     )
+
+
+def test_enum_accessor_rejects_invalid_invoked_method() -> None:
+    dex = EnumFakeDex()
+    dex.types += ("I",)
+    dex.strings += ("mode",)
+    dex.fields += (DexField(0, 2, 5),)
+    dex.methods += (DexMethod(0, 0, 5),)
+    accessor = (0x0052, 2, 0x1071, 99, 0, 0x0C, 0x11)
+    dex._items += ((EncodedMethod(3, 0, 300), CodeItem(300, 2, 0, 1, 0, 0, accessor)),)
+    assert recover_enum_evidence_from_field(dex, 2) is None  # type: ignore[arg-type]
 
 
 def test_recover_enum_evidence_from_verifier_reads_enclosing_enum() -> None:
@@ -779,6 +807,13 @@ def test_map_types_survive_inlined_factory_call() -> None:
 def test_map_recovery_rejects_hostile_field_index() -> None:
     assert recover_map_evidence(MapFakeDex(), 99) is None  # type: ignore[arg-type]
     assert recover_map_evidence(MapFakeDex(), -1) is None  # type: ignore[arg-type]
+
+
+def test_map_recovery_skips_malformed_instruction_stream() -> None:
+    dex = MapFakeDex()
+    method, code = dex._items[0]
+    dex._items = ((method, CodeItem(code.offset, 1, 0, 0, 0, 0, (0x0300,))),)
+    assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
 
 
 def test_unrelated_invoke_clears_pending_map_result() -> None:
