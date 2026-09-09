@@ -255,6 +255,25 @@ def test_schema_rejects_invalid_type_ambiguities(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    "payload",
+    [
+        {"messages": [{"fields": [{}, {}]}]},
+        {"messages": [{"enums": [{"values": [[], []]}]}]},
+        {"enums": [{"values": [[], []]}]},
+    ],
+)
+def test_schema_bounds_total_structure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: object
+) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr("protoloom.bench.runner.MAX_BENCH_SCHEMA_ITEMS", 2)
+
+    with pytest.raises(ValueError, match="benchmark schema exceeds 2 items"):
+        load_schema(path)
+
+
+@pytest.mark.parametrize(
     ("payload", "message"),
     [
         ({"compiled": 1}, "compiled must be a boolean"),
