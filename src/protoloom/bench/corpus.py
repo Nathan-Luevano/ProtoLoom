@@ -2,13 +2,14 @@ import hashlib
 import itertools
 import os
 import stat
+import tempfile
 import unicodedata
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from math import prod
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, cast
 
 from protoloom.bench.jsonio import read_json
 
@@ -210,26 +211,44 @@ def sha256(path: Path, max_size: int = MAX_CORPUS_ARTIFACT_SIZE) -> str:
 
 
 def _copy_artifact(root: Path, artifact: Artifact, output: Path, max_size: int) -> None:
-    temporary = output.with_suffix(output.suffix + ".part")
-    temporary.unlink(missing_ok=True)
+    temporary: Path | None = None
     try:
-        if artifact.path is not None:
-            source = (root / artifact.path).resolve()
-            if not source.is_relative_to(root):
-                raise CorpusError(f"artifact path escapes corpus root: {artifact.path}")
-            with source.open("rb") as reader, temporary.open("wb") as writer:
-                _require_regular(reader, source)
-                _copy_bounded(reader, writer, max_size)
-        else:
-            assert artifact.url is not None
-            with (
-                urllib.request.urlopen(artifact.url, timeout=30) as response,
-                temporary.open("wb") as writer,
-            ):
-                _copy_bounded(response, writer, max_size)
+        with tempfile.NamedTemporaryFile(
+            mode="wb", dir=output.parent, prefix=f".{output.name}.", delete=False
+        ) as writer:
+            temporary = Path(writer.name)
+            sink = cast(BinaryIO, writer)
+            if artifact.path is not None:
+                source = (root / artifact.path).resolve()
+                if not source.is_relative_to(root):
+                    raise CorpusError(
+                        f"artifact path escapes corpus root: {artifact.path}"
+                    )
+                with source.open("rb") as reader:
+                    _require_regular(reader, source)
+                    _copy_bounded(reader, sink, max_size)
+            else:
+                assert artifact.url is not None
+                with urllib.request.urlopen(artifact.url, timeout=30) as response:
+                    _copy_bounded(response, sink, max_size)
+            writer.flush()
+            os.fsync(writer.fileno())
         temporary.replace(output)
+        _sync_directory(output.parent)
     finally:
-        temporary.unlink(missing_ok=True)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _sync_directory(path: Path) -> None:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _require_regular(stream: BinaryIO, path: Path) -> None:
