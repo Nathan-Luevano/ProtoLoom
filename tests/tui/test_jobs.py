@@ -42,6 +42,26 @@ def test_streams_cli_failure_without_shell(tmp_path: Path) -> None:
     assert job.running is False
 
 
+def test_stops_process_with_oversized_output_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    script = "import time; print('x' * 100000, flush=True); time.sleep(30)"
+    monkeypatch.setattr(
+        ExtractionRequest,
+        "command",
+        lambda self: (sys.executable, "-c", script),
+    )
+    lines: list[str] = []
+    job = ExtractionJob()
+
+    result = asyncio.run(job.run(ExtractionRequest(tmp_path, tmp_path), lines.append))
+
+    assert result.returncode != 0
+    assert result.cancelled is False
+    assert lines == ["Process output line exceeded 4096 bytes"]
+    assert job.running is False
+
+
 def test_cancels_long_running_process(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
