@@ -12,6 +12,8 @@ class OutputError(ValueError):
 
 MAX_RECOVERY_OUTPUT_SIZE = 16 * 1024 * 1024
 MAX_REPORT_SIZE = 1024 * 1024
+MAX_RECOVERY_RECORDS = 10_000
+MAX_BAILOUT_COUNT_DIGITS = 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +34,10 @@ class RecoveryOutput:
 def _records(value: object, label: str) -> tuple[dict[str, object], ...]:
     if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
         raise OutputError(f"recovery.json {label} must be a list of objects")
+    if len(value) > MAX_RECOVERY_RECORDS:
+        raise OutputError(
+            f"recovery.json {label} exceeds {MAX_RECOVERY_RECORDS} records"
+        )
     return tuple(value)
 
 
@@ -68,6 +74,8 @@ def load_output(root: Path) -> RecoveryOutput:
         raise OutputError("recovery.json root must be an object")
     schemas = _records(value.get("schemas"), "schemas")
     conflicts = _records(value.get("conflicts"), "conflicts")
+    if len(schemas) + len(conflicts) > MAX_RECOVERY_RECORDS:
+        raise OutputError(f"recovery.json exceeds {MAX_RECOVERY_RECORDS} total records")
     items: list[SchemaRecord] = []
     for schema in schemas:
         name, package = schema.get("name"), schema.get("package", "")
@@ -83,4 +91,6 @@ def _bailout_count(root: Path) -> int | None:
     except (OSError, OutputError, UnicodeDecodeError):
         return None
     match = re.search(r"^Bail-outs: (\d+)$", report, re.MULTILINE)
-    return int(match.group(1)) if match else None
+    if match is None or len(match.group(1)) > MAX_BAILOUT_COUNT_DIGITS:
+        return None
+    return int(match.group(1))

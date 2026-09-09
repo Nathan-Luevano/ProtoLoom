@@ -47,6 +47,30 @@ def test_rejects_invalid_shapes(tmp_path: Path, value: object, message: str) -> 
         load_output(tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ({"schemas": [{}, {}], "conflicts": []}, "schemas exceeds 1 records"),
+        ({"schemas": [], "conflicts": [{}, {}]}, "conflicts exceeds 1 records"),
+        (
+            {"schemas": [{"name": "a"}], "conflicts": [{}]},
+            "exceeds 1 total records",
+        ),
+    ],
+)
+def test_bounds_recovery_records(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    value: object,
+    message: str,
+) -> None:
+    _write(tmp_path, value)
+    monkeypatch.setattr("protoloom.tui.results.MAX_RECOVERY_RECORDS", 1)
+
+    with pytest.raises(OutputError, match=message):
+        load_output(tmp_path)
+
+
 def test_reports_missing_and_malformed_files(tmp_path: Path) -> None:
     with pytest.raises(OutputError, match="cannot read"):
         load_output(tmp_path)
@@ -92,5 +116,12 @@ def test_rejects_special_recovery_file(tmp_path: Path) -> None:
 def test_ignores_special_optional_report(tmp_path: Path) -> None:
     _write(tmp_path, {"schemas": [], "conflicts": []})
     (tmp_path / "report.md").symlink_to(Path(os.devnull))
+
+    assert load_output(tmp_path).bailouts is None
+
+
+def test_ignores_unbounded_optional_bailout_count(tmp_path: Path) -> None:
+    _write(tmp_path, {"schemas": [], "conflicts": []})
+    (tmp_path / "report.md").write_text(f"Bail-outs: {'9' * 5000}\n", encoding="utf-8")
 
     assert load_output(tmp_path).bailouts is None
