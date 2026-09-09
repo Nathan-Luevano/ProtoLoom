@@ -159,7 +159,7 @@ def _read_member(archive: ZipFile, name: str, max_size: int) -> bytes:
 def _entry(info: ZipInfo) -> ArchiveEntry:
     name = info.filename
     path = PurePosixPath(name)
-    if path.name.startswith("classes") and path.suffix == ".dex":
+    if _is_dex_name(path.name):
         kind = "dex"
     elif path.suffix == ".so" and ("lib" in path.parts or "jni" in path.parts):
         kind = "native"
@@ -170,6 +170,20 @@ def _entry(info: ZipInfo) -> ArchiveEntry:
     else:
         kind = "resource"
     return ArchiveEntry(name, info.file_size, info.compress_size, kind)
+
+
+def _is_dex_name(name: str) -> bool:
+    if name == "classes.dex":
+        return True
+    if not name.startswith("classes") or not name.endswith(".dex"):
+        return False
+    suffix = name[7:-4]
+    return (
+        bool(suffix)
+        and suffix[0] in "23456789"
+        and suffix.isascii()
+        and suffix.isdigit()
+    )
 
 
 def _validate_name(name: str) -> None:
