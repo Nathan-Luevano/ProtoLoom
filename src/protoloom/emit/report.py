@@ -33,6 +33,7 @@ def emit_report(
         raise ValueError(f"report exceeds {max_items} schemas")
     if len(bailouts) > max_items:
         raise ValueError(f"report exceeds {max_items} bailouts")
+    rendered_bailouts = _render_bailouts(bailouts, max_bytes)
     field_counts = {confidence: 0 for confidence in Confidence}
     message_count = 0
     field_count = 0
@@ -53,8 +54,7 @@ def emit_report(
     for confidence in Confidence:
         lines.append(f"- {confidence.value}: {field_counts[confidence]}")
     lines.extend(("", f"Bail-outs: {len(bailouts)}"))
-    for reason in bailouts:
-        lines.append(f"- {_single_line(reason)}")
+    lines.extend(rendered_bailouts)
     result = "\n".join(lines) + "\n"
     if len(result.encode("utf-8")) > max_bytes:
         raise ValueError(f"report exceeds {max_bytes} bytes")
@@ -63,3 +63,18 @@ def emit_report(
 
 def _single_line(value: str) -> str:
     return " ".join(value.splitlines())
+
+
+def _render_bailouts(values: list[str], max_bytes: int) -> list[str]:
+    result: list[str] = []
+    size = 0
+    for value in values:
+        encoded_size = len(value.encode("utf-8"))
+        if encoded_size > max_bytes - size:
+            raise ValueError(f"report exceeds {max_bytes} bytes")
+        rendered = f"- {_single_line(value)}"
+        size += len(rendered.encode("utf-8")) + 1
+        if size > max_bytes:
+            raise ValueError(f"report exceeds {max_bytes} bytes")
+        result.append(rendered)
+    return result

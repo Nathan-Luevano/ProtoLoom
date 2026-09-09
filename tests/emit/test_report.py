@@ -66,6 +66,29 @@ def test_report_bounds_encoded_output() -> None:
         emit_report([], [], max_bytes=8)
 
 
+def test_report_rejects_large_bailout_before_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def render(value: str) -> str:
+        nonlocal calls
+        calls += 1
+        return value
+
+    monkeypatch.setattr("protoloom.emit.report._single_line", render)
+
+    with pytest.raises(ValueError, match="exceeds 8 bytes"):
+        emit_report([], ["x" * 9], max_bytes=8)
+
+    assert calls == 0
+
+
+def test_report_bounds_aggregate_bailout_bytes() -> None:
+    with pytest.raises(ValueError, match="exceeds 10 bytes"):
+        emit_report([], ["1234", "5678"], max_bytes=10)
+
+
 def test_report_bounds_message_depth() -> None:
     root = Message("Outer")
     root.messages.append(Message("Inner"))
