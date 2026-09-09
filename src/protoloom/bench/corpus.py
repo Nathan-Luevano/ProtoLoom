@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from math import prod
 from pathlib import Path
 from typing import Any, BinaryIO, cast
+from urllib.parse import urlparse
 
 from protoloom.bench.jsonio import read_json
 
@@ -22,6 +23,13 @@ MAX_CORPUS_NAME_BYTES = 255
 MAX_CORPUS_ARTIFACT_SIZE = 1024 * 1024 * 1024
 MAX_MATRIX_AXES = 32
 MAX_COMPILATION_JOBS = 100_000
+
+
+def _https_url(value: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username is not None:
+        raise CorpusError(f"artifact URL must be unauthenticated HTTPS: {value}")
+    return value
 
 
 def _validate_name(name: str, label: str) -> None:
@@ -49,6 +57,8 @@ class Artifact:
             character not in "0123456789abcdef" for character in self.sha256
         ):
             raise CorpusError(f"artifact {self.name!r} has an invalid SHA-256")
+        if self.url is not None:
+            _https_url(self.url)
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +240,7 @@ def _copy_artifact(root: Path, artifact: Artifact, output: Path, max_size: int) 
             else:
                 assert artifact.url is not None
                 with urllib.request.urlopen(artifact.url, timeout=30) as response:
+                    _https_url(response.geturl())
                     _copy_bounded(response, sink, max_size)
             writer.flush()
             os.fsync(writer.fileno())
