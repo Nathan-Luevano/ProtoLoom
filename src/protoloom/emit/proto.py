@@ -135,6 +135,7 @@ def _resolved_type(value: str, renames: dict[str, str], package: str) -> str:
 
 def _enum(
     item: EnumType,
+    syntax: str,
     indent: str,
     scope: set[str] | None = None,
     name: str | None = None,
@@ -144,7 +145,7 @@ def _enum(
     lines = [f"{indent}enum {enum_name} {{"]
     values = item.values or []
     numbers = [value.number for value in values]
-    needs_synthetic_zero = bool(values and values[0].number != 0)
+    needs_synthetic_zero = not values or (syntax == "proto3" and values[0].number != 0)
     if len(numbers) != len(set(numbers)):
         lines.append(f"{indent}  option allow_alias = true;")
     reserved = {*used, enum_name}
@@ -208,7 +209,7 @@ def _message(
         )
     enum_scope = {*message_names, *enum_names}
     for enum, enum_name in zip(item.enums, enum_names, strict=True):
-        lines.extend(_enum(enum, child_indent, enum_scope, enum_name))
+        lines.extend(_enum(enum, syntax, child_indent, enum_scope, enum_name))
     grouped = {
         field.oneof
         for field in item.fields
@@ -275,7 +276,7 @@ def emit_proto(schema: RecoveredSchema) -> str:
     renames = _symbol_renames(schema.messages, schema.enums)
     enum_scope = {*message_names, *enum_names}
     for enum, enum_name in zip(schema.enums, enum_names, strict=True):
-        lines.extend(_enum(enum, "", enum_scope, enum_name))
+        lines.extend(_enum(enum, schema.syntax, "", enum_scope, enum_name))
         lines.append("")
     for message, message_name in zip(schema.messages, message_names, strict=True):
         lines.extend(
