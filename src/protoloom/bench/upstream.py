@@ -237,26 +237,31 @@ def extract(
             _open_regular(archive) as archive_stream,
             tarfile.open(fileobj=archive_stream, mode="r:gz") as bundle,
         ):
-            members = bundle.getmembers()
-            if not members:
-                raise ValueError(f"empty archive: {archive}")
-            if len(members) > max_members:
-                raise ValueError(f"archive contains more than {max_members} members")
-            total_size = sum(member.size for member in members if member.isfile())
-            if total_size > max_size:
-                raise ValueError(f"archive expands beyond {max_size} bytes")
+            members: list[tarfile.TarInfo] = []
             paths: set[tuple[str, ...]] = set()
             roots: set[str] = set()
-            for member in members:
+            total_size = 0
+            for member in bundle:
+                if len(members) >= max_members:
+                    raise ValueError(
+                        f"archive contains more than {max_members} members"
+                    )
+                members.append(member)
                 path = Path(member.name)
                 if not path.parts or path.is_absolute() or ".." in path.parts:
                     raise ValueError(f"unsafe archive member: {member.name}")
                 if not (member.isfile() or member.isdir()):
                     raise ValueError(f"non-file archive member refused: {member.name}")
+                if member.isfile():
+                    total_size += member.size
+                    if total_size > max_size:
+                        raise ValueError(f"archive expands beyond {max_size} bytes")
                 if path.parts in paths:
                     raise ValueError(f"duplicate archive member: {member.name}")
                 paths.add(path.parts)
                 roots.add(path.parts[0])
+            if not members:
+                raise ValueError(f"empty archive: {archive}")
             if len(roots) != 1:
                 raise ValueError(f"archive needs one root directory: {archive}")
             for member in members:
