@@ -66,7 +66,25 @@ def test_report_bounds_encoded_output() -> None:
         emit_report([], [], max_bytes=8)
 
 
-@pytest.mark.parametrize(("max_items", "max_bytes"), [(0, 1), (1, 0)])
-def test_report_rejects_nonpositive_limits(max_items: int, max_bytes: int) -> None:
+def test_report_bounds_message_depth() -> None:
+    root = Message("Outer")
+    root.messages.append(Message("Inner"))
+
+    with pytest.raises(ValueError, match="message depth 1"):
+        emit_report([RecoveredSchema("deep.proto", messages=[root])], [], max_depth=1)
+
+
+def test_report_bounds_cyclic_message_graph() -> None:
+    root = Message("Cycle")
+    root.messages.append(root)
+
+    with pytest.raises(ValueError, match="message depth 10"):
+        emit_report([RecoveredSchema("cycle.proto", messages=[root])], [], max_depth=10)
+
+
+@pytest.mark.parametrize(
+    "limits", [{"max_items": 0}, {"max_depth": 0}, {"max_bytes": 0}]
+)
+def test_report_rejects_nonpositive_limits(limits: dict[str, int]) -> None:
     with pytest.raises(ValueError, match="limits must be positive"):
-        emit_report([], [], max_items=max_items, max_bytes=max_bytes)
+        emit_report([], [], **limits)
