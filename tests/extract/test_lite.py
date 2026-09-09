@@ -1,3 +1,5 @@
+import pytest
+
 from protoloom.container.dex import CodeItem, DexField, DexMethod, EncodedMethod
 from protoloom.extract.lite import (
     LiteMapEvidence,
@@ -898,3 +900,46 @@ def test_invalid_invoke_method_index_is_a_bailout() -> None:
     assert len(result.findings) == 1
     assert result.bailout_count == 1
     assert "invalid method index 99" in result.bailouts[0].reason
+
+
+@pytest.mark.parametrize(
+    "instructions",
+    [
+        (0x0100,),
+        (0x0200,),
+        (0x0300,),
+        (0x0300, 1),
+        (0x0300, 1, 1),
+    ],
+)
+def test_truncated_payload_header_is_a_bailout(
+    instructions: tuple[int, ...],
+) -> None:
+    dex = FakeDex(instructions, ("owner", "newMessageInfo"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert result.findings == ()
+    assert result.bailout_count == 1
+    assert "truncated DEX instruction" in result.bailouts[0].reason
+
+
+def test_unsupported_instruction_is_a_bailout() -> None:
+    dex = FakeDex((0x00E3,), ("owner", "newMessageInfo"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert result.findings == ()
+    assert result.bailout_count == 1
+    assert "unsupported DEX opcode" in result.bailouts[0].reason
+
+
+def test_impossible_invoke_register_count_is_a_bailout() -> None:
+    instructions = (0x6071, 1, 0)
+    dex = FakeDex(instructions, ("owner", "newMessageInfo"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert result.findings == ()
+    assert result.bailout_count == 1
+    assert "0 registers, expected 3" in result.bailouts[0].reason
