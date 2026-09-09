@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Hashable
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import TypeVar
@@ -7,7 +8,6 @@ from typing import TypeVar
 from protoloom.model import (
     Confidence,
     EnumType,
-    Evidence,
     Field,
     Message,
     RecoveredSchema,
@@ -40,7 +40,7 @@ MAX_RECONCILE_SCHEMAS = 100_000
 MAX_RECONCILE_ITEMS = 1_000_000
 MAX_RECONCILE_DEPTH = 100
 MAX_RECONCILE_CONFLICTS = 1_000_000
-T = TypeVar("T")
+T = TypeVar("T", bound=Hashable)
 
 
 class _ConflictList(list[Conflict]):
@@ -70,12 +70,13 @@ def reconcile(
     # same name) still merges as intended.
     merged: dict[tuple[str, str], RecoveredSchema] = {}
     conflicts = _ConflictList(max_conflicts)
+    seen_lists: dict[int, set[object]] = {}
     for source in schemas:
         key = (source.package, source.name)
         if key not in merged:
             merged[key] = deepcopy(source)
             continue
-        _merge_schema(merged[key], source, conflicts)
+        _merge_schema(merged[key], source, conflicts, seen_lists)
     return ReconciliationResult(list(merged.values()), conflicts)
 
 
@@ -118,16 +119,17 @@ def _merge_schema(
     target: RecoveredSchema,
     source: RecoveredSchema,
     conflicts: list[Conflict],
+    seen_lists: dict[int, set[object]],
 ) -> None:
     path = target.name
     if target.package != source.package:
         _record(conflicts, path, "package", target.package, source.package, None, None)
     if target.syntax != source.syntax:
         _record(conflicts, path, "syntax", target.syntax, source.syntax, None, None)
-    target.dependencies = _unique(target.dependencies + source.dependencies)
-    target.evidence = _evidence(target.evidence, source.evidence)
-    _merge_named_messages(target.messages, source.messages, path, conflicts)
-    _merge_named_enums(target.enums, source.enums, path, conflicts)
+    _merge_unique(target.dependencies, source.dependencies, seen_lists)
+    _merge_unique(target.evidence, source.evidence, seen_lists)
+    _merge_named_messages(target.messages, source.messages, path, conflicts, seen_lists)
+    _merge_named_enums(target.enums, source.enums, path, conflicts, seen_lists)
 
 
 def _merge_named_messages(
@@ -135,6 +137,7 @@ def _merge_named_messages(
     source: list[Message],
     parent: str,
     conflicts: list[Conflict],
+    seen_lists: dict[int, set[object]],
 ) -> None:
     by_name = {item.name: item for item in target}
     for incoming in source:
@@ -146,10 +149,12 @@ def _merge_named_messages(
             continue
         path = f"{parent}.{current.name}"
         current.confidence = _best(current.confidence, incoming.confidence)
-        current.evidence = _evidence(current.evidence, incoming.evidence)
-        _merge_fields(current.fields, incoming.fields, path, conflicts)
-        _merge_named_messages(current.messages, incoming.messages, path, conflicts)
-        _merge_named_enums(current.enums, incoming.enums, path, conflicts)
+        _merge_unique(current.evidence, incoming.evidence, seen_lists)
+        _merge_fields(current.fields, incoming.fields, path, conflicts, seen_lists)
+        _merge_named_messages(
+            current.messages, incoming.messages, path, conflicts, seen_lists
+        )
+        _merge_named_enums(current.enums, incoming.enums, path, conflicts, seen_lists)
 
 
 def _merge_fields(
@@ -157,6 +162,7 @@ def _merge_fields(
     source: list[Field],
     parent: str,
     conflicts: list[Conflict],
+    seen_lists: dict[int, set[object]],
 ) -> None:
     positions = {item.number: index for index, item in enumerate(target)}
     for incoming in source:
@@ -190,7 +196,7 @@ def _merge_fields(
                     winner.confidence,
                     loser.confidence,
                 )
-        evidence = _evidence(current.evidence, incoming.evidence)
+        evidence = _merge_unique(current.evidence, incoming.evidence, seen_lists)
         if winner is incoming:
             replacement = deepcopy(incoming)
             replacement.evidence = evidence
@@ -204,6 +210,7 @@ def _merge_named_enums(
     source: list[EnumType],
     parent: str,
     conflicts: list[Conflict],
+    seen_lists: dict[int, set[object]],
 ) -> None:
     by_name = {item.name: item for item in target}
     for incoming in source:
@@ -214,7 +221,7 @@ def _merge_named_enums(
             by_name[copied.name] = copied
             continue
         path = f"{parent}.{current.name}"
-        current.evidence = _evidence(current.evidence, incoming.evidence)
+        _merge_unique(current.evidence, incoming.evidence, seen_lists)
         winner_is_source = _RANK[incoming.confidence] > _RANK[current.confidence]
         current.confidence = _best(current.confidence, incoming.confidence)
         values = deepcopy(incoming.values) if winner_is_source else current.values
@@ -269,9 +276,16 @@ def _record(
     )
 
 
-def _evidence(first: list[Evidence], second: list[Evidence]) -> list[Evidence]:
-    return _unique(first + second)
-
-
-def _unique(values: list[T]) -> list[T]:
-    return list(dict.fromkeys(values))
+def _merge_unique(
+    target: list[T], source: list[T], seen_lists: dict[int, set[object]]
+) -> list[T]:
+    seen = seen_lists.get(id(target))
+    if seen is None:
+        target[:] = dict.fromkeys(target)
+        seen = set(target)
+        seen_lists[id(target)] = seen
+    for value in source:
+        if value not in seen:
+            target.append(value)
+            seen.add(value)
+    return target
