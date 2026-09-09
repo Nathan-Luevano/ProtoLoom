@@ -317,6 +317,30 @@ def test_reads_static_field_number_constants() -> None:
     assert values == (1, 2)
 
 
+def test_reads_negative_static_integer_constants() -> None:
+    raw = bytearray(_dex_with_static_int_fields())
+    raw[-3] = 0xFF
+    dex = DexFile(raw)
+    assert dex.static_field_values(dex.classes[0]) == (-1, 2)
+
+
+def test_rejects_invalid_encoded_value_width() -> None:
+    raw = bytearray(_dex_with_static_int_fields())
+    raw[-4] = 0xE4
+    dex = DexFile(raw)
+    with pytest.raises(DexError, match="invalid width"):
+        dex.static_field_values(dex.classes[0])
+
+
+def test_rejects_invalid_encoded_reference() -> None:
+    raw = bytearray(_dex_with_static_int_fields())
+    raw[-4] = 0x17
+    raw[-3] = 0xFF
+    dex = DexFile(raw)
+    with pytest.raises(DexError, match="string index"):
+        dex.static_field_values(dex.classes[0])
+
+
 def test_rejects_excessive_encoded_collection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
