@@ -195,14 +195,17 @@ def _field(
         item.oneof is not None and not item.proto3_optional
     ):
         label = ""
-    elif syntax == "proto3" and label == "optional":
-        label = "optional" if item.proto3_optional else ""
+    elif syntax == "proto3":
+        if label == "optional":
+            label = "optional" if item.proto3_optional else ""
+        elif label == "required":
+            label = ""
     prefix = f"{label} " if label else ""
     options: list[str] = []
     default = _default_literal(item)
     if default is not None and syntax == "proto2":
         options.append(f"default = {default}")
-    if item.packed is not None:
+    if item.packed is not None and label == "repeated":
         options.append(f"packed = {'true' if item.packed else 'false'}")
     suffix = f" [{', '.join(options)}]" if options else ""
     field_type = _resolved_type(item.type_name, renames, package)
@@ -285,7 +288,7 @@ def emit_proto(schema: RecoveredSchema) -> str:
     lines = [f'syntax = "{schema.syntax}";', ""]
     if schema.package:
         lines.extend((f"package {_qualified_name(schema.package)};", ""))
-    for dependency in schema.dependencies:
+    for dependency in dict.fromkeys(schema.dependencies):
         lines.append(f"import {json.dumps(dependency)};")
     if schema.dependencies:
         lines.append("")
