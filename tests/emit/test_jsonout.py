@@ -43,12 +43,34 @@ def test_json_output_bounds_encoded_bytes() -> None:
         emit_json([], [], [], max_bytes=8)
 
 
+def test_json_output_bounds_schema_items() -> None:
+    schema = RecoveredSchema(
+        "deep.proto",
+        messages=[Message("Outer", messages=[Message("Inner")])],
+    )
+
+    with pytest.raises(ValueError, match="exceeds 2 schema items"):
+        emit_json([schema], [], [], max_items=2)
+
+
+def test_json_output_bounds_message_depth() -> None:
+    schema = RecoveredSchema(
+        "deep.proto",
+        messages=[Message("Outer", messages=[Message("Inner")])],
+    )
+
+    with pytest.raises(ValueError, match="message depth 1"):
+        emit_json([schema], [], [], max_depth=1)
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
         {"max_schemas": 0},
         {"max_conflicts": 0},
         {"max_artifacts": 0},
+        {"max_items": 0},
+        {"max_depth": 0},
         {"max_bytes": 0},
     ],
 )
