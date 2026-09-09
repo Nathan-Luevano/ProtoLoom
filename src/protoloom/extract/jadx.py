@@ -51,42 +51,65 @@ def decompile_with_jadx(
         raise JadxError(f"jadx output directory is a symlink: {output}")
     if output.exists() and not output.is_dir():
         raise JadxError(f"jadx output path is not a directory: {output}")
-    output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryFile() as log:
-        process = subprocess.Popen(
-            [
-                command,
-                "--no-res",
-                "--show-bad-code",
-                "-d",
-                str(output),
-                str(input_path),
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-        try:
-            process.wait(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired as error:
-            _kill_process_group(process)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{output.name}.", dir=output.parent))
+    try:
+        with tempfile.TemporaryFile() as log:
+            process = subprocess.Popen(
+                [
+                    command,
+                    "--no-res",
+                    "--show-bad-code",
+                    "-d",
+                    str(staging),
+                    str(input_path),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            try:
+                process.wait(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired as error:
+                _kill_process_group(process)
+                detail = _log_tail(log)
+                raise JadxError(
+                    f"jadx exceeded {timeout_seconds:g}s timeout"
+                    + (f": {detail}" if detail else "")
+                ) from error
+            except BaseException:
+                _kill_process_group(process)
+                raise
             detail = _log_tail(log)
+        if process.returncode != 0:
             raise JadxError(
-                f"jadx exceeded {timeout_seconds:g}s timeout"
+                f"jadx exited with status {process.returncode}"
                 + (f": {detail}" if detail else "")
-            ) from error
-        except BaseException:
-            _kill_process_group(process)
-            raise
-        detail = _log_tail(log)
-    if process.returncode != 0:
-        raise JadxError(
-            f"jadx exited with status {process.returncode}"
-            + (f": {detail}" if detail else "")
+            )
+        sources, candidates = _index_candidates(staging)
+        _publish_directory(staging, output)
+        return JadxResult(output, sources, candidates, detail)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _publish_directory(staging: Path, output: Path) -> None:
+    backup: Path | None = None
+    if output.exists():
+        backup = Path(
+            tempfile.mkdtemp(prefix=f".{output.name}.old.", dir=output.parent)
         )
-    sources, candidates = _index_candidates(output)
-    return JadxResult(output, sources, candidates, detail)
+        backup.rmdir()
+        output.replace(backup)
+    try:
+        staging.replace(output)
+    except BaseException:
+        if backup is not None:
+            backup.replace(output)
+        raise
+    if backup is not None:
+        shutil.rmtree(backup, ignore_errors=True)
 
 
 def _log_tail(log: BinaryIO, limit: int = 2000) -> str:
