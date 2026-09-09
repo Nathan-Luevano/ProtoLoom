@@ -1,3 +1,5 @@
+from copy import deepcopy as real_deepcopy
+
 import pytest
 
 from protoloom.model import (
@@ -9,7 +11,12 @@ from protoloom.model import (
     Message,
     RecoveredSchema,
 )
-from protoloom.reconcile import Conflict, _merge_fields, reconcile
+from protoloom.reconcile import (
+    Conflict,
+    _merge_fields,
+    _merge_named_enums,
+    reconcile,
+)
 
 
 def test_reconcile_prefers_higher_confidence_and_combines_evidence() -> None:
@@ -127,6 +134,48 @@ def test_field_replacement_uses_number_positions(
     assert target[0].name == "new_1"
     assert target[-1].name == "new_1000"
     assert len(conflicts) == 2000
+
+
+def test_equal_confidence_enum_merges_do_not_recopy_accumulated_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    copied_lists = 0
+
+    def counted(value: object) -> object:
+        nonlocal copied_lists
+        if isinstance(value, list):
+            copied_lists += 1
+        return real_deepcopy(value)
+
+    monkeypatch.setattr("protoloom.reconcile.deepcopy", counted)
+    target = [EnumType("State", [EnumValue("UNKNOWN", 0)], Confidence.HIGH)]
+    conflicts: list[Conflict] = []
+
+    for number in range(1, 1001):
+        incoming = EnumType(
+            "State",
+            [EnumValue(f"VALUE_{number}", number)],
+            Confidence.HIGH,
+        )
+        _merge_named_enums(target, [incoming], "Schema", conflicts)
+
+    assert copied_lists == 0
+    assert len(target[0].values) == 1001
+    assert target[0].values[-1] == EnumValue("VALUE_1000", 1000)
+
+
+def test_higher_confidence_enum_replaces_order_without_mutating_source() -> None:
+    target = [EnumType("State", [EnumValue("OLD", 1)], Confidence.MEDIUM)]
+    incoming = EnumType(
+        "State",
+        [EnumValue("NEW", 2)],
+        Confidence.CERTAIN,
+    )
+
+    _merge_named_enums(target, [incoming], "Schema", [])
+
+    assert target[0].values == [EnumValue("NEW", 2), EnumValue("OLD", 1)]
+    assert incoming.values == [EnumValue("NEW", 2)]
 
 
 def test_reconcile_bounds_schema_count() -> None:
