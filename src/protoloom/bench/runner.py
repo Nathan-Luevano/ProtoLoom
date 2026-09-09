@@ -18,6 +18,8 @@ from protoloom.bench.metrics import (
     score_target,
 )
 
+MAX_BENCH_SCHEMA_ITEMS = 100_000
+
 
 def run_corpus(manifest: CorpusManifest, workdir: Path) -> AggregateReport:
     artifacts = materialize(manifest, workdir)
@@ -36,6 +38,7 @@ def load_schema(path: Path) -> BenchmarkSchema:
     raw = read_json(path)
     if not isinstance(raw, dict):
         raise ValueError(f"benchmark schema must be an object: {path}")
+    _validate_schema_budget(raw)
     messages = tuple(_message(item) for item in _items(raw, "messages"))
     enums = tuple(_enum(item) for item in _items(raw, "enums"))
     _ensure_unique(
@@ -59,6 +62,34 @@ def load_schema(path: Path) -> BenchmarkSchema:
         enums,
         ambiguities,
     )
+
+
+def _validate_schema_budget(raw: Mapping[str, Any]) -> None:
+    messages = _items(raw, "messages")
+    enums = _items(raw, "enums")
+    count = len(messages) + len(enums)
+    if count > MAX_BENCH_SCHEMA_ITEMS:
+        raise ValueError(f"benchmark schema exceeds {MAX_BENCH_SCHEMA_ITEMS} items")
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        fields = message.get("fields", [])
+        nested_enums = message.get("enums", [])
+        if isinstance(fields, list):
+            count += len(fields)
+        if isinstance(nested_enums, list):
+            count += len(nested_enums)
+            count += sum(_enum_value_count(item) for item in nested_enums)
+        if count > MAX_BENCH_SCHEMA_ITEMS:
+            raise ValueError(f"benchmark schema exceeds {MAX_BENCH_SCHEMA_ITEMS} items")
+    count += sum(_enum_value_count(item) for item in enums)
+    if count > MAX_BENCH_SCHEMA_ITEMS:
+        raise ValueError(f"benchmark schema exceeds {MAX_BENCH_SCHEMA_ITEMS} items")
+
+
+def _enum_value_count(value: object) -> int:
+    values = value.get("values", []) if isinstance(value, dict) else []
+    return len(values) if isinstance(values, list) else 0
 
 
 def _ambiguities(value: object) -> tuple[frozenset[str], ...]:
