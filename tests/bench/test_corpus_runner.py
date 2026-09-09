@@ -197,6 +197,24 @@ def test_materialize_rejects_oversized_artifact(tmp_path: Path) -> None:
     assert not tuple(cache.rglob("*.part"))
 
 
+def test_materialize_syncs_artifacts_and_cache_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = load_manifest(FIXTURES / "manifest.json")
+    synced: list[int] = []
+    real_fsync = os.fsync
+
+    def record_fsync(descriptor: int) -> None:
+        synced.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", record_fsync)
+    resolved = materialize(manifest, tmp_path / "cache")
+    assert len(resolved) == 2
+    assert len(synced) == 4
+    assert not tuple((tmp_path / "cache").rglob(".*"))
+
+
 def test_hash_rejects_oversized_cached_artifact(tmp_path: Path) -> None:
     path = tmp_path / "cached.bin"
     path.write_bytes(b"large")
