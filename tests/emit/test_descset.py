@@ -72,9 +72,36 @@ def test_descriptor_set_bounds_encoded_size() -> None:
         emit_descriptor_set([descriptor], max_size=8)
 
 
-@pytest.mark.parametrize(("max_files", "max_size"), [(0, 1), (1, 0)])
+def test_descriptor_set_bounds_schema_items() -> None:
+    descriptor = FileDescriptorProto(name="schema.proto")
+    message = descriptor.message_type.add(name="Record")
+    message.field.add(name="first", number=1)
+    message.field.add(name="second", number=2)
+
+    with pytest.raises(ValueError, match="exceeds 2 items"):
+        emit_descriptor_set([descriptor], max_items=2)
+
+
+def test_descriptor_set_bounds_message_depth() -> None:
+    descriptor = FileDescriptorProto(name="schema.proto")
+    message = descriptor.message_type.add(name="Outer")
+    message.nested_type.add(name="Inner")
+
+    with pytest.raises(ValueError, match="message depth 1"):
+        emit_descriptor_set([descriptor], max_depth=1)
+
+
+@pytest.mark.parametrize(
+    "limits",
+    [
+        {"max_files": 0},
+        {"max_items": 0},
+        {"max_depth": 0},
+        {"max_size": 0},
+    ],
+)
 def test_descriptor_set_rejects_nonpositive_limits(
-    max_files: int, max_size: int
+    limits: dict[str, int],
 ) -> None:
     with pytest.raises(ValueError, match="limits must be positive"):
-        emit_descriptor_set([], max_files=max_files, max_size=max_size)
+        emit_descriptor_set([], **limits)
