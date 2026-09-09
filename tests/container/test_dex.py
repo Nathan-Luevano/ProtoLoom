@@ -307,6 +307,17 @@ def _dex_with_static_int_fields() -> bytes:
     )
 
 
+def _dex_with_static_payload(payload: bytes) -> bytes:
+    source = bytearray(_dex_with_static_int_fields())
+    parsed = DexFile(source)
+    offset = parsed.classes[0].static_values_offset
+    data_offset = parsed.header.data_offset
+    result = source[:offset] + payload
+    struct.pack_into("<I", result, 32, len(result))
+    struct.pack_into("<I", result, 104, len(result) - data_offset)
+    return bytes(result)
+
+
 def test_reads_static_field_number_constants() -> None:
     dex = DexFile(_dex_with_static_int_fields())
     (owner,) = dex.classes
@@ -322,6 +333,23 @@ def test_reads_negative_static_integer_constants() -> None:
     raw[-3] = 0xFF
     dex = DexFile(raw)
     assert dex.static_field_values(dex.classes[0]) == (-1, 2)
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (bytes((1, 0x30, 0x80, 0x3F)), 1.0),
+        (bytes((1, 0x31, 0xF0, 0x3F)), 1.0),
+        (bytes((1, 0x70)) + struct.pack("<f", -2.5), -2.5),
+        (bytes((1, 0xF1)) + struct.pack("<d", 3.25), 3.25),
+    ],
+)
+def test_reads_static_floating_point_constants(
+    payload: bytes,
+    expected: float,
+) -> None:
+    dex = DexFile(_dex_with_static_payload(payload))
+    assert dex.static_field_values(dex.classes[0]) == (expected,)
 
 
 def test_rejects_invalid_encoded_value_width() -> None:
