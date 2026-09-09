@@ -6,7 +6,12 @@ from typing import Any
 
 import pytest
 
-from protoloom.extract.jadx import JadxError, _index_candidates, decompile_with_jadx
+from protoloom.extract.jadx import (
+    JadxError,
+    _index_candidates,
+    _publish_directory,
+    decompile_with_jadx,
+)
 
 
 def _executable(path: Path, body: str) -> Path:
@@ -219,3 +224,29 @@ def test_jadx_success_replaces_stale_output(tmp_path: Path) -> None:
     assert not (output / "Stale.java").exists()
     assert (output / "New.java").is_file()
     assert not tuple(tmp_path.glob(".out.*"))
+
+
+def test_jadx_publication_restores_output_after_rename_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "existing.java").write_text("preserve", encoding="utf-8")
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "new.java").write_text("new", encoding="utf-8")
+    real_replace = Path.replace
+
+    def fail_staging(path: Path, target: Path) -> Path:
+        if path == staging:
+            raise OSError("rename failed")
+        return real_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_staging)
+
+    with pytest.raises(OSError, match="rename failed"):
+        _publish_directory(staging, output)
+
+    assert (output / "existing.java").read_text(encoding="utf-8") == "preserve"
+    assert staging.is_dir()
+    assert not tuple(tmp_path.glob(".out.old.*"))
