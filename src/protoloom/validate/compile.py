@@ -1,6 +1,7 @@
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -94,9 +95,12 @@ def _read_diagnostic(stream: BinaryIO) -> str:
 
 
 def _read_descriptor(path: Path) -> bytes:
-    if path.stat().st_size > MAX_DESCRIPTOR_SET_SIZE:
-        raise ValueError(f"descriptor set exceeds {MAX_DESCRIPTOR_SET_SIZE} bytes")
     with path.open("rb") as stream:
+        status = os.fstat(stream.fileno())
+        if not stat.S_ISREG(status.st_mode):
+            raise ValueError("compiler descriptor set is not a regular file")
+        if status.st_size > MAX_DESCRIPTOR_SET_SIZE:
+            raise ValueError(f"descriptor set exceeds {MAX_DESCRIPTOR_SET_SIZE} bytes")
         payload = stream.read(MAX_DESCRIPTOR_SET_SIZE + 1)
     if len(payload) > MAX_DESCRIPTOR_SET_SIZE:
         raise ValueError(f"descriptor set exceeds {MAX_DESCRIPTOR_SET_SIZE} bytes")

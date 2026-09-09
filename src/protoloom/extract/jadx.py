@@ -47,6 +47,10 @@ def decompile_with_jadx(
     command = executable or shutil.which("jadx")
     if command is None:
         raise JadxError("jadx is not installed; run `protoloom doctor`")
+    if output.is_symlink():
+        raise JadxError(f"jadx output directory is a symlink: {output}")
+    if output.exists() and not output.is_dir():
+        raise JadxError(f"jadx output path is not a directory: {output}")
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryFile() as log:
         process = subprocess.Popen(

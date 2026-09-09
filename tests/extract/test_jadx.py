@@ -43,6 +43,25 @@ def test_jadx_reports_nonzero_exit(tmp_path: Path) -> None:
         decompile_with_jadx(tmp_path / "x.apk", tmp_path / "out", executable=str(tool))
 
 
+@pytest.mark.parametrize("kind", ["symlink", "file"])
+def test_jadx_rejects_unsafe_output_path(tmp_path: Path, kind: str) -> None:
+    output = tmp_path / "out"
+    if kind == "symlink":
+        victim = tmp_path / "victim"
+        victim.mkdir()
+        output.symlink_to(victim, target_is_directory=True)
+    else:
+        output.write_text("occupied", encoding="utf-8")
+
+    with pytest.raises(JadxError, match=r"symlink|not a directory"):
+        decompile_with_jadx(tmp_path / "x.apk", output, executable="jadx")
+
+    if kind == "symlink":
+        assert list(victim.iterdir()) == []
+    else:
+        assert output.read_text(encoding="utf-8") == "occupied"
+
+
 def test_jadx_kills_timed_out_process(tmp_path: Path) -> None:
     tool = _executable(tmp_path / "jadx", "sleep 5\n")
     with pytest.raises(JadxError, match="exceeded"):
