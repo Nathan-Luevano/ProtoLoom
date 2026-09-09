@@ -1,3 +1,4 @@
+import os
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -122,4 +123,20 @@ def test_compile_rejects_oversized_descriptor(
     monkeypatch.setattr("protoloom.validate.compile.subprocess.Popen", compile_output)
 
     with pytest.raises(ValueError, match="descriptor set exceeds 4 bytes"):
+        compile_proto('syntax = "proto3";')
+
+
+def test_compile_rejects_special_descriptor(monkeypatch: MonkeyPatch) -> None:
+    start = _compiler(monkeypatch)
+
+    def compile_output(args: list[str], **kwargs: object) -> object:
+        output_arg = next(
+            item for item in args if item.startswith("--descriptor_set_out=")
+        )
+        Path(output_arg.partition("=")[2]).symlink_to(Path(os.devnull))
+        return start(args, **kwargs)
+
+    monkeypatch.setattr("protoloom.validate.compile.subprocess.Popen", compile_output)
+
+    with pytest.raises(ValueError, match="descriptor set is not a regular file"):
         compile_proto('syntax = "proto3";')
