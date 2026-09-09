@@ -509,9 +509,11 @@ def recover_map_evidence(dex: DexFile, field_index: int) -> LiteMapEvidence | No
                 ):
                     key = registers.get(arguments[0])
                     value = registers.get(arguments[2])
-                    if key is not None and value is not None:
-                        key_field = dex.fields[key[1]]
-                        value_field = dex.fields[value[1]]
+                    key_index = _field_reference_index(key, len(dex.fields))
+                    value_index = _field_reference_index(value, len(dex.fields))
+                    if key_index is not None and value_index is not None:
+                        key_field = dex.fields[key_index]
+                        value_field = dex.fields[value_index]
                         if (
                             dex.types[key_field.type_index] != parameters[0]
                             or dex.types[value_field.type_index] != parameters[2]
@@ -670,7 +672,7 @@ def _scan_method(
             destination = units[0] >> 8
             registers[destination] = _pool_object("class", units[1], dex.types)
         elif opcode == 0x62:
-            registers[units[0] >> 8] = LiteObject("static_field", units[1])
+            registers[units[0] >> 8] = _static_field_object(dex, units[1])
         elif opcode == 0x23:
             destination = (units[0] >> 8) & 0xF
             size_register = (units[0] >> 12) & 0xF
@@ -870,6 +872,23 @@ def _pool_object(kind: str, index: int, values: tuple[str, ...]) -> LiteObject:
     if index >= len(values):
         return LiteObject(f"invalid_{kind}", index)
     return LiteObject(kind, values[index])
+
+
+def _static_field_object(dex: DexFile, index: int) -> LiteObject:
+    kind = "static_field" if index < len(dex.fields) else "invalid_static_field"
+    return LiteObject(kind, index)
+
+
+def _field_reference_index(value: object, field_count: int) -> int | None:
+    if (
+        not isinstance(value, tuple)
+        or len(value) != 2
+        or value[0] != "field"
+        or not isinstance(value[1], int)
+        or not 0 <= value[1] < field_count
+    ):
+        return None
+    return value[1]
 
 
 def _move_object(registers: dict[int, Any], instruction: _Instruction) -> None:
