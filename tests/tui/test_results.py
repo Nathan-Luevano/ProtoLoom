@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -77,5 +78,19 @@ def test_ignores_oversized_optional_report(
     _write(tmp_path, {"schemas": [], "conflicts": []})
     (tmp_path / "report.md").write_text("none", encoding="utf-8")
     monkeypatch.setattr("protoloom.tui.results.MAX_REPORT_SIZE", 3)
+
+    assert load_output(tmp_path).bailouts is None
+
+
+def test_rejects_special_recovery_file(tmp_path: Path) -> None:
+    (tmp_path / "recovery.json").symlink_to(Path(os.devnull))
+
+    with pytest.raises(OutputError, match="is not a regular file"):
+        load_output(tmp_path)
+
+
+def test_ignores_special_optional_report(tmp_path: Path) -> None:
+    _write(tmp_path, {"schemas": [], "conflicts": []})
+    (tmp_path / "report.md").symlink_to(Path(os.devnull))
 
     assert load_output(tmp_path).bailouts is None

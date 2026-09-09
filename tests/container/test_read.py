@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -23,3 +24,8 @@ def test_limited_read_rejects_oversized_input_before_reading(tmp_path: Path) -> 
 def test_limited_read_rejects_nonpositive_limit(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="must be positive"):
         read_limited(tmp_path / "missing", max_size=0)
+
+
+def test_limited_read_rejects_special_files() -> None:
+    with pytest.raises(OSError, match="input is not a regular file"):
+        read_limited(Path(os.devnull))
