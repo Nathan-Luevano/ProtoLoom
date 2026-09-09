@@ -204,6 +204,22 @@ def test_reads_enclosing_class_annotation() -> None:
     assert dex.enclosing_class_index(inner) == outer.class_index
 
 
+def test_caches_immutable_dex_metadata() -> None:
+    dex = DexFile(_dex_with_enclosing_class())
+    _, inner = dex.classes
+    annotations = dex.class_annotations(inner)
+    assert dex.types is dex.types
+    assert dex.class_by_type_index(inner.class_index) is inner
+    assert dex.class_annotations(inner) is annotations
+
+
+def test_rejects_duplicate_class_definitions() -> None:
+    malformed = bytearray(_dex_with_enclosing_class())
+    struct.pack_into("<I", malformed, 172, 0)
+    with pytest.raises(DexError, match="duplicate class"):
+        DexFile(malformed)
+
+
 def test_rejects_invalid_type_descriptor_index() -> None:
     malformed = bytearray(_dex_with_enclosing_class())
     struct.pack_into("<I", malformed, 128, 4)

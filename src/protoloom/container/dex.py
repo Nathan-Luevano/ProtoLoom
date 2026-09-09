@@ -164,18 +164,18 @@ class DexFile:
         self._validate_tables()
         self.strings = self._parse_strings()
         self.type_ids = self._parse_type_ids()
+        self.types = tuple(self.strings[index] for index in self.type_ids)
         self.prototypes = self._parse_prototypes()
         self.fields = self._parse_fields()
         self.methods = self._parse_methods()
         self.classes = self._parse_classes()
+        self._classes_by_type_index = {item.class_index: item for item in self.classes}
+        self._annotation_sets: dict[int, tuple[AnnotationItem, ...]] = {}
+        self._annotation_items: dict[int, AnnotationItem] = {}
 
     @classmethod
     def from_path(cls, path: str | Path) -> DexFile:
         return cls(read_limited(path))
-
-    @property
-    def types(self) -> tuple[str, ...]:
-        return tuple(self.strings[index] for index in self.type_ids)
 
     def class_static_fields(self, item: DexClass) -> tuple[DexField, ...]:
         if item.class_data_offset == 0:
@@ -303,10 +303,7 @@ class DexFile:
         return self.strings[item.name_index]
 
     def class_by_type_index(self, type_index: int) -> DexClass | None:
-        for item in self.classes:
-            if item.class_index == type_index:
-                return item
-        return None
+        return self._classes_by_type_index.get(type_index)
 
     def class_annotations(self, item: DexClass) -> tuple[AnnotationItem, ...]:
         if item.annotations_offset == 0:
@@ -314,10 +311,7 @@ class DexFile:
         (class_annotations_off,) = self._unpack("<I", item.annotations_offset)
         if class_annotations_off == 0:
             return ()
-        (size,) = self._unpack("<I", int(class_annotations_off))
-        self._validate_collection_size(int(size), "class annotations")
-        offsets = self._unpack(f"<{int(size)}I", int(class_annotations_off) + 4)
-        return tuple(self._annotation_item(int(offset)) for offset in offsets)
+        return self._annotation_set(int(class_annotations_off))
 
     def field_annotations(
         self, item: DexClass
@@ -333,14 +327,19 @@ class DexFile:
             cursor += 8
             if field_index >= len(self.fields):
                 raise DexError("annotated field index is out of range")
-            (count,) = self._unpack("<I", int(annotation_set_offset))
-            self._validate_collection_size(int(count), "field annotations")
-            offsets = self._unpack(f"<{int(count)}I", int(annotation_set_offset) + 4)
-            annotations = tuple(
-                self._annotation_item(int(offset)) for offset in offsets
-            )
+            annotations = self._annotation_set(int(annotation_set_offset))
             result.append((self.fields[int(field_index)], annotations))
         return tuple(result)
+
+    def _annotation_set(self, offset: int) -> tuple[AnnotationItem, ...]:
+        if offset in self._annotation_sets:
+            return self._annotation_sets[offset]
+        (count,) = self._unpack("<I", offset)
+        self._validate_collection_size(int(count), "annotations")
+        offsets = self._unpack(f"<{int(count)}I", offset + 4)
+        result = tuple(self._annotation_item(int(item)) for item in offsets)
+        self._annotation_sets[offset] = result
+        return result
 
     def enclosing_class_index(self, item: DexClass) -> int | None:
         for annotation in self.class_annotations(item):
@@ -352,6 +351,8 @@ class DexFile:
         return None
 
     def _annotation_item(self, offset: int) -> AnnotationItem:
+        if offset in self._annotation_items:
+            return self._annotation_items[offset]
         (visibility,) = self._unpack("<B", offset)
         type_index, cursor = self._uleb128(offset + 1)
         if type_index >= len(self.type_ids):
@@ -365,7 +366,9 @@ class DexFile:
                 raise DexError("annotation element name is out of range")
             value, cursor = self._encoded_value(cursor)
             elements.append((name_index, value))
-        return AnnotationItem(int(visibility), int(type_index), tuple(elements))
+        result = AnnotationItem(int(visibility), int(type_index), tuple(elements))
+        self._annotation_items[offset] = result
+        return result
 
     def _encoded_value(self, offset: int, depth: int = 0) -> tuple[object, int]:
         if depth > MAX_DEX_ENCODED_VALUE_DEPTH:
@@ -626,10 +629,13 @@ class DexFile:
 
     def _parse_classes(self) -> tuple[DexClass, ...]:
         result: list[DexClass] = []
+        class_indexes: set[int] = set()
         for index in range(self.header.class_defs_size):
             raw = self._unpack("<8I", self.header.class_defs_offset + index * 32)
             if raw[0] >= len(self.type_ids):
                 raise DexError("class type identifier is out of range")
+            if raw[0] in class_indexes:
+                raise DexError("duplicate class type identifier")
             if raw[2] != self.NO_INDEX and raw[2] >= len(self.type_ids):
                 raise DexError("class superclass identifier is out of range")
             if raw[4] != self.NO_INDEX and raw[4] >= len(self.strings):
@@ -640,6 +646,7 @@ class DexFile:
                 interfaces = self._unpack(f"<{int(count)}H", int(raw[3]) + 4)
                 if any(item >= len(self.type_ids) for item in interfaces):
                     raise DexError("class interface identifier is out of range")
+            class_indexes.add(int(raw[0]))
             result.append(DexClass(*(int(value) for value in raw)))
         return tuple(result)
 
