@@ -1,6 +1,11 @@
+import importlib
+
+import pytest
 from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
 
 from protoloom.validate.roundtrip import roundtrip_descriptor_set, roundtrip_message
+
+roundtrip_module = importlib.import_module("protoloom.validate.roundtrip")
 
 
 def descriptor_set() -> bytes:
@@ -58,3 +63,36 @@ def test_missing_message_is_reported() -> None:
     result = roundtrip_descriptor_set(descriptor_set(), "sample.Missing", b"")
     assert not result.decoded
     assert "Missing" in (result.error or "")
+
+
+def test_roundtrip_rejects_oversized_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(roundtrip_module, "MAX_ROUNDTRIP_PAYLOAD_SIZE", 2)
+
+    result = roundtrip_message(message_class(), b"123")
+
+    assert not result.decoded
+    assert result.input_size == 3
+    assert result.output_size is None
+    assert result.error == "payload exceeds 2 bytes"
+
+
+def test_roundtrip_rejects_oversized_descriptor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(roundtrip_module, "MAX_ROUNDTRIP_DESCRIPTOR_SIZE", 2)
+
+    result = roundtrip_descriptor_set(descriptor_set(), "sample.Record", b"")
+
+    assert not result.decoded
+    assert result.error == "descriptor set exceeds 2 bytes"
+
+
+def test_roundtrip_bounds_descriptor_file_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(roundtrip_module, "MAX_ROUNDTRIP_FILES", 0)
+
+    result = roundtrip_descriptor_set(descriptor_set(), "sample.Record", b"")
+
+    assert not result.decoded
+    assert result.error == "descriptor set exceeds 0 files"
