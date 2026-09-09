@@ -38,9 +38,21 @@ def test_jadx_runs_without_a_shell_and_counts_sources(tmp_path: Path) -> None:
 
 
 def test_jadx_reports_nonzero_exit(tmp_path: Path) -> None:
-    tool = _executable(tmp_path / "jadx", 'echo "broken input" >&2\nexit 7\n')
+    tool = _executable(
+        tmp_path / "jadx",
+        'out=""\n'
+        'while [ "$#" -gt 0 ]; do\n'
+        '  [ "$1" = "-d" ] && out="$2" && shift\n'
+        "  shift\n"
+        "done\n"
+        'printf "partial" > "$out/partial.java"\n'
+        'echo "broken input" >&2\nexit 7\n',
+    )
+    output = tmp_path / "out"
     with pytest.raises(JadxError, match="status 7: broken input"):
-        decompile_with_jadx(tmp_path / "x.apk", tmp_path / "out", executable=str(tool))
+        decompile_with_jadx(tmp_path / "x.apk", output, executable=str(tool))
+    assert not output.exists()
+    assert not tuple(tmp_path.glob(".out.*"))
 
 
 @pytest.mark.parametrize("kind", ["symlink", "file"])
@@ -186,3 +198,24 @@ def test_jadx_candidate_index_replaces_symlink(tmp_path: Path) -> None:
     assert result.candidate_sites == 1
     assert victim.read_text(encoding="utf-8") == "preserve"
     assert not index.is_symlink()
+
+
+def test_jadx_success_replaces_stale_output(tmp_path: Path) -> None:
+    tool = _executable(
+        tmp_path / "jadx",
+        'out=""\n'
+        'while [ "$#" -gt 0 ]; do\n'
+        '  [ "$1" = "-d" ] && out="$2" && shift\n'
+        "  shift\n"
+        "done\n"
+        'printf "class New {}" > "$out/New.java"\n',
+    )
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "Stale.java").write_text("stale", encoding="utf-8")
+
+    decompile_with_jadx(tmp_path / "x.apk", output, executable=str(tool))
+
+    assert not (output / "Stale.java").exists()
+    assert (output / "New.java").is_file()
+    assert not tuple(tmp_path.glob(".out.*"))
