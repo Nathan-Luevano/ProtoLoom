@@ -151,12 +151,27 @@ def test_reconcile_bounds_message_depth() -> None:
         reconcile([schema], max_depth=1)
 
 
+def test_reconcile_bounds_generated_conflicts() -> None:
+    first = RecoveredSchema(
+        "same",
+        messages=[Message("M", [Field("old", 1, "bytes", Confidence.HIGH)])],
+    )
+    second = RecoveredSchema(
+        "same",
+        messages=[Message("M", [Field("new", 1, "string", Confidence.HIGH)])],
+    )
+
+    with pytest.raises(ValueError, match="exceeds 1 conflicts"):
+        reconcile([first, second], max_conflicts=1)
+
+
 @pytest.mark.parametrize(
     "limits",
     [
         {"max_schemas": 0},
         {"max_items": 0},
         {"max_depth": 0},
+        {"max_conflicts": 0},
     ],
 )
 def test_reconcile_rejects_nonpositive_limits(limits: dict[str, int]) -> None:

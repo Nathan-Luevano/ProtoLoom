@@ -39,7 +39,19 @@ _RANK = {
 MAX_RECONCILE_SCHEMAS = 100_000
 MAX_RECONCILE_ITEMS = 1_000_000
 MAX_RECONCILE_DEPTH = 100
+MAX_RECONCILE_CONFLICTS = 1_000_000
 T = TypeVar("T")
+
+
+class _ConflictList(list[Conflict]):
+    def __init__(self, max_conflicts: int) -> None:
+        super().__init__()
+        self._max_conflicts = max_conflicts
+
+    def append(self, conflict: Conflict) -> None:
+        if len(self) >= self._max_conflicts:
+            raise ValueError(f"reconciliation exceeds {self._max_conflicts} conflicts")
+        super().append(conflict)
 
 
 def reconcile(
@@ -48,15 +60,16 @@ def reconcile(
     max_schemas: int = MAX_RECONCILE_SCHEMAS,
     max_items: int = MAX_RECONCILE_ITEMS,
     max_depth: int = MAX_RECONCILE_DEPTH,
+    max_conflicts: int = MAX_RECONCILE_CONFLICTS,
 ) -> ReconciliationResult:
-    _validate_budget(schemas, max_schemas, max_items, max_depth)
+    _validate_budget(schemas, max_schemas, max_items, max_depth, max_conflicts)
     # Two unrelated classes can share a bare file name (e.g. two distinct
     # "Relay" classes in different Java packages); the package qualifies
     # that identity so they merge only when they're actually the same type,
     # while the same class recovered from multiple DEX files (same package,
     # same name) still merges as intended.
     merged: dict[tuple[str, str], RecoveredSchema] = {}
-    conflicts: list[Conflict] = []
+    conflicts = _ConflictList(max_conflicts)
     for source in schemas:
         key = (source.package, source.name)
         if key not in merged:
@@ -71,8 +84,9 @@ def _validate_budget(
     max_schemas: int,
     max_items: int,
     max_depth: int,
+    max_conflicts: int,
 ) -> None:
-    if max_schemas <= 0 or max_items <= 0 or max_depth <= 0:
+    if min(max_schemas, max_items, max_depth, max_conflicts) <= 0:
         raise ValueError("reconciliation limits must be positive")
     if len(schemas) > max_schemas:
         raise ValueError(f"reconciliation exceeds {max_schemas} schemas")
