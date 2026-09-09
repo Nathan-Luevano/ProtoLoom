@@ -51,14 +51,18 @@ def _unique_names(
     values: list[str], fallback: str, reserved: set[str] | None = None
 ) -> list[str]:
     used = set(reserved or ())
+    next_suffix: dict[str, int] = {}
     result = []
     for value in values:
         base = _name(value, fallback)
         candidate = base
-        suffix = 2
-        while candidate in used:
-            candidate = f"{base}_{suffix}"
-            suffix += 1
+        if candidate in used:
+            suffix = next_suffix.get(base, 2)
+            while (candidate := f"{base}_{suffix}") in used:
+                suffix += 1
+            next_suffix[base] = suffix + 1
+        else:
+            next_suffix.setdefault(base, 2)
         used.add(candidate)
         result.append(candidate)
     return result
