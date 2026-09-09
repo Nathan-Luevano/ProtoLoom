@@ -383,6 +383,10 @@ class DexFile:
             value = int.from_bytes(
                 raw, "little", signed=value_type in _SIGNED_VALUE_TYPES
             )
+            if value_type == _VALUE_FLOAT:
+                return _decode_floating_value(raw, 4, "f"), cursor
+            if value_type == _VALUE_DOUBLE:
+                return _decode_floating_value(raw, 8, "d"), cursor
             self._validate_encoded_reference(value_type, value)
             return value, cursor
         if value_type == _VALUE_BOOLEAN:
@@ -680,3 +684,8 @@ def _decode_mutf8(raw: bytes) -> str:
         return cooked.decode("utf-8", errors="surrogatepass")
     except UnicodeDecodeError as error:
         raise DexError("invalid modified UTF-8 string") from error
+
+
+def _decode_floating_value(raw: bytes, width: int, fmt: str) -> float:
+    padded = bytes(width - len(raw)) + raw
+    return float(struct.unpack(f"<{fmt}", padded)[0])
