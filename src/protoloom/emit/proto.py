@@ -239,40 +239,37 @@ def _message(
     for enum, enum_name in zip(item.enums, enum_names, strict=True):
         lines.extend(_enum(enum, syntax, child_indent, enum_scope, enum_name))
     fields = _deduplicated_fields(item.fields)
-    grouped = {
-        field.oneof
-        for field in fields
-        if field.oneof is not None and not field.proto3_optional
-    }
     field_names = _unique_names([field.name for field in fields], "recovered_field")
+    standalone: list[tuple[Field, str]] = []
+    grouped_fields: dict[str, list[tuple[Field, str]]] = {}
+    for field, field_name in zip(fields, field_names, strict=True):
+        if field.oneof is None or field.proto3_optional:
+            standalone.append((field, field_name))
+        else:
+            grouped_fields.setdefault(field.oneof, []).append((field, field_name))
+    grouped = sorted(grouped_fields)
     group_names = dict(
         zip(
-            sorted(grouped),
-            _unique_names(sorted(grouped), "choice", set(field_names)),
+            grouped,
+            _unique_names(grouped, "choice", set(field_names)),
             strict=True,
         )
     )
-    for field, field_name in zip(fields, field_names, strict=True):
-        if field.oneof is None or field.proto3_optional:
-            lines.append(
-                _field(field, syntax, child_indent, field_name, renames, package)
-            )
-    for group in sorted(grouped):
-        if group is None:
-            continue
+    for field, field_name in standalone:
+        lines.append(_field(field, syntax, child_indent, field_name, renames, package))
+    for group in grouped:
         lines.append(f"{child_indent}oneof {group_names[group]} {{")
-        for field, field_name in zip(fields, field_names, strict=True):
-            if field.oneof == group:
-                lines.append(
-                    _field(
-                        field,
-                        syntax,
-                        f"{child_indent}  ",
-                        field_name,
-                        renames,
-                        package,
-                    )
+        for field, field_name in grouped_fields[group]:
+            lines.append(
+                _field(
+                    field,
+                    syntax,
+                    f"{child_indent}  ",
+                    field_name,
+                    renames,
+                    package,
                 )
+            )
         lines.append(f"{child_indent}}}")
     lines.append(f"{indent}}}")
     return lines

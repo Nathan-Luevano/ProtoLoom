@@ -164,6 +164,26 @@ def test_name_uniquification_tracks_sanitized_collisions() -> None:
     assert names == ["A_B", "A_B_2", "A_B_3"]
 
 
+def test_many_oneof_groups_emit_in_stable_order() -> None:
+    fields = [
+        Field(
+            f"field_{index}",
+            index,
+            "string",
+            Confidence.HIGH,
+            oneof=f"group_{1001 - index}",
+        )
+        for index in range(1, 1001)
+    ]
+    schema = RecoveredSchema("fixture", messages=[Message("Record", fields)])
+
+    emitted = emit_proto(schema)
+
+    assert emitted.count("  oneof group_") == 1000
+    assert emitted.index("oneof group_1 {") < emitted.index("oneof group_2 {")
+    assert "string field_1000 = 1000;" in emitted
+
+
 def test_type_references_follow_uniquified_declarations() -> None:
     schema = RecoveredSchema(
         name="fixture",
