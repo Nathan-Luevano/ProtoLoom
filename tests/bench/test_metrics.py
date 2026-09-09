@@ -1,5 +1,6 @@
 import importlib
 import math
+from typing import cast
 
 import pytest
 
@@ -8,6 +9,7 @@ from protoloom.bench.metrics import (
     BenchmarkField,
     BenchmarkMessage,
     BenchmarkSchema,
+    _oneof_groups,
     aggregate_reports,
     score_target,
     type_fidelity_ceiling,
@@ -88,6 +90,31 @@ def test_messages_fall_back_to_unique_structural_signature() -> None:
     truth = BenchmarkSchema((BenchmarkMessage(None, (field(4, "value"),)),))
     recovered = BenchmarkSchema((BenchmarkMessage("a", (field(4, "renamed"),)),))
     assert score_target("stripped", truth, recovered).value("field_recall") == 1
+
+
+def test_oneof_grouping_reads_each_field_once() -> None:
+    reads = 0
+
+    class CountingField:
+        def __init__(self, number: int, oneof: str) -> None:
+            self.number = number
+            self._oneof = oneof
+
+        @property
+        def oneof(self) -> str:
+            nonlocal reads
+            reads += 1
+            return self._oneof
+
+    fields = tuple(
+        cast(BenchmarkField, CountingField(index, f"group-{index}"))
+        for index in range(100)
+    )
+
+    groups = _oneof_groups(BenchmarkMessage("record", fields))
+
+    assert len(groups) == 100
+    assert reads == 100
 
 
 def test_ambiguous_structural_signature_is_not_guessed() -> None:
