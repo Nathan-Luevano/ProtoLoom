@@ -388,11 +388,23 @@ def _atomic_write(path: Path, payload: bytes) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         temporary.replace(path)
+        _sync_directory(path.parent)
     except BaseException:
         with suppress(OSError):
             os.close(descriptor)
         temporary.unlink(missing_ok=True)
         raise
+
+
+def _sync_directory(path: Path) -> None:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _apply_nested_renames(top_level: list[Message], renames: dict[str, str]) -> None:
