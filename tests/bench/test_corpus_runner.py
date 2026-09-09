@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -44,9 +45,22 @@ def test_benchmark_json_reader_bounds_input(tmp_path: Path) -> None:
         read_json(path, max_size=2)
 
 
+def test_benchmark_json_reader_rejects_special_files() -> None:
+    with pytest.raises(ValueError, match="JSON input is not a regular file"):
+        read_json(Path(os.devnull))
+
+
 def test_manifest_wraps_json_read_failures(tmp_path: Path) -> None:
     path = tmp_path / "manifest.json"
     path.write_bytes(b"\xff")
+
+    with pytest.raises(CorpusError, match="invalid corpus manifest"):
+        load_manifest(path)
+
+
+def test_manifest_wraps_special_file_failure(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.symlink_to(Path(os.devnull))
 
     with pytest.raises(CorpusError, match="invalid corpus manifest"):
         load_manifest(path)
@@ -189,6 +203,11 @@ def test_hash_rejects_oversized_cached_artifact(tmp_path: Path) -> None:
 
     with pytest.raises(CorpusError, match="artifact exceeds 4 bytes"):
         sha256(path, max_size=4)
+
+
+def test_hash_rejects_special_files() -> None:
+    with pytest.raises(CorpusError, match="artifact is not a regular file"):
+        sha256(Path(os.devnull))
 
 
 def test_materialize_bounds_existing_cache_reads(tmp_path: Path) -> None:
