@@ -1,10 +1,12 @@
+import os
 import stat
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from protoloom.extract.jadx import JadxError, decompile_with_jadx
+from protoloom.extract.jadx import JadxError, _index_candidates, decompile_with_jadx
 
 
 def _executable(path: Path, body: str) -> Path:
@@ -120,6 +122,26 @@ def test_jadx_rejects_oversized_source(
 
     with pytest.raises(JadxError, match="source exceeds 4 bytes"):
         decompile_with_jadx(tmp_path / "x.apk", tmp_path / "out", executable=str(tool))
+
+
+def test_jadx_rejects_source_replaced_during_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "out"
+    output.mkdir()
+    source = output / "A.java"
+    source.write_text("class A {}", encoding="utf-8")
+    real_open = Path.open
+
+    def replace_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path == source:
+            return real_open(Path(os.devnull), "rb")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", replace_open)
+
+    with pytest.raises(JadxError, match="non-file Java source"):
+        _index_candidates(output)
 
 
 def test_jadx_candidate_index_replaces_symlink(tmp_path: Path) -> None:

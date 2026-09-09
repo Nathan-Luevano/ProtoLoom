@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 from contextlib import suppress
@@ -127,17 +128,25 @@ def _index_candidates(output: Path) -> tuple[int, int]:
         try:
             if source.is_symlink():
                 raise JadxError(f"jadx produced a symlinked Java source: {source}")
-            size = source.stat().st_size
-            if size > MAX_JADX_SOURCE_SIZE:
+            with source.open("rb") as stream:
+                status = os.fstat(stream.fileno())
+                if not stat.S_ISREG(status.st_mode):
+                    raise JadxError(f"jadx produced a non-file Java source: {source}")
+                if status.st_size > MAX_JADX_SOURCE_SIZE:
+                    raise JadxError(
+                        f"jadx Java source exceeds {MAX_JADX_SOURCE_SIZE} bytes"
+                    )
+                data = stream.read(MAX_JADX_SOURCE_SIZE + 1)
+            if len(data) > MAX_JADX_SOURCE_SIZE:
                 raise JadxError(
                     f"jadx Java source exceeds {MAX_JADX_SOURCE_SIZE} bytes"
                 )
-            source_bytes += size
+            source_bytes += len(data)
             if source_bytes > MAX_JADX_SOURCE_TOTAL:
                 raise JadxError(
                     f"jadx Java sources exceed {MAX_JADX_SOURCE_TOTAL} bytes"
                 )
-            lines = source.read_text(encoding="utf-8", errors="replace").splitlines()
+            lines = data.decode("utf-8", errors="replace").splitlines()
         except OSError:
             continue
         for number, line in enumerate(lines, 1):
