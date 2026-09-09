@@ -217,7 +217,7 @@ def _merge_named_enums(
         current.evidence = _evidence(current.evidence, incoming.evidence)
         winner_is_source = _RANK[incoming.confidence] > _RANK[current.confidence]
         current.confidence = _best(current.confidence, incoming.confidence)
-        values = deepcopy(incoming.values if winner_is_source else current.values)
+        values = deepcopy(incoming.values) if winner_is_source else current.values
         other = current.values if winner_is_source else incoming.values
         by_number = {value.number: value for value in values}
         for value in other:
