@@ -10,6 +10,7 @@ MAX_DEX_TABLE_ENTRIES = 1_000_000
 MAX_DEX_TOTAL_TABLE_ENTRIES = 2_000_000
 MAX_DEX_COLLECTION_ENTRIES = 1_000_000
 MAX_DEX_ENCODED_VALUE_DEPTH = 100
+MAX_DEX_STRING_DECODE_BYTES = 256 * 1024 * 1024
 
 
 class DexError(ValueError):
@@ -227,6 +228,7 @@ class DexFile:
         registers, ins, outs, tries, debug_offset, count = self._unpack(
             "<HHHHII", offset
         )
+        self._validate_collection_size(int(count), "code units")
         instruction_offset = offset + 16
         raw = self._slice(instruction_offset, int(count) * 2)
         instructions = struct.unpack_from(f"<{int(count)}H", raw) if count else ()
@@ -491,7 +493,12 @@ class DexFile:
             self.header.string_ids_offset, self.header.string_ids_size
         )
         result: list[str] = []
+        decoded: dict[int, str] = {}
+        decoded_bytes = 0
         for offset in offsets:
+            if offset in decoded:
+                result.append(decoded[offset])
+                continue
             utf16_size, cursor = self._uleb128(offset)
             end = cursor
             while end < len(self._data) and self._data[end] != 0:
@@ -499,10 +506,14 @@ class DexFile:
             if end == len(self._data):
                 raise DexError("unterminated string_data_item")
             raw = bytes(self._data[cursor:end])
+            decoded_bytes += end - offset + 1
+            if decoded_bytes > MAX_DEX_STRING_DECODE_BYTES:
+                raise DexError("DEX string data exceeds the decode limit")
             value = _decode_mutf8(raw)
             actual_size = len(value.encode("utf-16-le", errors="surrogatepass")) // 2
             if actual_size != utf16_size:
                 raise DexError("string_data_item UTF-16 length mismatch")
+            decoded[offset] = value
             result.append(value)
         return tuple(result)
 
@@ -534,6 +545,7 @@ class DexFile:
             parameters: tuple[int, ...] = ()
             if parameters_offset:
                 (count,) = self._unpack("<I", int(parameters_offset))
+                self._validate_collection_size(int(count), "prototype parameters")
                 raw = self._unpack(f"<{int(count)}H", int(parameters_offset) + 4)
                 if any(item >= len(self.type_ids) for item in raw):
                     raise DexError("prototype parameter type is out of range")

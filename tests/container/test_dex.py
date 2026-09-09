@@ -86,6 +86,33 @@ def test_rejects_data_section_outside_file() -> None:
         DexFile(malformed)
 
 
+def test_rejects_excessive_string_decode_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("protoloom.container.dex.MAX_DEX_STRING_DECODE_BYTES", 2)
+    with pytest.raises(DexError, match="decode limit"):
+        DexFile(_minimal_dex((b"value",)))
+
+
+def test_reuses_duplicate_string_offsets() -> None:
+    raw = bytearray(_minimal_dex((b"shared", b"unused")))
+    (first_offset,) = struct.unpack_from("<I", raw, 112)
+    struct.pack_into("<I", raw, 116, first_offset)
+    assert DexFile(raw).strings == ("shared", "shared")
+
+
+def test_rejects_excessive_code_units(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("protoloom.container.dex.MAX_DEX_COLLECTION_ENTRIES", 1)
+    raw = bytearray(_minimal_dex(()))
+    offset = len(raw)
+    raw.extend(struct.pack("<HHHHII", 0, 0, 0, 0, 0, 2))
+    struct.pack_into("<I", raw, 32, len(raw))
+    struct.pack_into("<I", raw, 104, len(raw) - offset)
+    dex = DexFile(raw)
+    with pytest.raises(DexError, match="too many entries"):
+        dex.code_item(offset)
+
+
 def _dex_with_enclosing_class() -> bytes:
     strings = (
         b"Outer",
