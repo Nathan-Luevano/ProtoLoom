@@ -66,6 +66,26 @@ def test_rejects_truncated_or_inconsistent_files() -> None:
         DexFile(malformed)
 
 
+def test_rejects_excessive_table_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("protoloom.container.dex.MAX_DEX_TABLE_ENTRIES", 1)
+    with pytest.raises(DexError, match="too many entries"):
+        DexFile(_minimal_dex((b"first", b"second")))
+
+
+def test_rejects_invalid_populated_table_offset() -> None:
+    malformed = bytearray(_minimal_dex(()))
+    struct.pack_into("<II", malformed, 56, 1, 0)
+    with pytest.raises(DexError, match="invalid offset"):
+        DexFile(malformed)
+
+
+def test_rejects_data_section_outside_file() -> None:
+    malformed = bytearray(_minimal_dex(()))
+    struct.pack_into("<II", malformed, 104, 4, len(malformed))
+    with pytest.raises(DexError, match="outside the file"):
+        DexFile(malformed)
+
+
 def _dex_with_enclosing_class() -> bytes:
     strings = (
         b"Outer",

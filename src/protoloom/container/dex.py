@@ -6,6 +6,9 @@ from pathlib import Path
 
 from protoloom.container.read import read_limited
 
+MAX_DEX_TABLE_ENTRIES = 1_000_000
+MAX_DEX_TOTAL_TABLE_ENTRIES = 2_000_000
+
 
 class DexError(ValueError):
     pass
@@ -138,6 +141,7 @@ class DexFile:
     def __init__(self, data: bytes | bytearray | memoryview) -> None:
         self._data = memoryview(data)
         self.header = self._parse_header()
+        self._validate_tables()
         self.strings = self._parse_strings()
         self.type_ids = self._uint_table(
             self.header.type_ids_offset, self.header.type_ids_size
@@ -407,6 +411,64 @@ class DexFile:
             int(values[18]),
             int(values[19]),
         )
+
+    def _validate_tables(self) -> None:
+        tables = (
+            (
+                "string identifiers",
+                self.header.string_ids_size,
+                self.header.string_ids_offset,
+                4,
+            ),
+            (
+                "type identifiers",
+                self.header.type_ids_size,
+                self.header.type_ids_offset,
+                4,
+            ),
+            (
+                "prototype identifiers",
+                self.header.proto_ids_size,
+                self.header.proto_ids_offset,
+                12,
+            ),
+            (
+                "field identifiers",
+                self.header.field_ids_size,
+                self.header.field_ids_offset,
+                8,
+            ),
+            (
+                "method identifiers",
+                self.header.method_ids_size,
+                self.header.method_ids_offset,
+                8,
+            ),
+            (
+                "class definitions",
+                self.header.class_defs_size,
+                self.header.class_defs_offset,
+                32,
+            ),
+        )
+        total_entries = sum(count for _, count, _, _ in tables)
+        if total_entries > MAX_DEX_TOTAL_TABLE_ENTRIES:
+            raise DexError("DEX identifier tables contain too many entries")
+        for name, count, offset, width in tables:
+            if count > MAX_DEX_TABLE_ENTRIES:
+                raise DexError(f"DEX {name} table contains too many entries")
+            if not count:
+                continue
+            if offset < self.header.header_size or offset % 4:
+                raise DexError(f"DEX {name} table has an invalid offset")
+            self._slice(offset, count * width)
+        if self.header.data_size:
+            if (
+                self.header.data_offset < self.header.header_size
+                or self.header.data_offset % 4
+            ):
+                raise DexError("DEX data section has an invalid offset")
+            self._slice(self.header.data_offset, self.header.data_size)
 
     def _parse_strings(self) -> tuple[str, ...]:
         offsets = self._uint_table(
