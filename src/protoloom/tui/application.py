@@ -244,7 +244,14 @@ class TuiApplication:
             self.state.append_log(line)
             self.application.invalidate()
 
-        result = await self.job.run(request, append)
+        try:
+            result = await self.job.run(request, append)
+        except OSError as error:
+            self.state.cancel_pending = False
+            detail = error.strerror or str(error)
+            self.state.fail(f"Cannot start extraction: {detail}")
+            self.application.invalidate()
+            return
         self.state.cancel_pending = False
         if result.cancelled:
             self.state.fail("Extraction cancelled")

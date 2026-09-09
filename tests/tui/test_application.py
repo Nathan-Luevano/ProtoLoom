@@ -97,6 +97,41 @@ def test_keyboard_runs_extraction_to_results(tmp_path: Path) -> None:
     asyncio.run(exercise())
 
 
+def test_keyboard_reports_extraction_launch_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "input"
+    source.touch()
+    monkeypatch.setattr(
+        ExtractionRequest,
+        "command",
+        lambda self: (str(tmp_path / "missing-command"),),
+    )
+
+    async def exercise() -> None:
+        with create_pipe_input() as app_input:
+            tui = TuiApplication(app_input, DummyOutput())
+            tui.source.text = str(source)
+            task = asyncio.create_task(tui.application.run_async())
+            await asyncio.sleep(0.05)
+            app_input.send_text("\r")
+            await asyncio.sleep(0.05)
+            app_input.send_text("\t\t\t\t\r")
+            for _ in range(100):
+                if tui.state.error:
+                    break
+                await asyncio.sleep(0.01)
+
+            assert (
+                tui.state.error == "Cannot start extraction: No such file or directory"
+            )
+            assert tui.job.running is False
+            tui.application.exit()
+            await task
+
+    asyncio.run(exercise())
+
+
 def test_keyboard_confirms_running_job_cancellation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
