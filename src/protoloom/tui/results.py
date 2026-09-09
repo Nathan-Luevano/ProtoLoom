@@ -1,5 +1,7 @@
 import json
+import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,9 +36,12 @@ def _records(value: object, label: str) -> tuple[dict[str, object], ...]:
 
 
 def _read_text(path: Path, max_size: int) -> str:
-    if path.stat().st_size > max_size:
-        raise OutputError(f"{path} exceeds {max_size} bytes")
     with path.open("rb") as stream:
+        status = os.fstat(stream.fileno())
+        if not stat.S_ISREG(status.st_mode):
+            raise OutputError(f"{path} is not a regular file")
+        if status.st_size > max_size:
+            raise OutputError(f"{path} exceeds {max_size} bytes")
         data = stream.read(max_size + 1)
     if len(data) > max_size:
         raise OutputError(f"{path} exceeds {max_size} bytes")
