@@ -144,14 +144,15 @@ def _merge_fields(
     parent: str,
     conflicts: list[Conflict],
 ) -> None:
-    by_number = {item.number: item for item in target}
+    positions = {item.number: index for index, item in enumerate(target)}
     for incoming in source:
-        current = by_number.get(incoming.number)
-        if current is None:
+        position = positions.get(incoming.number)
+        if position is None:
             copied = deepcopy(incoming)
             target.append(copied)
-            by_number[copied.number] = copied
+            positions[copied.number] = len(target) - 1
             continue
+        current = target[position]
         winner, loser = _ordered(current, incoming)
         path = f"{parent}.{incoming.number}"
         for attribute in (
@@ -179,8 +180,7 @@ def _merge_fields(
         if winner is incoming:
             replacement = deepcopy(incoming)
             replacement.evidence = evidence
-            target[target.index(current)] = replacement
-            by_number[incoming.number] = replacement
+            target[position] = replacement
         else:
             current.evidence = evidence
 
