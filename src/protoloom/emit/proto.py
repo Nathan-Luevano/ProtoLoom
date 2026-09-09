@@ -86,9 +86,23 @@ def _default_literal(item: Field) -> str | None:
     return _name(value, "VALUE")
 
 
-def _enum(item: EnumType, indent: str, scope: set[str] | None = None) -> list[str]:
+def _declaration_names(
+    messages: list[Message], enums: list[EnumType]
+) -> tuple[list[str], list[str]]:
+    message_names = [_name(item.name, "RecoveredMessage") for item in messages]
+    enum_names = [_name(item.name, "RecoveredEnum") for item in enums]
+    allocated = _unique_names([*message_names, *enum_names], "RecoveredType")
+    return allocated[: len(message_names)], allocated[len(message_names) :]
+
+
+def _enum(
+    item: EnumType,
+    indent: str,
+    scope: set[str] | None = None,
+    name: str | None = None,
+) -> list[str]:
     used = scope if scope is not None else set()
-    enum_name = _name(item.name, "RecoveredEnum")
+    enum_name = name or _name(item.name, "RecoveredEnum")
     lines = [f"{indent}enum {enum_name} {{"]
     values = item.values or []
     numbers = [value.number for value in values]
@@ -132,17 +146,18 @@ def _field(item: Field, syntax: str, indent: str, name: str) -> str:
     )
 
 
-def _message(item: Message, syntax: str, indent: str = "") -> list[str]:
-    lines = [f"{indent}message {_name(item.name, 'RecoveredMessage')} {{"]
+def _message(
+    item: Message, syntax: str, indent: str = "", name: str | None = None
+) -> list[str]:
+    message_name = name or _name(item.name, "RecoveredMessage")
+    lines = [f"{indent}message {message_name} {{"]
     child_indent = f"{indent}  "
-    for nested in item.messages:
-        lines.extend(_message(nested, syntax, child_indent))
-    enum_scope = {
-        *(_name(nested.name, "RecoveredMessage") for nested in item.messages),
-        *(_name(enum.name, "RecoveredEnum") for enum in item.enums),
-    }
-    for enum in item.enums:
-        lines.extend(_enum(enum, child_indent, enum_scope))
+    message_names, enum_names = _declaration_names(item.messages, item.enums)
+    for nested, nested_name in zip(item.messages, message_names, strict=True):
+        lines.extend(_message(nested, syntax, child_indent, nested_name))
+    enum_scope = {*message_names, *enum_names}
+    for enum, enum_name in zip(item.enums, enum_names, strict=True):
+        lines.extend(_enum(enum, child_indent, enum_scope, enum_name))
     grouped = {
         field.oneof
         for field in item.fields
@@ -173,15 +188,16 @@ def _message(item: Message, syntax: str, indent: str = "") -> list[str]:
     return lines
 
 
-def _declared_types(message: Message, prefix: str = "") -> set[str]:
-    message_name = _name(message.name, "RecoveredMessage")
+def _declared_types(
+    message: Message, prefix: str = "", name: str | None = None
+) -> set[str]:
+    message_name = name or _name(message.name, "RecoveredMessage")
     qualified = f"{prefix}.{message_name}" if prefix else message_name
     declared = {qualified}
-    declared.update(
-        f"{qualified}.{_name(enum.name, 'RecoveredEnum')}" for enum in message.enums
-    )
-    for nested in message.messages:
-        declared.update(_declared_types(nested, qualified))
+    message_names, enum_names = _declaration_names(message.messages, message.enums)
+    declared.update(f"{qualified}.{name}" for name in enum_names)
+    for nested, name in zip(message.messages, message_names, strict=True):
+        declared.update(_declared_types(nested, qualified, name))
     return declared
 
 
@@ -193,19 +209,17 @@ def emit_proto(schema: RecoveredSchema) -> str:
         lines.append(f"import {json.dumps(dependency)};")
     if schema.dependencies:
         lines.append("")
-    enum_scope = {
-        *(_name(message.name, "RecoveredMessage") for message in schema.messages),
-        *(_name(enum.name, "RecoveredEnum") for enum in schema.enums),
-    }
-    for enum in schema.enums:
-        lines.extend(_enum(enum, "", enum_scope))
+    message_names, enum_names = _declaration_names(schema.messages, schema.enums)
+    enum_scope = {*message_names, *enum_names}
+    for enum, enum_name in zip(schema.enums, enum_names, strict=True):
+        lines.extend(_enum(enum, "", enum_scope, enum_name))
         lines.append("")
-    for message in schema.messages:
-        lines.extend(_message(message, schema.syntax))
+    for message, message_name in zip(schema.messages, message_names, strict=True):
+        lines.extend(_message(message, schema.syntax, name=message_name))
         lines.append("")
-    declared = {_name(enum.name, "RecoveredEnum") for enum in schema.enums}
-    for message in schema.messages:
-        declared.update(_declared_types(message))
+    declared = set(enum_names)
+    for message, message_name in zip(schema.messages, message_names, strict=True):
+        declared.update(_declared_types(message, name=message_name))
     referenced: set[str] = set()
     pending = list(schema.messages)
     while pending:

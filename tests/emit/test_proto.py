@@ -86,6 +86,33 @@ def test_synthetic_zero_avoids_sibling_value_names() -> None:
     assert compile_proto(emitted).success
 
 
+def test_sibling_declaration_names_are_uniquified() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        messages=[
+            Message("Record-Type"),
+            Message("Record_Type"),
+            Message(
+                "Outer",
+                messages=[Message("Entry-Type"), Message("Entry_Type")],
+                enums=[
+                    EnumType("Entry Type", [EnumValue("FIRST", 0)]),
+                    EnumType("Entry_Type", [EnumValue("SECOND", 0)]),
+                ],
+            ),
+        ],
+        enums=[EnumType("Record Type", [EnumValue("ROOT", 0)])],
+    )
+    emitted = emit_proto(schema)
+    assert "message Record_Type {" in emitted
+    assert "message Record_Type_2 {" in emitted
+    assert "enum Record_Type_3 {" in emitted
+    assert "message Entry_Type_2 {" in emitted
+    assert "enum Entry_Type_3 {" in emitted
+    assert "enum Entry_Type_4 {" in emitted
+    assert compile_proto(emitted).success
+
+
 def test_nested_references_do_not_create_placeholders() -> None:
     schema = RecoveredSchema(
         name="fixture",
