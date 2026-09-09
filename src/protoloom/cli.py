@@ -696,7 +696,11 @@ def extract(
     schemas.extend(go_tags.schemas)
     schemas.extend(lite_schemas)
     schemas.extend(wire_schemas)
-    reconciled = reconcile(schemas)
+    try:
+        reconciled = reconcile(schemas)
+    except ValueError as error:
+        typer.echo(f"reconciliation failed: {error}", err=True)
+        raise typer.Exit(2) from error
     try:
         output_names = _output_names(reconciled.schemas, descriptor_name)
         _validate_output_files(
