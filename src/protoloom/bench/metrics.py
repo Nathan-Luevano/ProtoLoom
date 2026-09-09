@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from math import nan
@@ -193,12 +193,14 @@ def type_fidelity_ceiling(
     truth: BenchmarkSchema, ambiguous_groups: tuple[frozenset[str], ...]
 ) -> Score:
     fields = [field for message in truth.messages for field in message.fields]
+    type_counts = Counter(field.proto_type for field in fields)
     ambiguous_types = frozenset().union(*ambiguous_groups)
-    identifiable = sum(field.proto_type not in ambiguous_types for field in fields)
+    identifiable = sum(
+        count for kind, count in type_counts.items() if kind not in ambiguous_types
+    )
     recoverable = identifiable
     for group in ambiguous_groups:
-        counts = [sum(field.proto_type == kind for field in fields) for kind in group]
-        recoverable += max(counts, default=0)
+        recoverable += max((type_counts[kind] for kind in group), default=0)
     return Score(recoverable, len(fields))
 
 
@@ -267,11 +269,12 @@ def _score_structures(
 
 
 def _oneof_groups(message: BenchmarkMessage) -> set[frozenset[int]]:
-    names = {field.oneof for field in message.fields if field.oneof is not None}
-    return {
-        frozenset(field.number for field in message.fields if field.oneof == name)
-        for name in names
-    }
+    groups: dict[str, set[int]] = defaultdict(set)
+    for field in message.fields:
+        oneof = field.oneof
+        if oneof is not None:
+            groups[oneof].add(field.number)
+    return {frozenset(numbers) for numbers in groups.values()}
 
 
 def _score_enums(
