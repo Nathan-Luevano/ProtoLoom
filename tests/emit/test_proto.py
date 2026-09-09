@@ -158,6 +158,27 @@ def test_type_references_follow_uniquified_declarations() -> None:
     assert compile_proto(emitted).success
 
 
+def test_duplicate_field_numbers_keep_highest_confidence() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        messages=[
+            Message(
+                "Record",
+                fields=[
+                    Field("guess", 1, "bytes", Confidence.SPECULATIVE),
+                    Field("proven", 1, "string", Confidence.CERTAIN),
+                    Field("stable", 2, "bool", Confidence.HIGH),
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "string proven = 1;" in emitted
+    assert "guess" not in emitted
+    assert emitted.index("proven") < emitted.index("stable")
+    assert compile_proto(emitted).success
+
+
 def test_nested_references_do_not_create_placeholders() -> None:
     schema = RecoveredSchema(
         name="fixture",

@@ -1,7 +1,7 @@
 import json
 import re
 
-from protoloom.model import EnumType, Field, Message, RecoveredSchema
+from protoloom.model import Confidence, EnumType, Field, Message, RecoveredSchema
 
 _IDENTIFIER = re.compile(r"[^A-Za-z0-9_]")
 _SCALARS = {
@@ -24,6 +24,12 @@ _SCALARS = {
 _NUMERIC_DEFAULT = re.compile(
     r"[-+]?(?:inf|nan|0[xX][0-9A-Fa-f]+|0[0-7]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)"
 )
+_CONFIDENCE_RANK = {
+    Confidence.SPECULATIVE: 0,
+    Confidence.MEDIUM: 1,
+    Confidence.HIGH: 2,
+    Confidence.CERTAIN: 3,
+}
 
 
 def _name(value: str, fallback: str) -> str:
@@ -133,6 +139,18 @@ def _resolved_type(value: str, renames: dict[str, str], package: str) -> str:
     return f".{renamed}" if absolute else renamed
 
 
+def _deduplicated_fields(fields: list[Field]) -> list[Field]:
+    result: dict[int, Field] = {}
+    for item in fields:
+        current = result.get(item.number)
+        if (
+            current is None
+            or _CONFIDENCE_RANK[item.confidence] > _CONFIDENCE_RANK[current.confidence]
+        ):
+            result[item.number] = item
+    return list(result.values())
+
+
 def _enum(
     item: EnumType,
     syntax: str,
@@ -210,14 +228,13 @@ def _message(
     enum_scope = {*message_names, *enum_names}
     for enum, enum_name in zip(item.enums, enum_names, strict=True):
         lines.extend(_enum(enum, syntax, child_indent, enum_scope, enum_name))
+    fields = _deduplicated_fields(item.fields)
     grouped = {
         field.oneof
-        for field in item.fields
+        for field in fields
         if field.oneof is not None and not field.proto3_optional
     }
-    field_names = _unique_names(
-        [field.name for field in item.fields], "recovered_field"
-    )
+    field_names = _unique_names([field.name for field in fields], "recovered_field")
     group_names = dict(
         zip(
             sorted(grouped),
@@ -225,7 +242,7 @@ def _message(
             strict=True,
         )
     )
-    for field, field_name in zip(item.fields, field_names, strict=True):
+    for field, field_name in zip(fields, field_names, strict=True):
         if field.oneof is None or field.proto3_optional:
             lines.append(
                 _field(field, syntax, child_indent, field_name, renames, package)
@@ -234,7 +251,7 @@ def _message(
         if group is None:
             continue
         lines.append(f"{child_indent}oneof {group_names[group]} {{")
-        for field, field_name in zip(item.fields, field_names, strict=True):
+        for field, field_name in zip(fields, field_names, strict=True):
             if field.oneof == group:
                 lines.append(
                     _field(
@@ -297,7 +314,7 @@ def emit_proto(schema: RecoveredSchema) -> str:
     while pending:
         message = pending.pop()
         pending.extend(message.messages)
-        for field in message.fields:
+        for field in _deduplicated_fields(message.fields):
             emitted_type = _resolved_type(field.type_name, renames, schema.package)
             if emitted_type not in _SCALARS and not emitted_type.startswith(
                 (".", "map<")
