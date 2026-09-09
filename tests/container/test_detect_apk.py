@@ -1,4 +1,5 @@
 import importlib
+import os
 import struct
 from pathlib import Path
 from zipfile import ZipFile
@@ -49,6 +50,18 @@ def test_rejects_truncated_pe_signature_offset(tmp_path: Path) -> None:
     struct.pack_into("<I", payload, 0x3C, 64)
     path.write_bytes(payload)
     assert detect(path).kind is ContainerKind.UNKNOWN
+
+
+def test_detection_rejects_special_and_oversized_inputs(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    with pytest.raises(OSError, match="input is not a regular file"):
+        detect(Path(os.devnull))
+    path = tmp_path / "large"
+    path.write_bytes(b"large")
+    monkeypatch.setattr(detect_module, "MAX_CONTAINER_SIZE", 4)
+    with pytest.raises(OSError, match="input exceeds 4 bytes"):
+        detect(path)
 
 
 def test_apk_inventory(tmp_path: Path) -> None:
