@@ -197,9 +197,21 @@ def download(url: str, expected: str, size: int, destination: Path) -> None:
                 f"archive hash mismatch: expected {expected}, got {actual}"
             )
         partial.replace(destination)
+        _sync_directory(destination.parent)
     except BaseException:
         partial.unlink(missing_ok=True)
         raise
+
+
+def _sync_directory(path: Path) -> None:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def extract(

@@ -253,6 +253,71 @@ def test_download_checks_redirect_size_hash_and_installs_atomically(
     assert not destination.with_name(destination.name + ".part").exists()
 
 
+def test_download_syncs_file_and_cache_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"pinned archive"
+    synced: list[int] = []
+    real_fsync = os.fsync
+
+    def record_fsync(descriptor: int) -> None:
+        synced.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(
+        "protoloom.bench.upstream.urllib.request.urlopen",
+        lambda request, timeout: Response(payload),
+    )
+    monkeypatch.setattr(os, "fsync", record_fsync)
+    destination = tmp_path / "archive.tar.gz"
+    download(
+        "https://example.test/archive",
+        hashlib.sha256(payload).hexdigest(),
+        len(payload),
+        destination,
+    )
+    assert destination.read_bytes() == payload
+    assert len(synced) == 2
+
+
+def test_download_closes_directory_after_sync_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"pinned archive"
+    real_fsync = os.fsync
+    real_close = os.close
+    closed: list[int] = []
+    sync_count = 0
+
+    def fail_fsync(descriptor: int) -> None:
+        nonlocal sync_count
+        sync_count += 1
+        if sync_count == 2:
+            raise OSError("sync failed")
+        real_fsync(descriptor)
+
+    def record_close(descriptor: int) -> None:
+        closed.append(descriptor)
+        real_close(descriptor)
+
+    monkeypatch.setattr(
+        "protoloom.bench.upstream.urllib.request.urlopen",
+        lambda request, timeout: Response(payload),
+    )
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+    monkeypatch.setattr(os, "close", record_close)
+    destination = tmp_path / "archive.tar.gz"
+    with pytest.raises(OSError, match="sync failed"):
+        download(
+            "https://example.test/archive",
+            hashlib.sha256(payload).hexdigest(),
+            len(payload),
+            destination,
+        )
+    assert sync_count == 2
+    assert closed
+
+
 def test_download_refuses_non_https_redirect(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
