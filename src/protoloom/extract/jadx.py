@@ -107,9 +107,22 @@ def _publish_directory(staging: Path, output: Path) -> None:
     except BaseException:
         if backup is not None:
             backup.replace(output)
+            _sync_directory(output.parent)
         raise
     if backup is not None:
         shutil.rmtree(backup, ignore_errors=True)
+    _sync_directory(output.parent)
+
+
+def _sync_directory(path: Path) -> None:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _log_tail(log: BinaryIO, limit: int = 2000) -> str:
