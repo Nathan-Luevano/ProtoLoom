@@ -1,5 +1,7 @@
 from typing import Any
 
+import pytest
+
 from protoloom.container.dex import DexClass, DexField, DexMethod
 from protoloom.decode.infostring import HAS_HAS_BIT, InfoField
 from protoloom.decode.lite import _field_objects, _field_oneof, decode_lite_finding
@@ -305,3 +307,18 @@ def test_negative_static_field_index_is_not_trusted() -> None:
         (LiteObject("string", "mode_"), LiteObject("static_field", -1)),
     )
     assert _field_objects(dex, finding)[3] == [None]
+
+
+def test_lite_decoder_rejects_stale_method_index() -> None:
+    dex: Any = _FakeDex()
+    finding = LiteFinding(99, 0, 0, _info_string(0, 0), ())
+    with pytest.raises(ValueError, match="method index"):
+        decode_lite_finding(dex, finding, "test.dex")
+
+
+def test_lite_decoder_rejects_stale_class_index() -> None:
+    dex: Any = _FakeDex()
+    dex.methods = (DexMethod(99, 0, 0),)
+    finding = LiteFinding(0, 0, 0, _info_string(0, 0), ())
+    with pytest.raises(ValueError, match="class index"):
+        decode_lite_finding(dex, finding, "test.dex")

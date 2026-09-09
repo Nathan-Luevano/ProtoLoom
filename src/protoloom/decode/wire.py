@@ -88,6 +88,10 @@ def _wire_presence_type(dex: DexFile, item: WireFieldFinding) -> bool:
 
 
 def wire_dex_type(dex: DexFile, field_index: int, adapter_index: int) -> str | None:
+    if not 0 <= field_index < len(dex.fields):
+        return None
+    if not 0 <= adapter_index < len(dex.fields):
+        return None
     field = dex.fields[field_index]
     adapter = dex.fields[adapter_index]
     raw_type = dex.types[field.type_index]
@@ -132,7 +136,11 @@ def decode_wire_adapter_fields(
     }
     fields: dict[str, list[Field]] = defaultdict(list)
     for item in findings:
-        type_name = wire_dex_type(dex, indexes[item.field], indexes[item.adapter])
+        field_index = indexes.get(item.field)
+        adapter_index = indexes.get(item.adapter)
+        if field_index is None or adapter_index is None:
+            continue
+        type_name = wire_dex_type(dex, field_index, adapter_index)
         if type_name is None:
             continue
         name = recovered_names.get(
