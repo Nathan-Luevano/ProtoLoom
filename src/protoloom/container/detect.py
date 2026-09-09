@@ -4,7 +4,10 @@ import struct
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import BinaryIO
 from zipfile import BadZipFile, ZipFile
+
+from protoloom.container.apk import _is_dex_name
 
 
 class ContainerKind(StrEnum):
@@ -50,7 +53,7 @@ def detect_bytes(data: bytes | bytearray | memoryview) -> Detection:
         return Detection(ContainerKind.MACHO)
     if len(view) >= 2 and bytes(view[:2]) == b"MZ":
         if len(view) < 64:
-            return Detection(ContainerKind.PE)
+            return Detection(ContainerKind.UNKNOWN)
         pe_offset = struct.unpack_from("<I", view, 0x3C)[0]
         if (
             pe_offset + 4 <= len(view)
@@ -69,7 +72,10 @@ def detect_bytes(data: bytes | bytearray | memoryview) -> Detection:
 def detect(path: str | Path) -> Detection:
     source = Path(path)
     with source.open("rb") as stream:
-        result = detect_bytes(stream.read(4096))
+        prefix = stream.read(4096)
+        result = detect_bytes(prefix)
+        if result.kind is ContainerKind.UNKNOWN and prefix[:2] == b"MZ":
+            result = _detect_pe(stream, prefix, source.stat().st_size)
     if result.kind is not ContainerKind.ZIP:
         return result
     try:
@@ -107,4 +113,16 @@ def detect(path: str | Path) -> Detection:
 
 
 def _is_root_dex(name: str) -> bool:
-    return "/" not in name and name.startswith("classes") and name.endswith(".dex")
+    return "/" not in name and _is_dex_name(name)
+
+
+def _detect_pe(stream: BinaryIO, prefix: bytes, file_size: int) -> Detection:
+    if len(prefix) < 64:
+        return Detection(ContainerKind.UNKNOWN)
+    pe_offset = struct.unpack_from("<I", prefix, 0x3C)[0]
+    if pe_offset + 4 > file_size:
+        return Detection(ContainerKind.UNKNOWN)
+    stream.seek(pe_offset)
+    if stream.read(4) == b"PE\x00\x00":
+        return Detection(ContainerKind.PE)
+    return Detection(ContainerKind.UNKNOWN)

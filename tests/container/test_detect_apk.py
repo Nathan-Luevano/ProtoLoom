@@ -1,4 +1,5 @@
 import importlib
+import struct
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -22,12 +23,31 @@ detect_module = importlib.import_module("protoloom.container.detect")
         (b"dex\n039\x00", ContainerKind.DEX),
         (b"\x7fELF", ContainerKind.ELF),
         (b"\xcf\xfa\xed\xfe", ContainerKind.MACHO),
-        (b"MZ", ContainerKind.PE),
+        (b"MZ", ContainerKind.UNKNOWN),
         (b"nothing", ContainerKind.UNKNOWN),
     ],
 )
 def test_magic_detection(payload: bytes, kind: ContainerKind) -> None:
     assert detect_bytes(payload).kind is kind
+
+
+def test_detects_pe_signature_beyond_initial_probe(tmp_path: Path) -> None:
+    path = tmp_path / "large-stub.exe"
+    payload = bytearray(5004)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 5000)
+    payload[5000:] = b"PE\x00\x00"
+    path.write_bytes(payload)
+    assert detect(path).kind is ContainerKind.PE
+
+
+def test_rejects_truncated_pe_signature_offset(tmp_path: Path) -> None:
+    path = tmp_path / "truncated.exe"
+    payload = bytearray(64)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 64)
+    path.write_bytes(payload)
+    assert detect(path).kind is ContainerKind.UNKNOWN
 
 
 def test_apk_inventory(tmp_path: Path) -> None:
@@ -45,6 +65,15 @@ def test_apk_inventory(tmp_path: Path) -> None:
         "lib/arm64-v8a/libsample.so"
     ]
     assert AndroidArchive(path).read("assets/schema.pb") == b"proto"
+
+
+def test_archive_inventory_uses_valid_multidex_names(tmp_path: Path) -> None:
+    path = tmp_path / "multidex.apk"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("classes2.dex", b"secondary")
+        archive.writestr("classesbackup.dex", b"resource")
+    inventory = AndroidArchive(path).inventory()
+    assert [entry.name for entry in inventory.dex_files] == ["classes2.dex"]
 
 
 def test_zip_detection_does_not_copy_archive_names(
