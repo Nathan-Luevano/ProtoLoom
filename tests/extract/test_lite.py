@@ -1,9 +1,12 @@
+from typing import Any
+
 import pytest
 
 from protoloom.container.dex import CodeItem, DexField, DexMethod, EncodedMethod
 from protoloom.extract.lite import (
     LiteMapEvidence,
     LiteObject,
+    _static_field_object,
     extract_lite,
     recover_enum_evidence,
     recover_enum_evidence_from_field,
@@ -39,6 +42,7 @@ class FakeDex:
             DexMethod(0, 0, 0),
             DexMethod(0, 0, 1),
         )
+        self.fields: tuple[DexField, ...] = ()
         method = EncodedMethod(0, 0, 100)
         code = CodeItem(100, 8, 0, 3, 0, 0, instructions)
         self._items: tuple[tuple[EncodedMethod, CodeItem], ...] = ((method, code),)
@@ -101,6 +105,11 @@ def test_extracts_info_string_and_ordered_objects() -> None:
         LiteObject("string", "name_"),
         LiteObject("class", "LNested;"),
     )
+
+
+def test_invalid_static_field_operand_is_preserved_as_invalid() -> None:
+    dex: Any = FakeDex((), ("owner", "newMessageInfo"))
+    assert _static_field_object(dex, 7) == LiteObject("invalid_static_field", 7)
 
 
 def test_subclass_owned_new_message_info_reference_is_supported() -> None:
@@ -807,6 +816,14 @@ def test_map_types_survive_inlined_factory_call() -> None:
 def test_map_recovery_rejects_hostile_field_index() -> None:
     assert recover_map_evidence(MapFakeDex(), 99) is None  # type: ignore[arg-type]
     assert recover_map_evidence(MapFakeDex(), -1) is None  # type: ignore[arg-type]
+
+
+def test_map_recovery_rejects_nonfield_register_value() -> None:
+    dex: Any = MapFakeDex()
+    method, code = dex._items[0]
+    instructions = (0x0022, 0, *code.instructions[2:])
+    dex._items = ((method, CodeItem(code.offset, 3, 3, 0, 4, 0, instructions)),)
+    assert recover_map_evidence(dex, 2) is None
 
 
 def test_map_recovery_skips_malformed_instruction_stream() -> None:

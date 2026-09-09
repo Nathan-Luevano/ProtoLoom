@@ -1,3 +1,5 @@
+from typing import Any
+
 from protoloom.container.dex import DexClass, DexField, DexMethod
 from protoloom.decode.infostring import HAS_HAS_BIT, InfoField
 from protoloom.decode.lite import _field_objects, _field_oneof, decode_lite_finding
@@ -290,3 +292,16 @@ def test_numbered_instance_singleton_is_not_trusted() -> None:
     # no longer names the enum it actually belongs to.
     verifiers = _enum_field_objects(_FakeVerifierDex(singleton_name="INSTANCE$1"))
     assert verifiers == [None]
+
+
+def test_negative_static_field_index_is_not_trusted() -> None:
+    dex: Any = _FakeVerifierDex(singleton_name="INSTANCE")
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 12)
+    finding = LiteFinding(
+        0,
+        0,
+        0,
+        info,
+        (LiteObject("string", "mode_"), LiteObject("static_field", -1)),
+    )
+    assert _field_objects(dex, finding)[3] == [None]

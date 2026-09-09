@@ -137,7 +137,7 @@ def _field_objects(
                 # in; the numbered ones belong to a different, absorbed
                 # verifier and would misattribute the enum if trusted.
                 field_index = int(enum_object.value)
-                if field_index < len(dex.fields):
+                if 0 <= field_index < len(dex.fields):
                     static_field = dex.fields[field_index]
                     if dex.field_name(static_field) == "INSTANCE":
                         enum_verifier = dex.types[static_field.class_index]
