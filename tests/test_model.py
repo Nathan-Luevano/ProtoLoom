@@ -46,6 +46,17 @@ def test_field_rejects_invalid_label() -> None:
         Field("bad", 1, "bytes", Confidence.HIGH, label="sometimes")
 
 
+@pytest.mark.parametrize("number", [-(2**31) - 1, 2**31])
+def test_enum_rejects_invalid_numbers(number: int) -> None:
+    with pytest.raises(ValueError, match="enum number"):
+        EnumValue("BAD", number)
+
+
+@pytest.mark.parametrize("number", [-(2**31), 2**31 - 1])
+def test_enum_accepts_signed_32_bit_boundaries(number: int) -> None:
+    assert EnumValue("BOUNDARY", number).number == number
+
+
 def test_schema_rejects_unknown_syntax() -> None:
     with pytest.raises(ValueError, match="syntax"):
         RecoveredSchema("bad.proto", syntax="editions")

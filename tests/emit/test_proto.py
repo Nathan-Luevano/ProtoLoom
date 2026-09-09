@@ -179,6 +179,41 @@ def test_duplicate_field_numbers_keep_highest_confidence() -> None:
     assert compile_proto(emitted).success
 
 
+def test_proto3_normalizes_invalid_field_options() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto3",
+        messages=[
+            Message(
+                "Record",
+                fields=[
+                    Field(
+                        "value",
+                        1,
+                        "int32",
+                        Confidence.CERTAIN,
+                        label="required",
+                        packed=True,
+                    )
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "required" not in emitted
+    assert "packed" not in emitted
+    assert compile_proto(emitted).success
+
+
+def test_duplicate_imports_are_emitted_once() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        dependencies=["google/protobuf/empty.proto", "google/protobuf/empty.proto"],
+    )
+    emitted = emit_proto(schema)
+    assert emitted.count('import "google/protobuf/empty.proto";') == 1
+
+
 def test_nested_references_do_not_create_placeholders() -> None:
     schema = RecoveredSchema(
         name="fixture",

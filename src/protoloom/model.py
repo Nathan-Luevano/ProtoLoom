@@ -21,6 +21,10 @@ class EnumValue:
     name: str
     number: int
 
+    def __post_init__(self) -> None:
+        if not -(2**31) <= self.number < 2**31:
+            raise ValueError(f"invalid protobuf enum number: {self.number}")
+
 
 @dataclass(slots=True)
 class EnumType:
