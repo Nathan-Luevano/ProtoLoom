@@ -104,14 +104,19 @@ def _publish_directory(staging: Path, output: Path) -> None:
         output.replace(backup)
     try:
         staging.replace(output)
+        _sync_directory(output.parent)
     except BaseException:
+        if output.exists():
+            output.replace(staging)
         if backup is not None:
             backup.replace(output)
+        with suppress(OSError):
             _sync_directory(output.parent)
         raise
     if backup is not None:
         shutil.rmtree(backup, ignore_errors=True)
-    _sync_directory(output.parent)
+        with suppress(OSError):
+            _sync_directory(output.parent)
 
 
 def _sync_directory(path: Path) -> None:

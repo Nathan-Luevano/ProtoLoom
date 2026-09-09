@@ -250,3 +250,31 @@ def test_jadx_publication_restores_output_after_rename_failure(
     assert (output / "existing.java").read_text(encoding="utf-8") == "preserve"
     assert staging.is_dir()
     assert not tuple(tmp_path.glob(".out.old.*"))
+
+
+def test_jadx_publication_rolls_back_after_sync_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "existing.java").write_text("preserve", encoding="utf-8")
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "new.java").write_text("new", encoding="utf-8")
+    syncs = 0
+
+    def fail_first_sync(path: Path) -> None:
+        nonlocal syncs
+        syncs += 1
+        if syncs == 1:
+            raise OSError("sync failed")
+
+    monkeypatch.setattr("protoloom.extract.jadx._sync_directory", fail_first_sync)
+
+    with pytest.raises(OSError, match="sync failed"):
+        _publish_directory(staging, output)
+
+    assert (output / "existing.java").read_text(encoding="utf-8") == "preserve"
+    assert (staging / "new.java").read_text(encoding="utf-8") == "new"
+    assert syncs == 2
+    assert not tuple(tmp_path.glob(".out.old.*"))
