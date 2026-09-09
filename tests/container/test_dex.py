@@ -204,6 +204,27 @@ def test_reads_enclosing_class_annotation() -> None:
     assert dex.enclosing_class_index(inner) == outer.class_index
 
 
+def test_rejects_invalid_type_descriptor_index() -> None:
+    malformed = bytearray(_dex_with_enclosing_class())
+    struct.pack_into("<I", malformed, 128, 4)
+    with pytest.raises(DexError, match="descriptor string"):
+        DexFile(malformed)
+
+
+def test_rejects_invalid_class_superclass_index() -> None:
+    malformed = bytearray(_dex_with_enclosing_class())
+    struct.pack_into("<I", malformed, 148, 3)
+    with pytest.raises(DexError, match="superclass"):
+        DexFile(malformed)
+
+
+def test_rejects_invalid_class_source_file_index() -> None:
+    malformed = bytearray(_dex_with_enclosing_class())
+    struct.pack_into("<I", malformed, 156, 4)
+    with pytest.raises(DexError, match="source file"):
+        DexFile(malformed)
+
+
 def _dex_with_static_int_fields() -> bytes:
     strings = (b"Owner", b"I", b"A_FIELD_NUMBER", b"B_FIELD_NUMBER")
     header_size = 112
