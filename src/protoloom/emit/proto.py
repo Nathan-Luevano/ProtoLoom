@@ -1,3 +1,4 @@
+import json
 import re
 
 from protoloom.model import EnumType, Field, Message, RecoveredSchema
@@ -20,6 +21,9 @@ _SCALARS = {
     "uint32",
     "uint64",
 }
+_NUMERIC_DEFAULT = re.compile(
+    r"[-+]?(?:inf|nan|0[xX][0-9A-Fa-f]+|0[0-7]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)"
+)
 
 
 def _name(value: str, fallback: str) -> str:
@@ -57,6 +61,31 @@ def _qualified_name(value: str) -> str:
     )
 
 
+def _type_name(value: str) -> str:
+    if value in _SCALARS:
+        return value
+    if value.startswith("map<") and value.endswith(">"):
+        key, separator, item = value[4:-1].partition(",")
+        if separator:
+            return f"map<{_type_name(key.strip())}, {_type_name(item.strip())}>"
+    absolute = value.startswith(".")
+    qualified = _qualified_name(value.removeprefix(".")) or "RecoveredType"
+    return f".{qualified}" if absolute else qualified
+
+
+def _default_literal(item: Field) -> str | None:
+    value = item.default_value
+    if value is None:
+        return None
+    if item.type_name in {"string", "bytes"}:
+        return json.dumps(value)
+    if item.type_name == "bool":
+        return value.lower() if value.lower() in {"true", "false"} else None
+    if item.type_name in _SCALARS:
+        return value if _NUMERIC_DEFAULT.fullmatch(value) else None
+    return _name(value, "VALUE")
+
+
 def _enum(item: EnumType, indent: str) -> list[str]:
     enum_name = _name(item.name, "RecoveredEnum")
     lines = [f"{indent}enum {enum_name} {{"]
@@ -89,12 +118,15 @@ def _field(item: Field, syntax: str, indent: str, name: str) -> str:
         label = "optional" if item.proto3_optional else ""
     prefix = f"{label} " if label else ""
     options: list[str] = []
-    if item.default_value is not None and syntax == "proto2":
-        options.append(f"default = {item.default_value}")
+    default = _default_literal(item)
+    if default is not None and syntax == "proto2":
+        options.append(f"default = {default}")
     if item.packed is not None:
         options.append(f"packed = {'true' if item.packed else 'false'}")
     suffix = f" [{', '.join(options)}]" if options else ""
-    return f"{indent}{prefix}{item.type_name} {name} = {item.number}{suffix};"
+    return (
+        f"{indent}{prefix}{_type_name(item.type_name)} {name} = {item.number}{suffix};"
+    )
 
 
 def _message(item: Message, syntax: str, indent: str = "") -> list[str]:
@@ -151,7 +183,7 @@ def emit_proto(schema: RecoveredSchema) -> str:
     if schema.package:
         lines.extend((f"package {_qualified_name(schema.package)};", ""))
     for dependency in schema.dependencies:
-        lines.append(f'import "{dependency}";')
+        lines.append(f"import {json.dumps(dependency)};")
     if schema.dependencies:
         lines.append("")
     for enum in schema.enums:
@@ -169,10 +201,11 @@ def emit_proto(schema: RecoveredSchema) -> str:
         message = pending.pop()
         pending.extend(message.messages)
         for field in message.fields:
-            if field.type_name not in _SCALARS and not field.type_name.startswith(
+            emitted_type = _type_name(field.type_name)
+            if emitted_type not in _SCALARS and not emitted_type.startswith(
                 (".", "map<")
             ):
-                referenced.add(field.type_name)
+                referenced.add(emitted_type)
     for missing in sorted(referenced - declared):
         lines.extend((f"message {_name(missing, 'RecoveredType')} {{}}", ""))
     return "\n".join(lines).rstrip() + "\n"

@@ -100,3 +100,64 @@ def test_sanitized_names_remain_unique_and_compilable() -> None:
     assert "oneof choice_2" in emitted
     assert "A_B_2 = 1;" in emitted
     assert compile_proto(emitted).success
+
+
+def test_emits_escaped_proto2_string_default() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto2",
+        messages=[
+            Message(
+                "Settings",
+                fields=[
+                    Field(
+                        "label",
+                        1,
+                        "string",
+                        Confidence.CERTAIN,
+                        default_value='line "one"\nline two',
+                    )
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert 'default = "line \\"one\\"\\nline two"' in emitted
+
+
+def test_sanitizes_field_type_references() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        messages=[
+            Message(
+                "Holder",
+                fields=[Field("item", 1, "Bad-Type", Confidence.CERTAIN)],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "Bad_Type item = 1;" in emitted
+    assert compile_proto(emitted).success
+
+
+def test_omits_invalid_numeric_default() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto2",
+        messages=[
+            Message(
+                "Settings",
+                fields=[
+                    Field(
+                        "count",
+                        1,
+                        "int32",
+                        Confidence.CERTAIN,
+                        default_value="1; option deprecated = true",
+                    )
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert compile_proto(emitted).success
