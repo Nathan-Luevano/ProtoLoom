@@ -170,23 +170,24 @@ def download(url: str, expected: str, size: int, destination: Path) -> None:
         and sha256(destination) == expected
     ):
         return
-    partial = destination.with_name(destination.name + ".part")
-    if partial.is_symlink():
-        raise ValueError(f"partial cache path is a symlink: {partial}")
-    partial.unlink(missing_ok=True)
     request = urllib.request.Request(url, headers={"User-Agent": "protoloom-corpus/1"})
+    partial: Path | None = None
     try:
-        with (
-            urllib.request.urlopen(request, timeout=60) as response,
-            partial.open("xb") as out,
-        ):
-            https_url(response.geturl())
-            written = 0
-            while chunk := response.read(min(1024 * 1024, size + 1 - written)):
-                written += len(chunk)
-                if written > size:
-                    raise ValueError(f"archive exceeds pinned size: {url}")
-                out.write(chunk)
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=destination.parent,
+            prefix=f".{destination.name}.",
+            delete=False,
+        ) as out:
+            partial = Path(out.name)
+            with urllib.request.urlopen(request, timeout=60) as response:
+                https_url(response.geturl())
+                written = 0
+                while chunk := response.read(min(1024 * 1024, size + 1 - written)):
+                    written += len(chunk)
+                    if written > size:
+                        raise ValueError(f"archive exceeds pinned size: {url}")
+                    out.write(chunk)
             out.flush()
             os.fsync(out.fileno())
         if written != size:
@@ -198,9 +199,9 @@ def download(url: str, expected: str, size: int, destination: Path) -> None:
             )
         partial.replace(destination)
         _sync_directory(destination.parent)
-    except BaseException:
-        partial.unlink(missing_ok=True)
-        raise
+    finally:
+        if partial is not None:
+            partial.unlink(missing_ok=True)
 
 
 def _sync_directory(path: Path) -> None:

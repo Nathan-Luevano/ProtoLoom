@@ -253,6 +253,29 @@ def test_download_checks_redirect_size_hash_and_installs_atomically(
     assert not destination.with_name(destination.name + ".part").exists()
 
 
+def test_download_uses_private_staging_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"pinned archive"
+    observed: list[Path] = []
+
+    def respond(request: object, timeout: int) -> Response:
+        observed.extend(tmp_path.glob(".archive.tar.gz.*"))
+        return Response(payload)
+
+    monkeypatch.setattr("protoloom.bench.upstream.urllib.request.urlopen", respond)
+    destination = tmp_path / "archive.tar.gz"
+    download(
+        "https://example.test/archive",
+        hashlib.sha256(payload).hexdigest(),
+        len(payload),
+        destination,
+    )
+    assert len(observed) == 1
+    assert destination.read_bytes() == payload
+    assert not observed[0].exists()
+
+
 def test_download_syncs_file_and_cache_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -395,14 +418,34 @@ def test_upstream_hash_rejects_special_and_oversized_files(tmp_path: Path) -> No
         sha256(source, max_size=4)
 
 
-def test_download_refuses_invalid_size_and_partial_symlink(tmp_path: Path) -> None:
+def test_download_refuses_invalid_size(tmp_path: Path) -> None:
     destination = tmp_path / "archive.tar.gz"
     with pytest.raises(ValueError, match="128 MiB limit"):
         download("https://example.test/archive", "0" * 64, 0, destination)
+
+
+def test_download_ignores_legacy_partial_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"archive"
+    destination = tmp_path / "archive.tar.gz"
     partial = destination.with_name(destination.name + ".part")
-    partial.symlink_to(tmp_path / "missing")
-    with pytest.raises(ValueError, match="partial cache path is a symlink"):
-        download("https://example.test/archive", "0" * 64, 1, destination)
+    victim = tmp_path / "victim"
+    victim.write_bytes(b"preserve")
+    partial.symlink_to(victim)
+    monkeypatch.setattr(
+        "protoloom.bench.upstream.urllib.request.urlopen",
+        lambda request, timeout: Response(payload),
+    )
+    download(
+        "https://example.test/archive",
+        hashlib.sha256(payload).hexdigest(),
+        len(payload),
+        destination,
+    )
+    assert destination.read_bytes() == payload
+    assert victim.read_bytes() == b"preserve"
+    assert partial.is_symlink()
 
 
 def test_extract_refuses_traversal_and_links(tmp_path: Path) -> None:
