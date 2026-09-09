@@ -68,3 +68,35 @@ def test_nested_references_do_not_create_placeholders() -> None:
 
     assert "message Outer_Kind" not in emitted
     assert compile_proto(emitted).success
+
+
+def test_sanitized_names_remain_unique_and_compilable() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        package="bad-package.2part",
+        messages=[
+            Message(
+                "Record-Type",
+                fields=[
+                    Field("a-b", 1, "string", Confidence.CERTAIN),
+                    Field("a_b", 2, "string", Confidence.CERTAIN),
+                    Field("choice", 3, "string", Confidence.CERTAIN, oneof="choice"),
+                ],
+                enums=[
+                    EnumType(
+                        "State",
+                        [EnumValue("A-B", 0), EnumValue("A_B", 1)],
+                    )
+                ],
+            )
+        ],
+    )
+
+    emitted = emit_proto(schema)
+
+    assert "package bad_package._2part;" in emitted
+    assert "string a_b = 1;" in emitted
+    assert "string a_b_2 = 2;" in emitted
+    assert "oneof choice_2" in emitted
+    assert "A_B_2 = 1;" in emitted
+    assert compile_proto(emitted).success
