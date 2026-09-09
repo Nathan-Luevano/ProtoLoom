@@ -323,3 +323,41 @@ def test_omits_invalid_numeric_default() -> None:
     )
     emitted = emit_proto(schema)
     assert compile_proto(emitted).success
+
+
+def test_proto_output_bounds_total_items() -> None:
+    schema = RecoveredSchema(
+        "fixture",
+        messages=[Message("Record", [Field("value", 1, "string", Confidence.HIGH)])],
+    )
+
+    with pytest.raises(ValueError, match="exceeds 1 items"):
+        emit_proto(schema, max_items=1)
+
+
+def test_proto_output_bounds_message_depth() -> None:
+    schema = RecoveredSchema("fixture", messages=[Message("Outer")])
+    schema.messages[0].messages.append(Message("Inner"))
+
+    with pytest.raises(ValueError, match="message depth 1"):
+        emit_proto(schema, max_depth=1)
+
+
+def test_proto_output_bounds_encoded_size() -> None:
+    schema = RecoveredSchema("fixture", messages=[Message("Record")])
+
+    with pytest.raises(ValueError, match="exceeds 10 bytes"):
+        emit_proto(schema, max_bytes=10)
+
+
+@pytest.mark.parametrize(
+    "limits",
+    [
+        {"max_items": 0},
+        {"max_depth": 0},
+        {"max_bytes": 0},
+    ],
+)
+def test_proto_output_rejects_nonpositive_limits(limits: dict[str, int]) -> None:
+    with pytest.raises(ValueError, match="limits must be positive"):
+        emit_proto(RecoveredSchema("fixture"), **limits)
