@@ -30,6 +30,9 @@ _CONFIDENCE_RANK = {
     Confidence.HIGH: 2,
     Confidence.CERTAIN: 3,
 }
+MAX_PROTO_ITEMS = 1_000_000
+MAX_PROTO_DEPTH = 100
+MAX_PROTO_OUTPUT_BYTES = 64 * 1024 * 1024
 
 
 def _name(value: str, fallback: str) -> str:
@@ -284,7 +287,14 @@ def _declared_types(
     return declared
 
 
-def emit_proto(schema: RecoveredSchema) -> str:
+def emit_proto(
+    schema: RecoveredSchema,
+    *,
+    max_items: int = MAX_PROTO_ITEMS,
+    max_depth: int = MAX_PROTO_DEPTH,
+    max_bytes: int = MAX_PROTO_OUTPUT_BYTES,
+) -> str:
+    _validate_proto_budget(schema, max_items, max_depth, max_bytes)
     lines = [f'syntax = "{schema.syntax}";', ""]
     if schema.package:
         lines.extend((f"package {_qualified_name(schema.package)};", ""))
@@ -325,4 +335,28 @@ def emit_proto(schema: RecoveredSchema) -> str:
                 referenced.add(emitted_type)
     for missing in sorted(referenced - declared):
         lines.extend((f"message {_name(missing, 'RecoveredType')} {{}}", ""))
-    return "\n".join(lines).rstrip() + "\n"
+    result = "\n".join(lines).rstrip() + "\n"
+    if len(result.encode("utf-8")) > max_bytes:
+        raise ValueError(f"proto output exceeds {max_bytes} bytes")
+    return result
+
+
+def _validate_proto_budget(
+    schema: RecoveredSchema, max_items: int, max_depth: int, max_bytes: int
+) -> None:
+    if max_items <= 0 or max_depth <= 0 or max_bytes <= 0:
+        raise ValueError("proto output limits must be positive")
+    count = len(schema.dependencies) + len(schema.enums)
+    count += sum(len(enum.values) for enum in schema.enums)
+    pending = [(message, 1) for message in schema.messages]
+    while pending:
+        message, depth = pending.pop()
+        if depth > max_depth:
+            raise ValueError(f"proto output exceeds message depth {max_depth}")
+        count += 1 + len(message.fields) + len(message.enums)
+        count += sum(len(enum.values) for enum in message.enums)
+        if count > max_items:
+            raise ValueError(f"proto output exceeds {max_items} items")
+        pending.extend((child, depth + 1) for child in message.messages)
+    if count > max_items:
+        raise ValueError(f"proto output exceeds {max_items} items")
