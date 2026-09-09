@@ -52,6 +52,40 @@ def test_synthetic_zero_names_are_scoped_per_enum() -> None:
     assert compile_proto(emitted).success
 
 
+def test_sibling_enum_value_names_are_uniquified() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        package="demo",
+        messages=[
+            Message(
+                "Card",
+                enums=[
+                    EnumType("Kind", [EnumValue("UNKNOWN", 0)]),
+                    EnumType("Priority", [EnumValue("UNKNOWN", 0)]),
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "UNKNOWN = 0;" in emitted
+    assert "UNKNOWN_2 = 0;" in emitted
+    assert compile_proto(emitted).success
+
+
+def test_synthetic_zero_avoids_sibling_value_names() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto3",
+        enums=[
+            EnumType("Other", [EnumValue("STATE_UNSPECIFIED", 0)]),
+            EnumType("State", [EnumValue("ACTIVE", 1)]),
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "STATE_UNSPECIFIED_2 = 0;" in emitted
+    assert compile_proto(emitted).success
+
+
 def test_nested_references_do_not_create_placeholders() -> None:
     schema = RecoveredSchema(
         name="fixture",

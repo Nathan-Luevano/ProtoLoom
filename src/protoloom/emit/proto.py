@@ -86,7 +86,8 @@ def _default_literal(item: Field) -> str | None:
     return _name(value, "VALUE")
 
 
-def _enum(item: EnumType, indent: str) -> list[str]:
+def _enum(item: EnumType, indent: str, scope: set[str] | None = None) -> list[str]:
+    used = scope if scope is not None else set()
     enum_name = _name(item.name, "RecoveredEnum")
     lines = [f"{indent}enum {enum_name} {{"]
     values = item.values or []
@@ -94,16 +95,18 @@ def _enum(item: EnumType, indent: str) -> list[str]:
     needs_synthetic_zero = bool(values and values[0].number != 0)
     if len(numbers) != len(set(numbers)):
         lines.append(f"{indent}  option allow_alias = true;")
+    reserved = {*used, enum_name}
     if needs_synthetic_zero:
-        # C++ enum-value scoping makes every value a sibling of its
-        # message, not just its enum -- an unqualified UNSPECIFIED can
-        # collide with another enum in the same package, so scope it to
-        # this enum's own name.
-        lines.append(f"{indent}  {enum_name.upper()}_UNSPECIFIED = 0;")
-    reserved = {f"{enum_name.upper()}_UNSPECIFIED"} if needs_synthetic_zero else set()
+        synthetic = _unique_names(
+            [f"{enum_name.upper()}_UNSPECIFIED"], "UNSPECIFIED", reserved
+        )[0]
+        lines.append(f"{indent}  {synthetic} = 0;")
+        reserved.add(synthetic)
     value_names = _unique_names([value.name for value in values], "VALUE", reserved)
     for value, value_name in zip(values, value_names, strict=True):
         lines.append(f"{indent}  {value_name} = {value.number};")
+    used.update(value_names)
+    used.update(reserved - used)
     lines.append(f"{indent}}}")
     return lines
 
@@ -134,8 +137,12 @@ def _message(item: Message, syntax: str, indent: str = "") -> list[str]:
     child_indent = f"{indent}  "
     for nested in item.messages:
         lines.extend(_message(nested, syntax, child_indent))
+    enum_scope = {
+        *(_name(nested.name, "RecoveredMessage") for nested in item.messages),
+        *(_name(enum.name, "RecoveredEnum") for enum in item.enums),
+    }
     for enum in item.enums:
-        lines.extend(_enum(enum, child_indent))
+        lines.extend(_enum(enum, child_indent, enum_scope))
     grouped = {
         field.oneof
         for field in item.fields
@@ -186,8 +193,12 @@ def emit_proto(schema: RecoveredSchema) -> str:
         lines.append(f"import {json.dumps(dependency)};")
     if schema.dependencies:
         lines.append("")
+    enum_scope = {
+        *(_name(message.name, "RecoveredMessage") for message in schema.messages),
+        *(_name(enum.name, "RecoveredEnum") for enum in schema.enums),
+    }
     for enum in schema.enums:
-        lines.extend(_enum(enum, ""))
+        lines.extend(_enum(enum, "", enum_scope))
         lines.append("")
     for message in schema.messages:
         lines.extend(_message(message, schema.syntax))
