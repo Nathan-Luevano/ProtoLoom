@@ -1,5 +1,6 @@
 import hashlib
 import io
+import os
 import tarfile
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from protoloom.bench.upstream import (
     download,
     extract,
     materialize_source,
+    sha256,
     validate_source_manifest,
 )
 
@@ -319,6 +321,15 @@ def test_download_reuses_verified_cache(
     assert destination.read_bytes() == payload
 
 
+def test_upstream_hash_rejects_special_and_oversized_files(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="source is not a regular file"):
+        sha256(Path(os.devnull))
+    source = tmp_path / "large"
+    source.write_bytes(b"large")
+    with pytest.raises(ValueError, match="source exceeds 4 bytes"):
+        sha256(source, max_size=4)
+
+
 def test_download_refuses_invalid_size_and_partial_symlink(tmp_path: Path) -> None:
     destination = tmp_path / "archive.tar.gz"
     with pytest.raises(ValueError, match="128 MiB limit"):
@@ -349,6 +360,11 @@ def test_extract_refuses_empty_archive(tmp_path: Path) -> None:
         pass
     with pytest.raises(ValueError, match="empty archive"):
         extract(archive, tmp_path / "empty")
+
+
+def test_extract_refuses_special_archive(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="source is not a regular file"):
+        extract(Path(os.devnull), tmp_path / "output")
 
 
 def test_extract_bounds_member_count(tmp_path: Path) -> None:
