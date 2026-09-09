@@ -34,6 +34,29 @@ def _name(value: str, fallback: str) -> str:
     return cleaned
 
 
+def _unique_names(
+    values: list[str], fallback: str, reserved: set[str] | None = None
+) -> list[str]:
+    used = set(reserved or ())
+    result = []
+    for value in values:
+        base = _name(value, fallback)
+        candidate = base
+        suffix = 2
+        while candidate in used:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        used.add(candidate)
+        result.append(candidate)
+    return result
+
+
+def _qualified_name(value: str) -> str:
+    return ".".join(
+        _name(component, "recovered") for component in value.split(".") if component
+    )
+
+
 def _enum(item: EnumType, indent: str) -> list[str]:
     enum_name = _name(item.name, "RecoveredEnum")
     lines = [f"{indent}enum {enum_name} {{"]
@@ -48,13 +71,15 @@ def _enum(item: EnumType, indent: str) -> list[str]:
         # collide with another enum in the same package, so scope it to
         # this enum's own name.
         lines.append(f"{indent}  {enum_name.upper()}_UNSPECIFIED = 0;")
-    for value in values:
-        lines.append(f"{indent}  {_name(value.name, 'VALUE')} = {value.number};")
+    reserved = {f"{enum_name.upper()}_UNSPECIFIED"} if needs_synthetic_zero else set()
+    value_names = _unique_names([value.name for value in values], "VALUE", reserved)
+    for value, value_name in zip(values, value_names, strict=True):
+        lines.append(f"{indent}  {value_name} = {value.number};")
     lines.append(f"{indent}}}")
     return lines
 
 
-def _field(item: Field, syntax: str, indent: str) -> str:
+def _field(item: Field, syntax: str, indent: str, name: str) -> str:
     label = item.label
     if item.type_name.startswith("map<") or (
         item.oneof is not None and not item.proto3_optional
@@ -69,10 +94,7 @@ def _field(item: Field, syntax: str, indent: str) -> str:
     if item.packed is not None:
         options.append(f"packed = {'true' if item.packed else 'false'}")
     suffix = f" [{', '.join(options)}]" if options else ""
-    return (
-        f"{indent}{prefix}{item.type_name} {_name(item.name, f'field_{item.number}')} "
-        f"= {item.number}{suffix};"
-    )
+    return f"{indent}{prefix}{item.type_name} {name} = {item.number}{suffix};"
 
 
 def _message(item: Message, syntax: str, indent: str = "") -> list[str]:
@@ -87,25 +109,38 @@ def _message(item: Message, syntax: str, indent: str = "") -> list[str]:
         for field in item.fields
         if field.oneof is not None and not field.proto3_optional
     }
-    for field in item.fields:
+    field_names = _unique_names(
+        [field.name for field in item.fields], "recovered_field"
+    )
+    group_names = dict(
+        zip(
+            sorted(grouped),
+            _unique_names(sorted(grouped), "choice", set(field_names)),
+            strict=True,
+        )
+    )
+    for field, field_name in zip(item.fields, field_names, strict=True):
         if field.oneof is None or field.proto3_optional:
-            lines.append(_field(field, syntax, child_indent))
+            lines.append(_field(field, syntax, child_indent, field_name))
     for group in sorted(grouped):
         if group is None:
             continue
-        lines.append(f"{child_indent}oneof {_name(group, 'choice')} {{")
-        for field in item.fields:
+        lines.append(f"{child_indent}oneof {group_names[group]} {{")
+        for field, field_name in zip(item.fields, field_names, strict=True):
             if field.oneof == group:
-                lines.append(_field(field, syntax, f"{child_indent}  "))
+                lines.append(_field(field, syntax, f"{child_indent}  ", field_name))
         lines.append(f"{child_indent}}}")
     lines.append(f"{indent}}}")
     return lines
 
 
 def _declared_types(message: Message, prefix: str = "") -> set[str]:
-    qualified = f"{prefix}.{message.name}" if prefix else message.name
+    message_name = _name(message.name, "RecoveredMessage")
+    qualified = f"{prefix}.{message_name}" if prefix else message_name
     declared = {qualified}
-    declared.update(f"{qualified}.{enum.name}" for enum in message.enums)
+    declared.update(
+        f"{qualified}.{_name(enum.name, 'RecoveredEnum')}" for enum in message.enums
+    )
     for nested in message.messages:
         declared.update(_declared_types(nested, qualified))
     return declared
@@ -114,7 +149,7 @@ def _declared_types(message: Message, prefix: str = "") -> set[str]:
 def emit_proto(schema: RecoveredSchema) -> str:
     lines = [f'syntax = "{schema.syntax}";', ""]
     if schema.package:
-        lines.extend((f"package {schema.package};", ""))
+        lines.extend((f"package {_qualified_name(schema.package)};", ""))
     for dependency in schema.dependencies:
         lines.append(f'import "{dependency}";')
     if schema.dependencies:
@@ -125,7 +160,7 @@ def emit_proto(schema: RecoveredSchema) -> str:
     for message in schema.messages:
         lines.extend(_message(message, schema.syntax))
         lines.append("")
-    declared = {enum.name for enum in schema.enums}
+    declared = {_name(enum.name, "RecoveredEnum") for enum in schema.enums}
     for message in schema.messages:
         declared.update(_declared_types(message))
     referenced: set[str] = set()
