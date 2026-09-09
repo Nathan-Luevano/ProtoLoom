@@ -1,6 +1,7 @@
 import hashlib
 import os
 import shutil
+import stat
 import tarfile
 import tempfile
 import unicodedata
@@ -11,6 +12,7 @@ from urllib.parse import urlparse
 
 MAX_SOURCE_ARCHIVE_MEMBERS = 100_000
 MAX_SOURCE_EXTRACTED_SIZE = 1024 * 1024 * 1024
+MAX_SOURCE_DOWNLOAD_SIZE = 128 * 1024 * 1024
 MAX_UPSTREAM_NAME_BYTES = 255
 MAX_UPSTREAM_SOURCES = 100
 MAX_UPSTREAM_FILES = 10_000
@@ -19,12 +21,29 @@ MAX_UPSTREAM_TARGETS = 10_000
 LOWER_HEX = frozenset("0123456789abcdef")
 
 
-def sha256(path: Path) -> str:
+def sha256(path: Path, max_size: int = MAX_SOURCE_DOWNLOAD_SIZE) -> str:
+    if max_size <= 0:
+        raise ValueError("hash size limit must be positive")
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    total = 0
+    with _open_regular(path) as stream:
+        status = os.fstat(stream.fileno())
+        if status.st_size > max_size:
+            raise ValueError(f"source exceeds {max_size} bytes: {path}")
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            total += len(chunk)
+            if total > max_size:
+                raise ValueError(f"source exceeds {max_size} bytes: {path}")
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _open_regular(path: Path) -> IO[bytes]:
+    stream = path.open("rb")
+    if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+        stream.close()
+        raise ValueError(f"source is not a regular file: {path}")
+    return stream
 
 
 def https_url(value: str) -> str:
@@ -141,7 +160,7 @@ def _safe_name(value: object, label: str) -> str:
 
 def download(url: str, expected: str, size: int, destination: Path) -> None:
     https_url(url)
-    if size <= 0 or size > 128 * 1024 * 1024:
+    if size <= 0 or size > MAX_SOURCE_DOWNLOAD_SIZE:
         raise ValueError(f"archive size is outside the 128 MiB limit: {size}")
     if destination.is_symlink():
         raise ValueError(f"archive cache path is a symlink: {destination}")
@@ -201,7 +220,10 @@ def extract(
         tempfile.mkdtemp(prefix=f".{destination.name}.", dir=destination.parent)
     )
     try:
-        with tarfile.open(archive, "r:gz") as bundle:
+        with (
+            _open_regular(archive) as archive_stream,
+            tarfile.open(fileobj=archive_stream, mode="r:gz") as bundle,
+        ):
             members = bundle.getmembers()
             if not members:
                 raise ValueError(f"empty archive: {archive}")
