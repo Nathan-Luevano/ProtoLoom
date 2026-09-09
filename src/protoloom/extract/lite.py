@@ -132,7 +132,11 @@ def extract_lite(dex: DexFile, *, allow_heuristic: bool = False) -> LiteExtracti
     }
     targets.update(_raw_info_wrappers(dex))
     for method, code in dex.iter_code_items():
-        found, failed = _scan_method(dex, method, code, targets, allow_heuristic)
+        try:
+            found, failed = _scan_method(dex, method, code, targets, allow_heuristic)
+        except ValueError as error:
+            bailouts.append(LiteBailout(method.method_index, 0, str(error)))
+            continue
         findings.extend(found)
         bailouts.extend(failed)
     return LiteExtraction(tuple(findings), tuple(bailouts))
@@ -141,7 +145,10 @@ def extract_lite(dex: DexFile, *, allow_heuristic: bool = False) -> LiteExtracti
 def _raw_info_wrappers(dex: DexFile) -> set[int]:
     wrappers: set[int] = set()
     for method, code in dex.iter_code_items():
-        instructions = _instructions(code.instructions)
+        try:
+            instructions = _instructions(code.instructions)
+        except ValueError:
+            continue
         if len(instructions) != 3 or [item.opcode for item in instructions] != [
             0x22,
             0x70,
@@ -870,6 +877,8 @@ def _invoke_registers(instruction: _Instruction) -> tuple[int, ...]:
         count = units[0] >> 8
         return tuple(range(units[2], units[2] + count))
     count = units[0] >> 12
+    if count > 5:
+        return ()
     packed = units[2]
     registers = (
         packed & 0xF,
@@ -909,10 +918,16 @@ def _instruction_width(code: tuple[int, ...], offset: int, opcode: int) -> int:
         raise ValueError(f"unsupported DEX opcode 0x{opcode:02x}")
     ident = code[offset]
     if ident == 0x0100:
+        if offset + 2 > len(code):
+            return 0
         return 4 + code[offset + 1] * 2
     if ident == 0x0200:
+        if offset + 2 > len(code):
+            return 0
         return 2 + code[offset + 1] * 4
     if ident == 0x0300:
+        if offset + 4 > len(code):
+            return 0
         element_width = code[offset + 1]
         size = code[offset + 2] | code[offset + 3] << 16
         return 4 + (element_width * size + 1) // 2
