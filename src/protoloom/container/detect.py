@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import stat
 import struct
 from dataclasses import dataclass
 from enum import StrEnum
@@ -10,7 +8,7 @@ from typing import BinaryIO
 from zipfile import BadZipFile, ZipFile
 
 from protoloom.container.apk import _is_dex_name
-from protoloom.container.read import MAX_CONTAINER_SIZE
+from protoloom.container.read import MAX_CONTAINER_SIZE, open_limited
 
 
 class ContainerKind(StrEnum):
@@ -74,16 +72,13 @@ def detect_bytes(data: bytes | bytearray | memoryview) -> Detection:
 
 def detect(path: str | Path) -> Detection:
     source = Path(path)
-    with source.open("rb") as stream:
-        status = os.fstat(stream.fileno())
-        if not stat.S_ISREG(status.st_mode):
-            raise OSError(f"input is not a regular file: {source}")
-        if status.st_size > MAX_CONTAINER_SIZE:
-            raise OSError(f"input exceeds {MAX_CONTAINER_SIZE} bytes: {source}")
+    with open_limited(source, max_size=MAX_CONTAINER_SIZE) as stream:
+        file_size = stream.seek(0, 2)
+        stream.seek(0)
         prefix = stream.read(4096)
         result = detect_bytes(prefix)
         if result.kind is ContainerKind.UNKNOWN and prefix[:2] == b"MZ":
-            result = _detect_pe(stream, prefix, status.st_size)
+            result = _detect_pe(stream, prefix, file_size)
         if result.kind is not ContainerKind.ZIP:
             return result
         stream.seek(0)

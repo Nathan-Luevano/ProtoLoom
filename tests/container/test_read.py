@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from protoloom.container.read import read_limited
+from protoloom.container.read import open_limited, read_limited
 
 
 def test_limited_read_returns_complete_input(tmp_path: Path) -> None:
@@ -29,3 +29,11 @@ def test_limited_read_rejects_nonpositive_limit(tmp_path: Path) -> None:
 def test_limited_read_rejects_special_files() -> None:
     with pytest.raises(OSError, match="input is not a regular file"):
         read_limited(Path(os.devnull))
+
+
+def test_limited_open_exposes_bounded_regular_stream(tmp_path: Path) -> None:
+    source = tmp_path / "input.bin"
+    source.write_bytes(b"payload")
+
+    with open_limited(source, max_size=7) as stream:
+        assert stream.read() == b"payload"
