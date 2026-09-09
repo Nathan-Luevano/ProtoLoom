@@ -95,6 +95,44 @@ def _declaration_names(
     return allocated[: len(message_names)], allocated[len(message_names) :]
 
 
+def _symbol_renames(
+    messages: list[Message],
+    enums: list[EnumType],
+    raw_prefix: str = "",
+    emitted_prefix: str = "",
+) -> dict[str, str]:
+    message_names, enum_names = _declaration_names(messages, enums)
+    result: dict[str, str] = {}
+    for item, name in zip(messages, message_names, strict=True):
+        raw = f"{raw_prefix}.{item.name}" if raw_prefix else item.name
+        emitted = f"{emitted_prefix}.{name}" if emitted_prefix else name
+        result[raw] = emitted
+        result.update(_symbol_renames(item.messages, item.enums, raw, emitted))
+    for enum, name in zip(enums, enum_names, strict=True):
+        raw = f"{raw_prefix}.{enum.name}" if raw_prefix else enum.name
+        result[raw] = f"{emitted_prefix}.{name}" if emitted_prefix else name
+    return result
+
+
+def _resolved_type(value: str, renames: dict[str, str], package: str) -> str:
+    if value in _SCALARS:
+        return value
+    if value.startswith("map<") and value.endswith(">"):
+        key, separator, item = value[4:-1].partition(",")
+        if separator:
+            key_type = _resolved_type(key.strip(), renames, package)
+            item_type = _resolved_type(item.strip(), renames, package)
+            return f"map<{key_type}, {item_type}>"
+    absolute = value.startswith(".")
+    raw = value.removeprefix(".")
+    local = raw.removeprefix(f"{package}.") if package else raw
+    if (renamed := renames.get(local)) is None:
+        return _type_name(value)
+    if absolute and package:
+        return f".{_qualified_name(package)}.{renamed}"
+    return f".{renamed}" if absolute else renamed
+
+
 def _enum(
     item: EnumType,
     indent: str,
@@ -125,7 +163,14 @@ def _enum(
     return lines
 
 
-def _field(item: Field, syntax: str, indent: str, name: str) -> str:
+def _field(
+    item: Field,
+    syntax: str,
+    indent: str,
+    name: str,
+    renames: dict[str, str],
+    package: str,
+) -> str:
     label = item.label
     if item.type_name.startswith("map<") or (
         item.oneof is not None and not item.proto3_optional
@@ -141,20 +186,26 @@ def _field(item: Field, syntax: str, indent: str, name: str) -> str:
     if item.packed is not None:
         options.append(f"packed = {'true' if item.packed else 'false'}")
     suffix = f" [{', '.join(options)}]" if options else ""
-    return (
-        f"{indent}{prefix}{_type_name(item.type_name)} {name} = {item.number}{suffix};"
-    )
+    field_type = _resolved_type(item.type_name, renames, package)
+    return f"{indent}{prefix}{field_type} {name} = {item.number}{suffix};"
 
 
 def _message(
-    item: Message, syntax: str, indent: str = "", name: str | None = None
+    item: Message,
+    syntax: str,
+    renames: dict[str, str],
+    package: str,
+    indent: str = "",
+    name: str | None = None,
 ) -> list[str]:
     message_name = name or _name(item.name, "RecoveredMessage")
     lines = [f"{indent}message {message_name} {{"]
     child_indent = f"{indent}  "
     message_names, enum_names = _declaration_names(item.messages, item.enums)
     for nested, nested_name in zip(item.messages, message_names, strict=True):
-        lines.extend(_message(nested, syntax, child_indent, nested_name))
+        lines.extend(
+            _message(nested, syntax, renames, package, child_indent, nested_name)
+        )
     enum_scope = {*message_names, *enum_names}
     for enum, enum_name in zip(item.enums, enum_names, strict=True):
         lines.extend(_enum(enum, child_indent, enum_scope, enum_name))
@@ -175,14 +226,25 @@ def _message(
     )
     for field, field_name in zip(item.fields, field_names, strict=True):
         if field.oneof is None or field.proto3_optional:
-            lines.append(_field(field, syntax, child_indent, field_name))
+            lines.append(
+                _field(field, syntax, child_indent, field_name, renames, package)
+            )
     for group in sorted(grouped):
         if group is None:
             continue
         lines.append(f"{child_indent}oneof {group_names[group]} {{")
         for field, field_name in zip(item.fields, field_names, strict=True):
             if field.oneof == group:
-                lines.append(_field(field, syntax, f"{child_indent}  ", field_name))
+                lines.append(
+                    _field(
+                        field,
+                        syntax,
+                        f"{child_indent}  ",
+                        field_name,
+                        renames,
+                        package,
+                    )
+                )
         lines.append(f"{child_indent}}}")
     lines.append(f"{indent}}}")
     return lines
@@ -210,12 +272,21 @@ def emit_proto(schema: RecoveredSchema) -> str:
     if schema.dependencies:
         lines.append("")
     message_names, enum_names = _declaration_names(schema.messages, schema.enums)
+    renames = _symbol_renames(schema.messages, schema.enums)
     enum_scope = {*message_names, *enum_names}
     for enum, enum_name in zip(schema.enums, enum_names, strict=True):
         lines.extend(_enum(enum, "", enum_scope, enum_name))
         lines.append("")
     for message, message_name in zip(schema.messages, message_names, strict=True):
-        lines.extend(_message(message, schema.syntax, name=message_name))
+        lines.extend(
+            _message(
+                message,
+                schema.syntax,
+                renames,
+                schema.package,
+                name=message_name,
+            )
+        )
         lines.append("")
     declared = set(enum_names)
     for message, message_name in zip(schema.messages, message_names, strict=True):
@@ -226,7 +297,7 @@ def emit_proto(schema: RecoveredSchema) -> str:
         message = pending.pop()
         pending.extend(message.messages)
         for field in message.fields:
-            emitted_type = _type_name(field.type_name)
+            emitted_type = _resolved_type(field.type_name, renames, schema.package)
             if emitted_type not in _SCALARS and not emitted_type.startswith(
                 (".", "map<")
             ):
