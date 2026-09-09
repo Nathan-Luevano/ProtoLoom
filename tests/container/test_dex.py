@@ -267,3 +267,28 @@ def test_reads_static_field_number_constants() -> None:
     names = [dex.field_name(item) for item in static_fields]
     assert names == ["A_FIELD_NUMBER", "B_FIELD_NUMBER"]
     assert values == (1, 2)
+
+
+def test_rejects_excessive_encoded_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("protoloom.container.dex.MAX_DEX_COLLECTION_ENTRIES", 1)
+    dex = DexFile(_dex_with_static_int_fields())
+    with pytest.raises(DexError, match="too many entries"):
+        dex.static_field_values(dex.classes[0])
+
+
+def test_rejects_deeply_nested_encoded_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("protoloom.container.dex.MAX_DEX_ENCODED_VALUE_DEPTH", 1)
+    raw = bytearray(_dex_with_static_int_fields())
+    dex = DexFile(raw)
+    offset = dex.classes[0].static_values_offset
+    data_offset = dex.header.data_offset
+    raw = raw[:offset] + bytes((1, 0x1C, 1, 0x1C, 1, 0x1E))
+    struct.pack_into("<I", raw, 32, len(raw))
+    struct.pack_into("<I", raw, 104, len(raw) - data_offset)
+    nested = DexFile(raw)
+    with pytest.raises(DexError, match="nesting is too deep"):
+        nested.static_field_values(nested.classes[0])

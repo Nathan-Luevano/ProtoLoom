@@ -8,6 +8,8 @@ from protoloom.container.read import read_limited
 
 MAX_DEX_TABLE_ENTRIES = 1_000_000
 MAX_DEX_TOTAL_TABLE_ENTRIES = 2_000_000
+MAX_DEX_COLLECTION_ENTRIES = 1_000_000
+MAX_DEX_ENCODED_VALUE_DEPTH = 100
 
 
 class DexError(ValueError):
@@ -164,6 +166,7 @@ class DexFile:
             return ()
         cursor = item.class_data_offset
         static_count, cursor = self._uleb128(cursor)
+        self._validate_collection_size(static_count, "static fields")
         _, cursor = self._uleb128(cursor)  # instance_fields_size
         _, cursor = self._uleb128(cursor)  # direct_methods_size
         _, cursor = self._uleb128(cursor)  # virtual_methods_size
@@ -183,6 +186,7 @@ class DexFile:
             return ()
         cursor = item.static_values_offset
         count, cursor = self._uleb128(cursor)
+        self._validate_collection_size(count, "static values")
         values: list[object] = []
         for _ in range(count):
             value, cursor = self._encoded_value(cursor)
@@ -197,6 +201,10 @@ class DexFile:
         instance_count, cursor = self._uleb128(cursor)
         direct_count, cursor = self._uleb128(cursor)
         virtual_count, cursor = self._uleb128(cursor)
+        self._validate_collection_size(static_count, "static fields")
+        self._validate_collection_size(instance_count, "instance fields")
+        self._validate_collection_size(direct_count, "direct methods")
+        self._validate_collection_size(virtual_count, "virtual methods")
         for _ in range(static_count + instance_count):
             _, cursor = self._uleb128(cursor)
             _, cursor = self._uleb128(cursor)
@@ -290,6 +298,7 @@ class DexFile:
         if class_annotations_off == 0:
             return ()
         (size,) = self._unpack("<I", int(class_annotations_off))
+        self._validate_collection_size(int(size), "class annotations")
         offsets = self._unpack(f"<{int(size)}I", int(class_annotations_off) + 4)
         return tuple(self._annotation_item(int(offset)) for offset in offsets)
 
@@ -299,6 +308,7 @@ class DexFile:
         if item.annotations_offset == 0:
             return ()
         _, field_count, _, _ = self._unpack("<IIII", item.annotations_offset)
+        self._validate_collection_size(int(field_count), "annotated fields")
         cursor = item.annotations_offset + 16
         result = []
         for _ in range(int(field_count)):
@@ -307,6 +317,7 @@ class DexFile:
             if field_index >= len(self.fields):
                 raise DexError("annotated field index is out of range")
             (count,) = self._unpack("<I", int(annotation_set_offset))
+            self._validate_collection_size(int(count), "field annotations")
             offsets = self._unpack(f"<{int(count)}I", int(annotation_set_offset) + 4)
             annotations = tuple(
                 self._annotation_item(int(offset)) for offset in offsets
@@ -329,6 +340,7 @@ class DexFile:
         if type_index >= len(self.type_ids):
             raise DexError("annotation type index is out of range")
         element_count, cursor = self._uleb128(cursor)
+        self._validate_collection_size(element_count, "annotation elements")
         elements: list[tuple[int, object]] = []
         for _ in range(element_count):
             name_index, cursor = self._uleb128(cursor)
@@ -338,7 +350,9 @@ class DexFile:
             elements.append((name_index, value))
         return AnnotationItem(int(visibility), int(type_index), tuple(elements))
 
-    def _encoded_value(self, offset: int) -> tuple[object, int]:
+    def _encoded_value(self, offset: int, depth: int = 0) -> tuple[object, int]:
+        if depth > MAX_DEX_ENCODED_VALUE_DEPTH:
+            raise DexError("encoded value nesting is too deep")
         (header,) = self._unpack("<B", offset)
         cursor = offset + 1
         value_type = header & 0x1F
@@ -355,18 +369,20 @@ class DexFile:
             return None, cursor
         if value_type == _VALUE_ARRAY:
             count, cursor = self._uleb128(cursor)
+            self._validate_collection_size(count, "encoded array values")
             values: list[object] = []
             for _ in range(count):
-                item, cursor = self._encoded_value(cursor)
+                item, cursor = self._encoded_value(cursor, depth + 1)
                 values.append(item)
             return tuple(values), cursor
         if value_type == _VALUE_ANNOTATION:
             type_index, cursor = self._uleb128(cursor)
             count, cursor = self._uleb128(cursor)
+            self._validate_collection_size(count, "encoded annotation elements")
             elements: list[tuple[int, object]] = []
             for _ in range(count):
                 name_index, cursor = self._uleb128(cursor)
-                item, cursor = self._encoded_value(cursor)
+                item, cursor = self._encoded_value(cursor, depth + 1)
                 elements.append((name_index, item))
             return AnnotationItem(0, int(type_index), tuple(elements)), cursor
         raise DexError(f"unsupported encoded_value type 0x{value_type:02x}")
@@ -552,6 +568,10 @@ class DexFile:
     def _uint_table(self, offset: int, count: int) -> tuple[int, ...]:
         raw = self._slice(offset, count * 4)
         return tuple(struct.unpack_from(f"<{count}I", raw)) if count else ()
+
+    def _validate_collection_size(self, count: int, name: str) -> None:
+        if count > MAX_DEX_COLLECTION_ENTRIES:
+            raise DexError(f"DEX {name} collection contains too many entries")
 
     def _uleb128(self, offset: int) -> tuple[int, int]:
         value = 0
