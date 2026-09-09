@@ -1,6 +1,6 @@
 import pytest
 
-from protoloom.emit.proto import emit_proto
+from protoloom.emit.proto import _unique_names, emit_proto
 from protoloom.model import (
     Confidence,
     EnumType,
@@ -137,6 +137,31 @@ def test_sibling_declaration_names_are_uniquified() -> None:
     assert "enum Entry_Type_3 {" in emitted
     assert "enum Entry_Type_4 {" in emitted
     assert compile_proto(emitted).success
+
+
+def test_name_uniquification_skips_reserved_suffixes() -> None:
+    names = _unique_names(
+        ["Record", "Record", "Record", "Record_2"],
+        "Recovered",
+        {"Record_2", "Record_4"},
+    )
+
+    assert names == ["Record", "Record_3", "Record_5", "Record_2_2"]
+
+
+def test_name_uniquification_scales_across_repeated_names() -> None:
+    names = _unique_names(["Record"] * 5000, "Recovered")
+
+    assert len(names) == 5000
+    assert len(set(names)) == 5000
+    assert names[:3] == ["Record", "Record_2", "Record_3"]
+    assert names[-1] == "Record_5000"
+
+
+def test_name_uniquification_tracks_sanitized_collisions() -> None:
+    names = _unique_names(["A-B", "A_B", "A-B"], "Recovered")
+
+    assert names == ["A_B", "A_B_2", "A_B_3"]
 
 
 def test_type_references_follow_uniquified_declarations() -> None:
