@@ -88,24 +88,34 @@ class ElfFile:
             if not raw_sections:
                 raise ElfError("extended program header count has no section table")
             phnum = int(raw_sections[0][7])
-        names = memoryview(b"")
-        if raw_sections and shstrndx < len(raw_sections):
-            names = self._slice(
-                int(raw_sections[shstrndx][4]), int(raw_sections[shstrndx][5])
+        names = b""
+        if raw_sections:
+            if shstrndx >= len(raw_sections):
+                raise ElfError("section name table index is out of range")
+            names = bytes(
+                self._slice(
+                    int(raw_sections[shstrndx][4]),
+                    int(raw_sections[shstrndx][5]),
+                )
             )
-        sections = tuple(
-            ElfSection(
-                _cstring(names, int(raw[0])),
-                int(raw[4]),
-                int(raw[5]),
-                int(raw[3]),
-                int(raw[2]),
-                int(raw[1]),
+        sections: list[ElfSection] = []
+        for raw in raw_sections:
+            section_type = int(raw[1])
+            file_offset, size = int(raw[4]), int(raw[5])
+            if size and section_type not in {0, 8}:
+                self._slice(file_offset, size)
+            sections.append(
+                ElfSection(
+                    _cstring(names, int(raw[0])),
+                    file_offset,
+                    size,
+                    int(raw[3]),
+                    int(raw[2]),
+                    section_type,
+                )
             )
-            for raw in raw_sections
-        )
         segments = self._segments(phoff, phentsize, phnum)
-        return sections, segments
+        return tuple(sections), segments
 
     def _raw_sections(
         self, offset: int, entry_size: int, count: int
@@ -168,10 +178,12 @@ class ElfFile:
         return self._data[offset : offset + size]
 
 
-def _cstring(data: memoryview, offset: int) -> str:
-    if offset < 0 or offset >= len(data):
+def _cstring(data: bytes, offset: int) -> str:
+    if offset == 0 and not data:
         return ""
-    end = bytes(data).find(b"\x00", offset)
+    if offset < 0 or offset >= len(data):
+        raise ElfError("section name lies outside the string table")
+    end = data.find(b"\x00", offset)
     if end < 0:
-        end = len(data)
-    return bytes(data[offset:end]).decode("utf-8", errors="replace")
+        raise ElfError("unterminated ELF section name")
+    return data[offset:end].decode("utf-8", errors="replace")
