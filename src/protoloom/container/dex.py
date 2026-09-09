@@ -136,6 +136,23 @@ _SIZED_VALUE_TYPES = frozenset(
         _VALUE_ENUM,
     }
 )
+_SIGNED_VALUE_TYPES = frozenset({_VALUE_BYTE, _VALUE_SHORT, _VALUE_INT, _VALUE_LONG})
+_MAX_VALUE_ARGS = {
+    _VALUE_BYTE: 0,
+    _VALUE_SHORT: 1,
+    _VALUE_CHAR: 1,
+    _VALUE_INT: 3,
+    _VALUE_LONG: 7,
+    _VALUE_FLOAT: 3,
+    _VALUE_DOUBLE: 7,
+    _VALUE_METHOD_TYPE: 3,
+    _VALUE_METHOD_HANDLE: 3,
+    _VALUE_STRING: 3,
+    _VALUE_TYPE: 3,
+    _VALUE_FIELD: 3,
+    _VALUE_METHOD: 3,
+    _VALUE_ENUM: 3,
+}
 
 
 class DexFile:
@@ -358,16 +375,27 @@ class DexFile:
         value_type = header & 0x1F
         value_arg = header >> 5
         if value_type in _SIZED_VALUE_TYPES:
+            if value_arg > _MAX_VALUE_ARGS[value_type]:
+                raise DexError("encoded value has an invalid width")
             width = value_arg + 1
             raw = bytes(self._slice(cursor, width))
             cursor += width
-            index = int.from_bytes(raw, "little")
-            return index, cursor
+            value = int.from_bytes(
+                raw, "little", signed=value_type in _SIGNED_VALUE_TYPES
+            )
+            self._validate_encoded_reference(value_type, value)
+            return value, cursor
         if value_type == _VALUE_BOOLEAN:
+            if value_arg > 1:
+                raise DexError("encoded boolean has an invalid value")
             return bool(value_arg), cursor
         if value_type == _VALUE_NULL:
+            if value_arg:
+                raise DexError("encoded null has an invalid value")
             return None, cursor
         if value_type == _VALUE_ARRAY:
+            if value_arg:
+                raise DexError("encoded array has an invalid value")
             count, cursor = self._uleb128(cursor)
             self._validate_collection_size(count, "encoded array values")
             values: list[object] = []
@@ -376,16 +404,34 @@ class DexFile:
                 values.append(item)
             return tuple(values), cursor
         if value_type == _VALUE_ANNOTATION:
+            if value_arg:
+                raise DexError("encoded annotation has an invalid value")
             type_index, cursor = self._uleb128(cursor)
+            if type_index >= len(self.type_ids):
+                raise DexError("encoded annotation type index is out of range")
             count, cursor = self._uleb128(cursor)
             self._validate_collection_size(count, "encoded annotation elements")
             elements: list[tuple[int, object]] = []
             for _ in range(count):
                 name_index, cursor = self._uleb128(cursor)
+                if name_index >= len(self.strings):
+                    raise DexError("encoded annotation name index is out of range")
                 item, cursor = self._encoded_value(cursor, depth + 1)
                 elements.append((name_index, item))
             return AnnotationItem(0, int(type_index), tuple(elements)), cursor
         raise DexError(f"unsupported encoded_value type 0x{value_type:02x}")
+
+    def _validate_encoded_reference(self, value_type: int, value: int) -> None:
+        limits = {
+            _VALUE_METHOD_TYPE: (len(self.prototypes), "prototype"),
+            _VALUE_STRING: (len(self.strings), "string"),
+            _VALUE_TYPE: (len(self.type_ids), "type"),
+            _VALUE_FIELD: (len(self.fields), "field"),
+            _VALUE_METHOD: (len(self.methods), "method"),
+            _VALUE_ENUM: (len(self.fields), "enum field"),
+        }
+        if value_type in limits and value >= limits[value_type][0]:
+            raise DexError(f"encoded {limits[value_type][1]} index is out of range")
 
     def _parse_header(self) -> DexHeader:
         if (
