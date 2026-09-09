@@ -547,6 +547,50 @@ def test_atomic_write_respects_process_umask(tmp_path: Path) -> None:
     assert output.stat().st_mode & 0o777 == 0o600
 
 
+def test_atomic_write_syncs_file_and_directory(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    synced: list[int] = []
+    real_fsync = os.fsync
+
+    def record_fsync(descriptor: int) -> None:
+        synced.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", record_fsync)
+    output = tmp_path / "output"
+    _atomic_write(output, b"durable")
+    assert output.read_bytes() == b"durable"
+    assert len(synced) == 2
+
+
+def test_atomic_write_closes_directory_after_sync_failure(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    real_fsync = os.fsync
+    real_close = os.close
+    closed: list[int] = []
+    sync_count = 0
+
+    def fail_fsync(descriptor: int) -> None:
+        nonlocal sync_count
+        sync_count += 1
+        if sync_count == 2:
+            raise OSError("sync failed")
+        real_fsync(descriptor)
+
+    def record_close(descriptor: int) -> None:
+        closed.append(descriptor)
+        real_close(descriptor)
+
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+    monkeypatch.setattr(os, "close", record_close)
+    with pytest.raises(OSError, match="sync failed"):
+        _atomic_write(tmp_path / "output", b"payload")
+    assert sync_count == 2
+    assert closed
+
+
 @pytest.mark.parametrize("nested", [False, True])
 def test_extract_rejects_symlinked_output_directories_before_writing(
     tmp_path: Path, nested: bool
