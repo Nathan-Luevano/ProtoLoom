@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from protoloom.container.elf import ElfError, ElfFile
-from protoloom.container.macho import MachOFile
+from protoloom.container.macho import MachOError, MachOFile
 
 
 def test_parses_host_elf() -> None:
@@ -142,9 +142,44 @@ def test_parses_macho_64_section() -> None:
     assert [bytes(region) for region in macho.protobuf_regions()] == [b"data"]
 
 
+def test_rejects_inconsistent_macho_load_command_count() -> None:
+    malformed = bytearray(_macho_with_const_section())
+    struct.pack_into("<I", malformed, 16, 0)
+    with pytest.raises(MachOError, match="do not fill"):
+        MachOFile(malformed)
+
+
+def test_rejects_truncated_macho_segment_command() -> None:
+    malformed = bytearray(_macho_with_const_section())
+    header_size = struct.calcsize("<IiiIIIII")
+    struct.pack_into("<I", malformed, header_size + 4, 8)
+    with pytest.raises(MachOError, match="segment command"):
+        MachOFile(malformed)
+
+
+def test_accepts_macho_zero_fill_section_without_file_data() -> None:
+    raw = bytearray(_macho_with_const_section())
+    section_offset = struct.calcsize("<IiiIIIII") + struct.calcsize("<II16sQQQQiiII")
+    raw[section_offset : section_offset + 16] = b"__bss\x00".ljust(16, b"\x00")
+    struct.pack_into("<Q", raw, section_offset + 40, len(raw) * 2)
+    struct.pack_into("<I", raw, section_offset + 48, 0)
+    struct.pack_into("<I", raw, section_offset + 64, 1)
+    macho = MachOFile(raw)
+    assert macho.sections[0].name == "__bss"
+    assert macho.sections[0].size == len(raw) * 2
+
+
 def test_selects_first_fat_macho_architecture() -> None:
     thin = _macho_with_const_section()
     offset = 8 + struct.calcsize(">iiIII")
     header = struct.pack(">IIiiIII", 0xCAFEBABE, 1, 0, 0, offset, len(thin), 0)
     macho = MachOFile(header + thin)
     assert bytes(macho.section_data("__TEXT", "__const")) == b"data"
+
+
+def test_rejects_misaligned_fat_macho_architecture() -> None:
+    thin = _macho_with_const_section()
+    offset = 8 + struct.calcsize(">iiIII")
+    header = struct.pack(">IIiiIII", 0xCAFEBABE, 1, 0, 0, offset, len(thin), 4)
+    with pytest.raises(MachOError, match="architecture"):
+        MachOFile(header + thin)
