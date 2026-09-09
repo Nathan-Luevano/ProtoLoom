@@ -15,6 +15,7 @@ from protoloom.container.apk import (
 from protoloom.container.detect import ContainerKind, detect, detect_bytes
 
 detect_module = importlib.import_module("protoloom.container.detect")
+apk_module = importlib.import_module("protoloom.container.apk")
 
 
 @pytest.mark.parametrize(
@@ -162,6 +163,8 @@ def test_archive_inventory_bounds_selected_uncompressed_size() -> None:
     assert inventory.select({"dex"}, max_total_size=4) == (inventory.entries[0],)
     with pytest.raises(ArchiveError, match="uncompressed bytes"):
         inventory.select({"dex", "asset"}, max_total_size=6)
+    with pytest.raises(ValueError, match="must be positive"):
+        inventory.select({"dex"}, max_total_size=0)
 
 
 def test_archive_inventory_rejects_duplicate_members(tmp_path: Path) -> None:
@@ -199,6 +202,37 @@ def test_archive_inventory_bounds_name_bytes(tmp_path: Path) -> None:
 def test_archive_inventory_rejects_nonpositive_limits(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="limits must be positive"):
         AndroidArchive(tmp_path / "missing.zip").inventory(max_entries=0)
+
+
+def test_archive_reads_reject_nonpositive_limits(tmp_path: Path) -> None:
+    source = AndroidArchive(tmp_path / "missing.zip")
+    with pytest.raises(ValueError, match="must be positive"):
+        source.read("classes.dex", max_size=0)
+    with pytest.raises(ValueError, match="must be positive"):
+        list(source.iter_read((), max_size=0))
+
+
+def test_cached_archive_read_validates_member_name(tmp_path: Path) -> None:
+    source = AndroidArchive(tmp_path / "unused.zip")
+    entry = ArchiveEntry("../classes.dex", 3, 3, "dex")
+    with pytest.raises(ArchiveError, match="unsafe"):
+        list(source.iter_read((entry,), cached={entry.name: b"dex"}))
+
+
+@pytest.mark.parametrize("error", [RuntimeError("encrypted"), NotImplementedError()])
+def test_archive_read_normalizes_zip_runtime_errors(
+    tmp_path: Path, monkeypatch: MonkeyPatch, error: Exception
+) -> None:
+    path = tmp_path / "sample.zip"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("classes.dex", b"dex")
+
+    def fail_read(*args: object) -> bytes:
+        raise error
+
+    monkeypatch.setattr(apk_module, "_read_member", fail_read)
+    with pytest.raises(ArchiveError, match="cannot read archive member"):
+        AndroidArchive(path).read("classes.dex")
 
 
 @pytest.mark.parametrize("name", ["../classes.dex", "/classes.dex", "..\\classes.dex"])

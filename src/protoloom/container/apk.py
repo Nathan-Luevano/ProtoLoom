@@ -42,6 +42,8 @@ class ArchiveInventory:
         *,
         max_total_size: int = MAX_ARCHIVE_SCAN_SIZE,
     ) -> tuple[ArchiveEntry, ...]:
+        if max_total_size <= 0:
+            raise ValueError("archive selection limit must be positive")
         entries = tuple(entry for entry in self.entries if entry.kind in kinds)
         total_size = sum(entry.size for entry in entries)
         if total_size > max_total_size:
@@ -91,10 +93,11 @@ class AndroidArchive:
         return ArchiveInventory(tuple(entries))
 
     def read(self, name: str, *, max_size: int = MAX_ARCHIVE_MEMBER_SIZE) -> bytes:
+        _validate_member_limit(max_size)
         try:
             with ZipFile(self.path) as archive:
                 return _read_member(archive, name, max_size)
-        except (BadZipFile, OSError) as error:
+        except (BadZipFile, NotImplementedError, OSError, RuntimeError) as error:
             raise ArchiveError(f"cannot read archive member: {name}") from error
 
     def iter_read(
@@ -104,6 +107,7 @@ class AndroidArchive:
         cached: Mapping[str, bytes] | None = None,
         max_size: int = MAX_ARCHIVE_MEMBER_SIZE,
     ) -> Iterator[tuple[ArchiveEntry, bytes]]:
+        _validate_member_limit(max_size)
         values = cached or {}
         if all(entry.name in values for entry in entries):
             for entry in entries:
@@ -123,7 +127,7 @@ class AndroidArchive:
                         if data is not None
                         else _read_member(archive, entry.name, max_size),
                     )
-        except (BadZipFile, OSError) as error:
+        except (BadZipFile, NotImplementedError, OSError, RuntimeError) as error:
             raise ArchiveError(f"cannot read archive: {self.path}") from error
 
     def iter_dex(self) -> Iterator[tuple[ArchiveEntry, bytes]]:
@@ -135,10 +139,16 @@ def inventory(path: str | Path) -> ArchiveInventory:
 
 
 def _cached_member(values: Mapping[str, bytes], name: str, max_size: int) -> bytes:
+    _validate_name(name)
     data = values[name]
     if len(data) > max_size:
         raise ArchiveError(f"archive member exceeds {max_size} bytes: {name}")
     return data
+
+
+def _validate_member_limit(max_size: int) -> None:
+    if max_size <= 0:
+        raise ValueError("archive member limit must be positive")
 
 
 def _read_member(archive: ZipFile, name: str, max_size: int) -> bytes:
