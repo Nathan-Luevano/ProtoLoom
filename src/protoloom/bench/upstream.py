@@ -324,9 +324,21 @@ def materialize_source(source: dict[str, Any], cache: Path, root: Path) -> Path:
         archive = cache / f"{source['name']}-{source['commit']}.tar.gz"
         download(source["url"], source["sha256"], source["size"], archive)
         return extract(archive, root)
-    root.mkdir(parents=True, exist_ok=True)
-    for artifact in files:
-        output = root / artifact["path"]
-        output.parent.mkdir(parents=True, exist_ok=True)
-        download(artifact["url"], artifact["sha256"], artifact["size"], output)
+    if root.is_symlink():
+        raise ValueError(f"source materialization path is a symlink: {root}")
+    if root.exists():
+        raise ValueError(f"source materialization path already exists: {root}")
+    root.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{root.name}.", dir=root.parent))
+    try:
+        for artifact in files:
+            output = staging / artifact["path"]
+            output.parent.mkdir(parents=True, exist_ok=True)
+            download(artifact["url"], artifact["sha256"], artifact["size"], output)
+        _sync_tree(staging)
+        staging.replace(root)
+        _sync_directory(root.parent)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     return root
