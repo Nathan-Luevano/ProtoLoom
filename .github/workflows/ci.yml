@@ -23,6 +23,34 @@ jobs:
       - name: Run quality gates
         run: uv run make check
 
+  compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          python-version: "3.14"
+      - run: uv sync --locked --extra dev --group dev
+      - name: Run tests on latest supported Python
+        run: uv run pytest -q
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - name: Build distributions
+        run: uv build
+      - name: Install and run wheel
+        run: |
+          wheel=$(find dist -name '*.whl' -print -quit)
+          test -n "$wheel"
+          uv run --isolated --no-project --with "$wheel" protoloom --help
+
   authorship:
     runs-on: ubuntu-latest
     steps:
