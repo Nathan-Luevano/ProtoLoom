@@ -43,6 +43,7 @@ class ExtractionJob:
     def __init__(self) -> None:
         self._process: asyncio.subprocess.Process | None = None
         self._cancelled = False
+        self._cancel_requested = False
         self._starting = False
 
     @property
@@ -57,6 +58,7 @@ class ExtractionJob:
         if self.running:
             raise RuntimeError("extraction job is already running")
         self._cancelled = False
+        self._cancel_requested = False
         self._starting = True
         try:
             self._process = await asyncio.create_subprocess_exec(
@@ -68,6 +70,8 @@ class ExtractionJob:
             )
         finally:
             self._starting = False
+        if self._cancel_requested:
+            await asyncio.shield(self._stop())
         assert self._process.stdout is not None
         try:
             while True:
@@ -94,6 +98,10 @@ class ExtractionJob:
 
     async def cancel(self) -> None:
         process = self._process
+        if self._starting:
+            self._cancelled = True
+            self._cancel_requested = True
+            return
         if process is None or process.returncode is not None:
             return
         self._cancelled = True

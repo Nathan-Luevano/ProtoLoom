@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -72,6 +73,44 @@ def test_rejects_concurrent_run_during_process_startup(
     active_during_startup, active_after_cancel = asyncio.run(exercise())
     assert active_during_startup is True
     assert active_after_cancel is False
+
+
+def test_cancels_job_requested_during_process_startup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    script = "import time; time.sleep(30)"
+    monkeypatch.setattr(
+        ExtractionRequest,
+        "command",
+        lambda self: (sys.executable, "-c", script),
+    )
+    real_create = asyncio.create_subprocess_exec
+
+    async def exercise() -> tuple[bool, bool]:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def delayed_create(
+            *args: str, **kwargs: Any
+        ) -> asyncio.subprocess.Process:
+            entered.set()
+            await release.wait()
+            return await real_create(*args, **kwargs)
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", delayed_create)
+        job = ExtractionJob()
+        task = asyncio.create_task(
+            job.run(ExtractionRequest(tmp_path, tmp_path), lambda line: None)
+        )
+        await entered.wait()
+        await job.cancel()
+        release.set()
+        result = await task
+        return result.cancelled, job.running
+
+    cancelled, running = asyncio.run(exercise())
+    assert cancelled is True
+    assert running is False
 
 
 def test_stops_process_with_oversized_output_line(
