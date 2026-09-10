@@ -68,6 +68,7 @@ app = typer.Typer(
 P = ParamSpec("P")
 MAX_OUTPUT_NAME_BYTES = 255
 MAX_ARTIFACT_MANIFEST_SIZE = 16 * 1024 * 1024
+MAX_PREVIOUS_ARTIFACTS = 10_000
 
 
 def _handle_command_errors(
@@ -350,9 +351,12 @@ def _previous_artifacts(output: Path) -> set[str]:
         return set()
     if not isinstance(payload, dict) or not isinstance(payload.get("artifacts"), list):
         return set()
+    artifacts = payload["artifacts"]
+    if len(artifacts) > MAX_PREVIOUS_ARTIFACTS:
+        return set()
     return {
         name
-        for name in payload["artifacts"]
+        for name in artifacts
         if isinstance(name, str)
         and Path(name).name == name
         and Path(name).suffix in {".proto", ".desc"}
