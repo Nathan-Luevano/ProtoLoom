@@ -11,7 +11,14 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 from pytest import MonkeyPatch
 from typer.testing import CliRunner
 
-from protoloom.cli import _atomic_write, _dex_inputs, _find, _output_names, app
+from protoloom.cli import (
+    _atomic_write,
+    _dex_inputs,
+    _find,
+    _output_names,
+    _publish_outputs,
+    app,
+)
 from protoloom.container.detect import ContainerKind, Detection
 from protoloom.extract.gotags import GoTagExtraction
 from protoloom.extract.jadx import JadxError, JadxResult
@@ -615,8 +622,33 @@ def test_atomic_write_closes_directory_after_sync_failure(
     monkeypatch.setattr(os, "close", record_close)
     with pytest.raises(OSError, match="sync failed"):
         _atomic_write(tmp_path / "output", b"payload")
-    assert sync_count == 2
+    assert sync_count == 3
     assert closed
+
+
+def test_output_publication_rolls_back_all_files(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.write_bytes(b"old first")
+    second.write_bytes(b"old second")
+    real_replace = Path.replace
+    failed = False
+
+    def fail_second(source: Path, target: Path) -> Path:
+        nonlocal failed
+        if not failed and target == second and source.name.startswith(".second."):
+            failed = True
+            raise OSError("publication failed")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(Path, "replace", fail_second)
+    with pytest.raises(OSError, match="publication failed"):
+        _publish_outputs([(first, b"new first"), (second, b"new second")])
+    assert first.read_bytes() == b"old first"
+    assert second.read_bytes() == b"old second"
+    assert not tuple(tmp_path.glob(".*"))
 
 
 @pytest.mark.parametrize("nested", [False, True])
