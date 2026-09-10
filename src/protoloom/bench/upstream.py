@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 MAX_SOURCE_ARCHIVE_MEMBERS = 100_000
 MAX_SOURCE_EXTRACTED_SIZE = 1024 * 1024 * 1024
 MAX_SOURCE_DOWNLOAD_SIZE = 128 * 1024 * 1024
+MAX_SOURCE_MEMBER_PATH_BYTES = 4096
 MAX_UPSTREAM_NAME_BYTES = 255
 MAX_UPSTREAM_SOURCES = 100
 MAX_UPSTREAM_FILES = 10_000
@@ -248,10 +249,25 @@ def extract(
                     )
                 members.append(member)
                 path = Path(member.name)
-                if not path.parts or path.is_absolute() or ".." in path.parts:
+                if (
+                    not path.parts
+                    or path.is_absolute()
+                    or ".." in path.parts
+                    or len(member.name.encode("utf-8")) > MAX_SOURCE_MEMBER_PATH_BYTES
+                    or any(
+                        len(part.encode("utf-8")) > MAX_UPSTREAM_NAME_BYTES
+                        for part in path.parts
+                    )
+                    or any(
+                        unicodedata.category(character).startswith("C")
+                        for character in member.name
+                    )
+                ):
                     raise ValueError(f"unsafe archive member: {member.name}")
                 if not (member.isfile() or member.isdir()):
                     raise ValueError(f"non-file archive member refused: {member.name}")
+                if member.size < 0:
+                    raise ValueError(f"archive member has negative size: {member.name}")
                 if member.isfile():
                     total_size += member.size
                     if total_size > max_size:
