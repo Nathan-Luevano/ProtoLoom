@@ -1,6 +1,5 @@
 import argparse
 import hashlib
-import json
 import os
 import re
 import tempfile
@@ -9,13 +8,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from protoloom.bench.jsonio import read_json
+
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]+$")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 MAX_ARTIFACT_SIZE = 512 * 1024 * 1024
 
 
 def load_manifest(path: Path) -> list[dict[str, Any]]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = read_json(path)
     if not isinstance(raw, dict) or raw.get("version") != 1:
         raise ValueError("manifest version must be 1")
     apps = raw.get("apps")

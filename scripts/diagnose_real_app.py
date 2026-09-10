@@ -1,5 +1,4 @@
 import argparse
-import json
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +9,7 @@ from google.protobuf.descriptor_pb2 import (
     FileDescriptorSet,
 )
 
+from protoloom.bench.jsonio import read_json
 from protoloom.bench.metrics import (
     METRIC_NAMES,
     TYPE_FIDELITY_AMBIGUITIES,
@@ -249,7 +249,7 @@ def load_recovered(
             enums=tuple(descriptor_enums),
             compiled=True,
         )
-    document = json.loads(path.read_text(encoding="utf-8"))
+    document = read_json(path)
     schemas = [item for item in document["schemas"] if item["package"] == package]
     enums = tuple(
         BenchmarkEnum(

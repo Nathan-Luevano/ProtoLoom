@@ -84,6 +84,25 @@ def test_manifest_rejects_unsafe_entries(
         load_manifest(manifest)
 
 
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        ('{"version":1,"version":1,"apps":[]}', "duplicate JSON key"),
+        ('{"version":1,"apps":[],"value":NaN}', "non-finite JSON number"),
+        (
+            '{"version":1,"apps":[],"value":' + "1" * 1001 + "}",
+            "exceeds 1000 characters",
+        ),
+    ],
+)
+def test_manifest_rejects_unsafe_json(tmp_path: Path, payload: str, match: str) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=match):
+        load_manifest(manifest)
+
+
 def test_existing_hash_pinned_file_is_reused(tmp_path: Path) -> None:
     payload = b"apk"
     candidate = app(hashlib.sha256(payload).hexdigest(), len(payload))
