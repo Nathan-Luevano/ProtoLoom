@@ -291,11 +291,20 @@ def extract(
                     raise ValueError(f"cannot read archive member: {member.name}")
                 with source, output.open("xb") as stream:
                     _copy_member(source, stream, member.size)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+        _sync_tree(staging)
         staging.replace(destination)
+        _sync_directory(destination.parent)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
     return destination / roots.pop()
+
+
+def _sync_tree(root: Path) -> None:
+    for directory, _, _ in os.walk(root, topdown=False):
+        _sync_directory(Path(directory))
 
 
 def _copy_member(source: IO[bytes], output: IO[bytes], expected_size: int) -> None:
