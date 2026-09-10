@@ -8,6 +8,7 @@ Turn APKs, DEX files, native binaries, and Go programs into usable `.proto`
 files—with clear confidence and evidence for every result.
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![PyPI](https://img.shields.io/pypi/v/protoloom)](https://pypi.org/project/protoloom/)
 [![Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-3DA639)](LICENSE)
 
 </div>
@@ -35,10 +36,43 @@ it reports the uncertainty instead of silently guessing.
 
 ## Install
 
-ProtoLoom requires Python 3.11 or newer. From a local checkout:
+ProtoLoom requires Python 3.11 or newer. Install the published command-line
+tool from PyPI with uv:
 
 ```console
+uv tool install protoloom
+```
+
+Upgrade an existing installation with:
+
+```console
+uv tool upgrade protoloom
+```
+
+`pipx install protoloom` is also supported when pipx is your application
+installer.
+
+## Install from source
+
+Clone the repository and install the command directly from the checkout:
+
+```console
+git clone https://github.com/Nathan-Luevano/ProtoLoom.git
+cd ProtoLoom
 uv tool install .
+```
+
+To build the wheel and source archive yourself instead:
+
+```console
+uv build
+```
+
+The build writes both distributions to `dist/`. Install the generated wheel
+with:
+
+```console
+uv tool install dist/protoloom-*.whl
 ```
 
 ## Use
