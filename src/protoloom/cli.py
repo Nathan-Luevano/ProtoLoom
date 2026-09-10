@@ -403,6 +403,9 @@ def _publish_outputs(outputs: list[tuple[Path, bytes]]) -> None:
     paths = [path for path, _ in outputs]
     if len(paths) != len(set(paths)):
         raise ValueError("duplicate output publication path")
+    for path in paths:
+        if path.exists() and not path.is_file():
+            raise ValueError(f"output publication path is not a file: {path}")
     staged: dict[Path, Path] = {}
     backups: dict[Path, Path] = {}
     installed: list[Path] = []
@@ -766,6 +769,7 @@ def extract(
             output,
             [*output_names, descriptor_name, "recovery.json", "report.md"],
         )
+        _validate_output_files(output / "dashboard", ["index.html"])
     except ValueError as error:
         typer.echo(f"recovery failed: {error}", err=True)
         raise typer.Exit(2) from error
