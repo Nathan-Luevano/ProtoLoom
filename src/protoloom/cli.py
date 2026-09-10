@@ -381,19 +381,60 @@ def _temporary_output(path: Path) -> tuple[Path, int]:
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
+    _publish_outputs([(path, payload)])
+
+
+def _stage_output(path: Path, payload: bytes) -> Path:
     temporary, descriptor = _temporary_output(path)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        temporary.replace(path)
-        _sync_directory(path.parent)
+        return temporary
     except BaseException:
         with suppress(OSError):
             os.close(descriptor)
         temporary.unlink(missing_ok=True)
         raise
+
+
+def _publish_outputs(outputs: list[tuple[Path, bytes]]) -> None:
+    staged: dict[Path, Path] = {}
+    backups: dict[Path, Path] = {}
+    installed: list[Path] = []
+    parents = {path.parent for path, _ in outputs}
+    published = False
+    try:
+        for path, payload in outputs:
+            staged[path] = _stage_output(path, payload)
+        for path, _ in outputs:
+            if path.exists() or path.is_symlink():
+                backup, descriptor = _temporary_output(path)
+                os.close(descriptor)
+                backup.unlink()
+                path.replace(backup)
+                backups[path] = backup
+            installed.append(path)
+            staged[path].replace(path)
+        for parent in parents:
+            _sync_directory(parent)
+        published = True
+    except BaseException:
+        for path in reversed(installed):
+            path.unlink(missing_ok=True)
+            if path in backups:
+                backups[path].replace(path)
+        for parent in parents:
+            with suppress(OSError):
+                _sync_directory(parent)
+        raise
+    finally:
+        for temporary in staged.values():
+            temporary.unlink(missing_ok=True)
+        if published:
+            for backup in backups.values():
+                backup.unlink(missing_ok=True)
 
 
 def _sync_directory(path: Path) -> None:
@@ -754,16 +795,24 @@ def extract(
         typer.echo(f"output generation failed: {error}", err=True)
         raise typer.Exit(2) from error
     output.mkdir(parents=True, exist_ok=True)
-    for (schema, source), name in zip(prepared, output_names, strict=True):
-        destination = output / name
-        _atomic_write(destination, source.encode())
-        typer.echo(f"recovered {schema.name} -> {destination}")
-    _atomic_write(output / descriptor_name, descriptor_set)
-    _atomic_write(output / "report.md", report)
     dashboard = output / "dashboard"
     dashboard.mkdir(exist_ok=True)
-    _atomic_write(dashboard / "index.html", dashboard_page)
-    _atomic_write(output / "recovery.json", recovery_json)
+    outputs = [
+        (output / name, source.encode())
+        for (_, source), name in zip(prepared, output_names, strict=True)
+    ]
+    outputs.extend(
+        [
+            (output / descriptor_name, descriptor_set),
+            (output / "report.md", report),
+            (dashboard / "index.html", dashboard_page),
+            (output / "recovery.json", recovery_json),
+        ]
+    )
+    _publish_outputs(outputs)
+    for (schema, _source), name in zip(prepared, output_names, strict=True):
+        destination = output / name
+        typer.echo(f"recovered {schema.name} -> {destination}")
     _remove_stale_artifacts(output, previous_artifacts, set(artifacts))
     typer.echo(
         f"bail-outs: {len(bailouts)}; recovered files: {len(reconciled.schemas)}"
