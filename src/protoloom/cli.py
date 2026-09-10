@@ -420,14 +420,23 @@ def _publish_outputs(outputs: list[tuple[Path, bytes]]) -> None:
         for parent in parents:
             _sync_directory(parent)
         published = True
-    except BaseException:
+    except BaseException as error:
+        rollback_failures: list[str] = []
         for path in reversed(installed):
-            path.unlink(missing_ok=True)
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as rollback_error:
+                rollback_failures.append(f"remove {path}: {rollback_error}")
             if path in backups:
-                backups[path].replace(path)
+                try:
+                    backups[path].replace(path)
+                except OSError as rollback_error:
+                    rollback_failures.append(f"restore {path}: {rollback_error}")
         for parent in parents:
             with suppress(OSError):
                 _sync_directory(parent)
+        if rollback_failures:
+            error.add_note("; ".join(rollback_failures))
         raise
     finally:
         for temporary in staged.values():
