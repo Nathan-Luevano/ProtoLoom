@@ -42,6 +42,38 @@ def test_streams_cli_failure_without_shell(tmp_path: Path) -> None:
     assert job.running is False
 
 
+def test_rejects_concurrent_run_during_process_startup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def exercise() -> tuple[bool, bool]:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def delayed_create(
+            *args: object, **kwargs: object
+        ) -> asyncio.subprocess.Process:
+            entered.set()
+            await release.wait()
+            raise AssertionError("startup should remain paused")
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", delayed_create)
+        job = ExtractionJob()
+        request = ExtractionRequest(tmp_path / "missing.apk", tmp_path)
+        task = asyncio.create_task(job.run(request, lambda line: None))
+        await entered.wait()
+        active_during_startup = job.running
+        with pytest.raises(RuntimeError, match="already running"):
+            await job.run(request, lambda line: None)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        return active_during_startup, job.running
+
+    active_during_startup, active_after_cancel = asyncio.run(exercise())
+    assert active_during_startup is True
+    assert active_after_cancel is False
+
+
 def test_stops_process_with_oversized_output_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
