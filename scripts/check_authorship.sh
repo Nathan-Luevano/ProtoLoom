@@ -9,6 +9,9 @@ else
 fi
 
 bad_authors=$(git log --format='%ae' "$range" | grep -Fvx "$ALLOWED_EMAIL" || true)
+if [ -n "${ALLOWED_BOT_EMAIL:-}" ]; then
+  bad_authors=$(printf '%s\n' "$bad_authors" | grep -Fvx "$ALLOWED_BOT_EMAIL" || true)
+fi
 if [ -n "$bad_authors" ]; then
   echo "blocked: commits use an unexpected author email"
   echo "$bad_authors"
@@ -24,4 +27,3 @@ if git log --format='%B' "$range" | grep -i '^signed-off-by:' | grep -qiv 'Natha
   echo "blocked: commit history carries a foreign attribution trailer"
   exit 1
 fi
-

@@ -62,4 +62,5 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
           ALLOWED_EMAIL: 81777066+Nathan-Luevano@users.noreply.github.com
+          ALLOWED_BOT_EMAIL: ${{ github.actor == 'dependabot[bot]' && '49699333+dependabot[bot]@users.noreply.github.com' || '' }}
         run: scripts/check_authorship.sh
