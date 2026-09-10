@@ -601,6 +601,31 @@ def test_extract_materializes_one_root_tree(tmp_path: Path) -> None:
     assert (root / "protos/sample.proto").read_bytes() == payload
 
 
+def test_extract_syncs_files_and_directory_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive = tmp_path / "source.tar.gz"
+    payload = b' syntax = "proto3";\n'
+    with tarfile.open(archive, "w:gz") as bundle:
+        directory = tarfile.TarInfo("source/protos")
+        directory.type = tarfile.DIRTYPE
+        bundle.addfile(directory)
+        member = tarfile.TarInfo("source/protos/sample.proto")
+        member.size = len(payload)
+        bundle.addfile(member, io.BytesIO(payload))
+    synced: list[int] = []
+    real_fsync = os.fsync
+
+    def record_fsync(descriptor: int) -> None:
+        synced.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", record_fsync)
+    root = extract(archive, tmp_path / "unpacked")
+    assert (root / "protos/sample.proto").read_bytes() == payload
+    assert len(synced) == 5
+
+
 def test_extract_refuses_multiple_roots(tmp_path: Path) -> None:
     archive = tmp_path / "multiple.tar.gz"
     with tarfile.open(archive, "w:gz") as bundle:
