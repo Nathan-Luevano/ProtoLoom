@@ -91,10 +91,11 @@ class ExtractionJob:
                 on_line(line.decode(errors="replace").rstrip())
             returncode = await self._process.wait()
         except asyncio.CancelledError:
-            await asyncio.shield(self.cancel())
+            self._cancelled = True
+            await asyncio.shield(self._stop_and_drain())
             raise
         except BaseException:
-            await asyncio.shield(self._stop())
+            await asyncio.shield(self._stop_and_drain())
             raise
         finally:
             self._process = None
@@ -129,12 +130,14 @@ class ExtractionJob:
         while await process.stdout.read(MAX_JOB_OUTPUT_LINE_BYTES):
             pass
 
+    async def _stop_and_drain(self) -> None:
+        await asyncio.gather(self._stop(), self._drain_output())
+
     async def _reject_output(
         self, on_line: Callable[[str], None], message: str
     ) -> JobResult:
         on_line(message)
-        await asyncio.shield(self._stop())
-        await self._drain_output()
+        await asyncio.shield(self._stop_and_drain())
         assert self._process is not None
         assert self._process.returncode is not None
         return JobResult(self._process.returncode, self._cancelled)
