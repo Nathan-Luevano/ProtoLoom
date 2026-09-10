@@ -74,9 +74,39 @@ def test_manifest_requires_sources_array(manifest: object) -> None:
         validate_source_manifest(manifest)
 
 
+def test_manifest_rejects_unsafe_manifest_name() -> None:
+    manifest = _manifest()
+    manifest["name"] = "../escape"
+    with pytest.raises(ValueError, match="manifest name"):
+        validate_source_manifest(manifest)
+
+
+@pytest.mark.parametrize("location", ["manifest", "source", "file", "target"])
+def test_manifest_rejects_unknown_fields(location: str) -> None:
+    manifest = _manifest()
+    if location == "manifest":
+        value = manifest
+    elif location == "source":
+        value = manifest["sources"][0]
+    elif location == "target":
+        value = manifest["sources"][0]["targets"][0]
+    else:
+        artifact = {
+            "path": "sample.proto",
+            "url": "https://example.test/file",
+            "sha256": "a" * 64,
+            "size": 1,
+        }
+        manifest["sources"][0]["files"] = [artifact]
+        value = artifact
+    value["unexpected"] = True
+    with pytest.raises(ValueError, match="unknown field: unexpected"):
+        validate_source_manifest(manifest)
+
+
 def test_manifest_requires_source_and_file_objects() -> None:
     with pytest.raises(ValueError, match="source entry must be an object"):
-        validate_source_manifest({"sources": ["source"]})
+        validate_source_manifest({"name": "sample", "sources": ["source"]})
     manifest = _manifest()
     manifest["sources"][0]["files"] = ["file"]
     with pytest.raises(ValueError, match="source file must be an object"):
@@ -88,6 +118,7 @@ def test_manifest_requires_source_and_file_objects() -> None:
     [
         ("sha256", "short", "SHA-256"),
         ("size", 0, "positive pinned size"),
+        ("size", 128 * 1024 * 1024 + 1, "positive pinned size"),
         ("url", "http://example.test/archive", "HTTPS"),
     ],
 )

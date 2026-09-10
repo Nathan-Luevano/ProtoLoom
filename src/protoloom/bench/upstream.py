@@ -58,6 +58,8 @@ def https_url(value: str) -> str:
 def validate_source_manifest(value: object) -> dict[str, Any]:
     if not isinstance(value, dict) or not isinstance(value.get("sources"), list):
         raise ValueError("source manifest needs a sources array")
+    _reject_unknown(value, {"name", "sources"}, "source manifest")
+    _safe_name(value.get("name"), "manifest")
     if len(value["sources"]) > MAX_UPSTREAM_SOURCES:
         raise ValueError(f"source manifest exceeds {MAX_UPSTREAM_SOURCES} sources")
     names: set[str] = set()
@@ -65,6 +67,11 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
     for source in value["sources"]:
         if not isinstance(source, dict):
             raise ValueError("source entry must be an object")
+        _reject_unknown(
+            source,
+            {"name", "commit", "url", "sha256", "size", "files", "includes", "targets"},
+            "source",
+        )
         name = _safe_name(source.get("name"), "source")
         commit = source.get("commit")
         if name in names:
@@ -86,6 +93,9 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
             for artifact in files:
                 if not isinstance(artifact, dict):
                     raise ValueError("source file must be an object")
+                _reject_unknown(
+                    artifact, {"path", "url", "sha256", "size"}, "source file"
+                )
                 path = _safe_path(artifact.get("path"), "source file path")
                 if path in file_paths:
                     raise ValueError(f"duplicate source file path: {path}")
@@ -117,6 +127,7 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
         for target in entries:
             if not isinstance(target, dict):
                 raise ValueError("target entry must be an object")
+            _reject_unknown(target, {"name", "proto", "compiled_leg"}, "target")
             target_name = _safe_name(target.get("name"), "target")
             proto = _safe_path(target.get("proto"), "target proto")
             if target_name in targets:
@@ -138,7 +149,12 @@ def _validate_remote(value: dict[str, Any], label: str) -> None:
         or any(character not in LOWER_HEX for character in digest)
     ):
         raise ValueError(f"{label} needs a SHA-256")
-    if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+    if (
+        not isinstance(size, int)
+        or isinstance(size, bool)
+        or size <= 0
+        or size > MAX_SOURCE_DOWNLOAD_SIZE
+    ):
         raise ValueError(f"{label} needs a positive pinned size")
     https_url(_string(value.get("url"), f"{label} URL"))
 
@@ -147,6 +163,12 @@ def _string(value: object, label: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{label} must be a string")
     return value
+
+
+def _reject_unknown(value: dict[str, Any], allowed: set[str], label: str) -> None:
+    unknown = sorted(value.keys() - allowed)
+    if unknown:
+        raise ValueError(f"{label} has unknown field: {unknown[0]}")
 
 
 def _safe_name(value: object, label: str) -> str:
