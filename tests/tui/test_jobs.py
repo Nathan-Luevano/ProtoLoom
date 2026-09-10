@@ -41,6 +41,7 @@ def test_streams_cli_failure_without_shell(tmp_path: Path) -> None:
     assert result.cancelled is False
     assert any("file does not exist" in line for line in lines)
     assert job.running is False
+    assert job._process is None
 
 
 def test_rejects_concurrent_run_during_process_startup(
@@ -131,6 +132,7 @@ def test_stops_process_with_oversized_output_line(
     assert result.cancelled is False
     assert lines == ["Output line exceeded 4096 bytes"]
     assert job.running is False
+    assert job._process is None
 
 
 def test_stops_process_after_output_line_limit(
@@ -180,6 +182,27 @@ def test_stops_process_when_output_callback_fails(
         return job.running
 
     assert asyncio.run(exercise()) is False
+
+
+def test_stop_and_drain_run_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def exercise() -> set[str]:
+        job = ExtractionJob()
+        started: set[str] = set()
+        both_started = asyncio.Event()
+
+        async def wait_for_other(name: str) -> None:
+            started.add(name)
+            if len(started) == 2:
+                both_started.set()
+            await asyncio.wait_for(both_started.wait(), timeout=1)
+
+        monkeypatch.setattr(job, "_stop", lambda: wait_for_other("stop"))
+        monkeypatch.setattr(job, "_drain_output", lambda: wait_for_other("drain"))
+        await job._stop_and_drain()
+        assert both_started.is_set()
+        return started
+
+    assert asyncio.run(exercise()) == {"stop", "drain"}
 
 
 def test_cancels_long_running_process(
