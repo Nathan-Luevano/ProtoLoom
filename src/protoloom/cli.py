@@ -347,7 +347,7 @@ def _previous_artifacts(output: Path) -> set[str]:
         if len(encoded) > MAX_ARTIFACT_MANIFEST_SIZE:
             return set()
         payload = json.loads(encoded)
-    except (OSError, UnicodeError, json.JSONDecodeError, RecursionError):
+    except (OSError, UnicodeError, ValueError, RecursionError):
         return set()
     if not isinstance(payload, dict) or not isinstance(payload.get("artifacts"), list):
         return set()

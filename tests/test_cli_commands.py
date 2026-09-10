@@ -634,6 +634,38 @@ def test_previous_artifacts_rejects_excessive_entries(
     assert _previous_artifacts(tmp_path) == set()
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"{",
+        b"\xff",
+        ('{"artifacts":[],"value":' + "1" * 5000 + "}").encode(),
+        ("[" * 1100 + "]" * 1100).encode(),
+    ],
+)
+def test_previous_artifacts_ignores_unreadable_manifests(
+    tmp_path: Path, payload: bytes
+) -> None:
+    (tmp_path / "recovery.json").write_bytes(payload)
+
+    assert _previous_artifacts(tmp_path) == set()
+
+
+def test_previous_artifacts_ignores_oversized_manifests(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    (tmp_path / "recovery.json").write_bytes(b"{} ")
+    monkeypatch.setattr("protoloom.cli.MAX_ARTIFACT_MANIFEST_SIZE", 2)
+
+    assert _previous_artifacts(tmp_path) == set()
+
+
+def test_previous_artifacts_ignores_special_files(tmp_path: Path) -> None:
+    (tmp_path / "recovery.json").symlink_to(Path(os.devnull))
+
+    assert _previous_artifacts(tmp_path) == set()
+
+
 def test_atomic_write_respects_process_umask(tmp_path: Path) -> None:
     output = tmp_path / "output"
     previous = os.umask(0o077)
