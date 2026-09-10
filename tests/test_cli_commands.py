@@ -660,6 +660,18 @@ def test_output_publication_rejects_duplicate_paths(tmp_path: Path) -> None:
     assert not tuple(tmp_path.glob(".*"))
 
 
+def test_output_publication_rejects_directory_destination(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    sentinel = output / "sentinel"
+    sentinel.write_bytes(b"preserve")
+    with pytest.raises(ValueError, match="publication path is not a file"):
+        _publish_outputs([(output, b"replacement")])
+    assert output.is_dir()
+    assert sentinel.read_bytes() == b"preserve"
+    assert not tuple(tmp_path.glob(".*"))
+
+
 def test_output_publication_syncs_backup_removal(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
@@ -788,6 +800,23 @@ def test_extract_rejects_directory_at_artifact_path(tmp_path: Path) -> None:
     assert result.exit_code == 2
     assert "recovery failed: output file path is not a file" in result.output
     assert occupied.is_dir()
+
+
+def test_extract_rejects_directory_at_dashboard_index(tmp_path: Path) -> None:
+    demo = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "-o", str(demo)]).exit_code == 0
+    output = tmp_path / "output"
+    occupied = output / "dashboard" / "index.html"
+    occupied.mkdir(parents=True)
+    sentinel = occupied / "sentinel"
+    sentinel.write_bytes(b"preserve")
+
+    result = runner.invoke(app, ["extract", str(demo / "demo.desc"), "-o", str(output)])
+
+    assert result.exit_code == 2
+    assert "recovery failed: output file path is not a file" in result.output
+    assert occupied.is_dir()
+    assert sentinel.read_bytes() == b"preserve"
 
 
 def test_extract_removes_only_manifested_stale_artifacts(tmp_path: Path) -> None:
