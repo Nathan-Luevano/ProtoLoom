@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 from google.protobuf.descriptor_pb2 import FieldDescriptorProto, FileDescriptorSet
 
 
@@ -125,6 +126,24 @@ def test_recovered_json_scores_top_level_and_message_local_enums(
     assert [field.wire_type for field in schema.messages[0].fields] == [0, 0]
     assert schema.messages[1].name == "example.Record.Nested"
     assert schema.messages[1].parent == "example.Record"
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        ('{"schemas":[],"schemas":[]}', "duplicate JSON key"),
+        ('{"schemas":[],"value":Infinity}', "non-finite JSON number"),
+        ('{"schemas":[],"value":1e999}', "finite range"),
+    ],
+)
+def test_recovered_json_rejects_unsafe_values(
+    tmp_path: Path, payload: str, match: str
+) -> None:
+    recovery = tmp_path / "recovery.json"
+    recovery.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=match):
+        load_recovered(recovery, "example")
 
 
 def test_recovered_json_nests_qualified_names_like_truth(tmp_path: Path) -> None:
