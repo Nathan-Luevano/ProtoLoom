@@ -43,10 +43,13 @@ class ExtractionJob:
     def __init__(self) -> None:
         self._process: asyncio.subprocess.Process | None = None
         self._cancelled = False
+        self._starting = False
 
     @property
     def running(self) -> bool:
-        return self._process is not None and self._process.returncode is None
+        return self._starting or (
+            self._process is not None and self._process.returncode is None
+        )
 
     async def run(
         self, request: ExtractionRequest, on_line: Callable[[str], None]
@@ -54,13 +57,17 @@ class ExtractionJob:
         if self.running:
             raise RuntimeError("extraction job is already running")
         self._cancelled = False
-        self._process = await asyncio.create_subprocess_exec(
-            *request.command(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            start_new_session=os.name == "posix",
-            limit=MAX_JOB_OUTPUT_LINE_BYTES + 1,
-        )
+        self._starting = True
+        try:
+            self._process = await asyncio.create_subprocess_exec(
+                *request.command(),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                start_new_session=os.name == "posix",
+                limit=MAX_JOB_OUTPUT_LINE_BYTES + 1,
+            )
+        finally:
+            self._starting = False
         assert self._process.stdout is not None
         try:
             while True:
