@@ -1,6 +1,8 @@
 import importlib.util
+import os
 from pathlib import Path
 
+import pytest
 from google.protobuf import descriptor_pb2
 
 path = Path(__file__).parents[1] / "scripts" / "check_matrix_roundtrip.py"
@@ -10,6 +12,7 @@ if spec is None or spec.loader is None:
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 package_descriptor_set = module.package_descriptor_set
+load_descriptor_set = module.load_descriptor_set
 
 
 def test_package_descriptor_set_excludes_unrelated_dependencies() -> None:
@@ -27,3 +30,11 @@ def test_package_descriptor_set_excludes_unrelated_dependencies() -> None:
 
     assert [file.name for file in selected.file] == ["matrix.proto"]
     assert selected.file[0].message_type[0].name == "Everything"
+
+
+def test_load_descriptor_set_rejects_special_files(tmp_path: Path) -> None:
+    descriptor = tmp_path / "input.desc"
+    descriptor.symlink_to(Path(os.devnull))
+
+    with pytest.raises(OSError, match="not a regular file"):
+        load_descriptor_set(descriptor)

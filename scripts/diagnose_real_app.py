@@ -20,6 +20,7 @@ from protoloom.bench.metrics import (
     score_target,
     type_fidelity_ceiling,
 )
+from protoloom.container.read import read_limited
 
 _WIRE_TYPES = {
     FieldDescriptorProto.TYPE_DOUBLE: 1,
@@ -145,7 +146,7 @@ def _truth_field_type(
 def load_truth(
     path: Path, file_name: str, package_override: str | None = None
 ) -> BenchmarkSchema:
-    descriptor_set = FileDescriptorSet.FromString(path.read_bytes())
+    descriptor_set = FileDescriptorSet.FromString(read_limited(path))
     descriptor = next(
         (item for item in descriptor_set.file if item.name == file_name), None
     )
@@ -233,7 +234,7 @@ def load_recovered(
 ) -> BenchmarkSchema:
     if path.suffix == ".desc":
         descriptor_set = FileDescriptorSet()
-        descriptor_set.ParseFromString(path.read_bytes())
+        descriptor_set.ParseFromString(read_limited(path))
         descriptor_messages: list[BenchmarkMessage] = []
         descriptor_enums: list[BenchmarkEnum] = []
         for descriptor in descriptor_set.file:

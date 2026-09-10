@@ -3,6 +3,7 @@ from pathlib import Path
 
 from google.protobuf import descriptor_pb2
 
+from protoloom.container.read import read_limited
 from protoloom.validate.roundtrip import roundtrip_descriptor_set
 
 
@@ -14,6 +15,10 @@ def package_descriptor_set(
     return selected
 
 
+def load_descriptor_set(path: Path) -> descriptor_pb2.FileDescriptorSet:
+    return descriptor_pb2.FileDescriptorSet.FromString(read_limited(path))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--truth", type=Path, required=True)
@@ -21,7 +26,7 @@ def main() -> None:
     parser.add_argument("--package", required=True)
     args = parser.parse_args()
 
-    truth = descriptor_pb2.FileDescriptorSet.FromString(args.truth.read_bytes())
+    truth = load_descriptor_set(args.truth)
     truth_names = {
         f"{file.package}.{message.name}" if file.package else message.name
         for file in truth.file
@@ -35,7 +40,7 @@ def main() -> None:
     )
 
     recovered = package_descriptor_set(
-        descriptor_pb2.FileDescriptorSet.FromString(args.recovered.read_bytes()),
+        load_descriptor_set(args.recovered),
         args.package,
     )
     candidates = [
