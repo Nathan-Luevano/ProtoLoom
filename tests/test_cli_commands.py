@@ -651,6 +651,45 @@ def test_output_publication_rolls_back_all_files(
     assert not tuple(tmp_path.glob(".*"))
 
 
+def test_output_publication_continues_after_restore_failure(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    paths = [tmp_path / name for name in ("first", "second", "third")]
+    for path in paths:
+        path.write_bytes(f"old {path.name}".encode())
+    real_replace = Path.replace
+    publication_failed = False
+
+    def fail_publication_and_restore(source: Path, target: Path) -> Path:
+        nonlocal publication_failed
+        if (
+            target == paths[2]
+            and source.read_bytes() == b"new third"
+            and not publication_failed
+        ):
+            publication_failed = True
+            raise OSError("publication failed")
+        if (
+            target == paths[1]
+            and source.read_bytes() == b"old second"
+            and publication_failed
+        ):
+            raise OSError("restore failed")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(Path, "replace", fail_publication_and_restore)
+    outputs = [(path, f"new {path.name}".encode()) for path in paths]
+    with pytest.raises(OSError, match="publication failed") as captured:
+        _publish_outputs(outputs)
+    assert paths[0].read_bytes() == b"old first"
+    assert not paths[1].exists()
+    assert paths[2].read_bytes() == b"old third"
+    backups = tuple(tmp_path.glob(".second.*"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == b"old second"
+    assert captured.value.__notes__ == [f"restore {paths[1]}: restore failed"]
+
+
 @pytest.mark.parametrize("nested", [False, True])
 def test_extract_rejects_symlinked_output_directories_before_writing(
     tmp_path: Path, nested: bool
