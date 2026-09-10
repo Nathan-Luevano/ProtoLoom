@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 from types import ModuleType
 
@@ -61,6 +62,22 @@ def test_recovered_descriptor_scopes_to_top_level_roots(tmp_path: Path) -> None:
         "runtime.Keep",
         "runtime.Keep.Nested",
     ]
+
+
+def test_truth_descriptor_rejects_special_files(tmp_path: Path) -> None:
+    truth = tmp_path / "truth.desc"
+    truth.symlink_to(Path(os.devnull))
+
+    with pytest.raises(OSError, match="not a regular file"):
+        load_truth(truth, "schema.proto")
+
+
+def test_recovered_descriptor_rejects_special_files(tmp_path: Path) -> None:
+    recovered = tmp_path / "recovered.desc"
+    recovered.symlink_to(Path(os.devnull))
+
+    with pytest.raises(OSError, match="not a regular file"):
+        load_recovered(recovered, "runtime")
 
 
 def test_recovered_json_scores_top_level_and_message_local_enums(
