@@ -885,11 +885,20 @@ def demo(
     blob = b"stripped-binary\x00" + descriptor.SerializeToString() + b"\xff"
     if output is None:
         output = Path(tempfile.mkdtemp(prefix="protoloom-demo-"))
-    output.mkdir(parents=True, exist_ok=True)
     finding = scan_descriptors(blob, "built-in demo")[0]
     schema = decode_file_descriptor(finding.descriptor, finding.source, "0x10")
-    _atomic_write(output / "demo.proto", emit_proto(schema).encode())
-    _atomic_write(output / "demo.desc", emit_descriptor_set([finding.descriptor]))
+    outputs = [
+        (output / "demo.proto", emit_proto(schema).encode()),
+        (output / "demo.desc", emit_descriptor_set([finding.descriptor])),
+    ]
+    try:
+        _validate_output(output)
+        _validate_output_files(output, ["demo.proto", "demo.desc"])
+        output.mkdir(parents=True, exist_ok=True)
+        _publish_outputs(outputs)
+    except (OSError, ValueError) as error:
+        typer.echo(f"demo failed: {error}", err=True)
+        raise typer.Exit(2) from error
     typer.echo(f"PASS: recovered 1/1 schema with certain confidence -> {output}")
 
 

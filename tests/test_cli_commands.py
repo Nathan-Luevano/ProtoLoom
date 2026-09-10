@@ -105,6 +105,37 @@ def test_demo_uses_temporary_output_by_default(
     assert (output / "demo.proto").is_file()
 
 
+def test_demo_rolls_back_partial_publication(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    output = tmp_path / "demo"
+    real_replace = Path.replace
+
+    def fail_descriptor(source: Path, target: Path) -> Path:
+        if target == output / "demo.desc":
+            raise OSError("publication failed")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(Path, "replace", fail_descriptor)
+    result = runner.invoke(app, ["demo", "-o", str(output)])
+    assert result.exit_code == 2
+    assert "demo failed: publication failed" in result.output
+    assert not (output / "demo.proto").exists()
+    assert not (output / "demo.desc").exists()
+    assert not tuple(output.glob(".*"))
+
+
+def test_demo_rejects_symlinked_output(tmp_path: Path) -> None:
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    output = tmp_path / "demo"
+    output.symlink_to(victim, target_is_directory=True)
+    result = runner.invoke(app, ["demo", "-o", str(output)])
+    assert result.exit_code == 2
+    assert "demo failed: output directory is a symlink" in result.output
+    assert list(victim.iterdir()) == []
+
+
 def test_inspect_reports_android_archive_inventory(tmp_path: Path) -> None:
     apk = tmp_path / "sample.apk"
     with ZipFile(apk, "w") as archive:
