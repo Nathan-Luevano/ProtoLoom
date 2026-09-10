@@ -134,6 +134,37 @@ def test_manifest_rejects_duplicate_matrix_values(tmp_path: Path) -> None:
         load_manifest(path)
 
 
+@pytest.mark.parametrize("location", ["manifest", "target", "truth", "recovered"])
+def test_manifest_rejects_unknown_fields(tmp_path: Path, location: str) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    if location == "manifest":
+        value = payload
+    elif location == "target":
+        value = payload["targets"][0]
+    else:
+        value = payload["targets"][0][location]
+    value["unexpected"] = True
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(CorpusError, match="unknown field: unexpected"):
+        load_manifest(path)
+
+
+@pytest.mark.parametrize(
+    ("location", "value"),
+    [("axis", "bad\naxis"), ("axis", "x" * 256), ("value", "../escape")],
+)
+def test_manifest_rejects_unsafe_matrix_names(
+    tmp_path: Path, location: str, value: str
+) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    payload["matrix"] = {value if location == "axis" else "runtime": [value]}
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(CorpusError, match=f"matrix {location} name is unsafe"):
+        load_manifest(path)
+
+
 @pytest.mark.parametrize(
     ("location", "message"),
     [
