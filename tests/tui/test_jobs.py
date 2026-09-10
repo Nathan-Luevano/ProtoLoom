@@ -133,6 +133,31 @@ def test_stops_process_with_oversized_output_line(
     assert job.running is False
 
 
+def test_stops_process_after_output_line_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    script = (
+        "import time; print('one'); print('two'); "
+        "print('three', flush=True); time.sleep(30)"
+    )
+    monkeypatch.setattr(
+        ExtractionRequest,
+        "command",
+        lambda self: (sys.executable, "-c", script),
+    )
+    monkeypatch.setattr("protoloom.tui.jobs.MAX_JOB_OUTPUT_LINES", 2)
+    lines: list[str] = []
+    job = ExtractionJob()
+
+    result = asyncio.run(job.run(ExtractionRequest(tmp_path, tmp_path), lines.append))
+
+    assert result.returncode != 0
+    assert result.cancelled is False
+    assert lines == ["one", "two", "Process output exceeded 2 lines"]
+    assert job.running is False
+    assert job._process is None
+
+
 @pytest.mark.parametrize("error", [ValueError("callback"), RuntimeError("callback")])
 def test_stops_process_when_output_callback_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception

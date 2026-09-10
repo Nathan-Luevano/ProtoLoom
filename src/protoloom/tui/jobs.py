@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MAX_JOB_OUTPUT_LINE_BYTES = 4096
+MAX_JOB_OUTPUT_LINES = 100_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,19 +74,20 @@ class ExtractionJob:
         if self._cancel_requested:
             await asyncio.shield(self._stop())
         assert self._process.stdout is not None
+        line_count = 0
         try:
             while True:
                 try:
                     line = await self._process.stdout.readline()
                 except ValueError:
                     message = f"Output line exceeded {MAX_JOB_OUTPUT_LINE_BYTES} bytes"
-                    on_line(message)
-                    await asyncio.shield(self._stop())
-                    await self._drain_output()
-                    assert self._process.returncode is not None
-                    return JobResult(self._process.returncode, self._cancelled)
+                    return await self._reject_output(on_line, message)
                 if not line:
                     break
+                line_count += 1
+                if line_count > MAX_JOB_OUTPUT_LINES:
+                    message = f"Process output exceeded {MAX_JOB_OUTPUT_LINES} lines"
+                    return await self._reject_output(on_line, message)
                 on_line(line.decode(errors="replace").rstrip())
             returncode = await self._process.wait()
         except asyncio.CancelledError:
@@ -94,6 +96,8 @@ class ExtractionJob:
         except BaseException:
             await asyncio.shield(self._stop())
             raise
+        finally:
+            self._process = None
         return JobResult(returncode, self._cancelled)
 
     async def cancel(self) -> None:
@@ -124,6 +128,16 @@ class ExtractionJob:
             return
         while await process.stdout.read(MAX_JOB_OUTPUT_LINE_BYTES):
             pass
+
+    async def _reject_output(
+        self, on_line: Callable[[str], None], message: str
+    ) -> JobResult:
+        on_line(message)
+        await asyncio.shield(self._stop())
+        await self._drain_output()
+        assert self._process is not None
+        assert self._process.returncode is not None
+        return JobResult(self._process.returncode, self._cancelled)
 
     @staticmethod
     def _signal(process: asyncio.subprocess.Process, value: signal.Signals) -> None:
