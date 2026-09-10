@@ -100,7 +100,13 @@ def fetch_app(app: dict[str, Any], destination: Path) -> Path:
             )
         if digest.hexdigest() != expected_hash:
             raise ValueError(f"SHA-256 mismatch for {app['id']}")
-        os.replace(temporary_name, target)
+        try:
+            os.link(temporary_name, target)
+        except FileExistsError as error:
+            raise ValueError(
+                f"destination appeared during download: {target}"
+            ) from error
+        Path(temporary_name).unlink()
         temporary_name = ""
         return target
     finally:
