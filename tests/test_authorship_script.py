@@ -78,3 +78,30 @@ def test_accepts_dependabot_with_scoped_allowance(repository: Path) -> None:
     result = check(repository, commit(repository, BOT_EMAIL), BOT_EMAIL)
 
     assert result.returncode == 0
+
+
+def test_accepts_dependabot_signoff_with_scoped_allowance(repository: Path) -> None:
+    message = "dependency update\n\nSigned-off-by: dependabot[bot] <support@github.com>"
+    result = check(repository, commit(repository, BOT_EMAIL, message), BOT_EMAIL)
+
+    assert result.returncode == 0
+
+
+def test_rejects_dependabot_signoff_without_scoped_allowance(
+    repository: Path,
+) -> None:
+    message = "dependency update\n\nSigned-off-by: dependabot[bot] <support@github.com>"
+    result = check(repository, commit(repository, OWNER_EMAIL, message))
+
+    assert result.returncode == 1
+    assert "foreign attribution trailer" in result.stdout
+
+
+def test_rejects_dependabot_coauthor_with_scoped_allowance(repository: Path) -> None:
+    message = (
+        "dependency update\n\nCo-authored-by: dependabot[bot] <support@github.com>"
+    )
+    result = check(repository, commit(repository, BOT_EMAIL, message), BOT_EMAIL)
+
+    assert result.returncode == 1
+    assert "foreign attribution trailer" in result.stdout

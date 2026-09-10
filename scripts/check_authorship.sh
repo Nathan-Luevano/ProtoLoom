@@ -23,7 +23,11 @@ if git log --format='%B' "$range" | grep -qiE '^(co-authored-by|generated (with|
   exit 1
 fi
 
-if git log --format='%B' "$range" | grep -i '^signed-off-by:' | grep -qiv 'Nathan Luevano'; then
+bad_signoffs=$(git log --format='%B' "$range" | grep -i '^signed-off-by:' | grep -iv '^signed-off-by: Nathan Luevano' || true)
+if [ -n "${ALLOWED_BOT_EMAIL:-}" ]; then
+  bad_signoffs=$(printf '%s\n' "$bad_signoffs" | grep -iv '^signed-off-by: dependabot\[bot\] <support@github.com>$' || true)
+fi
+if [ -n "$bad_signoffs" ]; then
   echo "blocked: commit history carries a foreign attribution trailer"
   exit 1
 fi
