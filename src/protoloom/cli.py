@@ -362,10 +362,20 @@ def _previous_artifacts(output: Path) -> set[str]:
 def _remove_stale_artifacts(
     output: Path, previous: set[str], current: set[str]
 ) -> None:
-    for name in sorted(previous - current):
-        destination = output / name
-        if destination.is_symlink() or destination.is_file():
-            destination.unlink()
+    removed = False
+    try:
+        for name in sorted(previous - current):
+            destination = output / name
+            if destination.is_symlink() or destination.is_file():
+                destination.unlink()
+                removed = True
+    except BaseException:
+        if removed:
+            with suppress(OSError):
+                _sync_directory(output)
+        raise
+    if removed:
+        _sync_directory(output)
 
 
 def _temporary_output(path: Path) -> tuple[Path, int]:
