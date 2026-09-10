@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import re
 import stat
@@ -14,6 +15,7 @@ MAX_RECOVERY_OUTPUT_SIZE = 16 * 1024 * 1024
 MAX_REPORT_SIZE = 1024 * 1024
 MAX_RECOVERY_RECORDS = 10_000
 MAX_BAILOUT_COUNT_DIGITS = 20
+MAX_JSON_NUMBER_CHARACTERS = 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +31,38 @@ class RecoveryOutput:
     schemas: tuple[SchemaRecord, ...]
     conflicts: tuple[dict[str, object], ...]
     bailouts: int | None = None
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise OutputError(f"duplicate recovery.json key: {key}")
+        result[key] = value
+    return result
+
+
+def _bounded_number(value: str) -> str:
+    if len(value) > MAX_JSON_NUMBER_CHARACTERS:
+        raise OutputError(
+            f"recovery.json number exceeds {MAX_JSON_NUMBER_CHARACTERS} characters"
+        )
+    return value
+
+
+def _bounded_int(value: str) -> int:
+    return int(_bounded_number(value))
+
+
+def _finite_float(value: str) -> float:
+    result = float(_bounded_number(value))
+    if not math.isfinite(result):
+        raise OutputError("recovery.json number exceeds finite range")
+    return result
+
+
+def _reject_constant(value: str) -> None:
+    raise OutputError(f"recovery.json contains non-finite number: {value}")
 
 
 def _records(value: object, label: str) -> tuple[dict[str, object], ...]:
@@ -57,7 +91,13 @@ def _read_text(path: Path, max_size: int) -> str:
 def load_output(root: Path) -> RecoveryOutput:
     path = root / "recovery.json"
     try:
-        value = json.loads(_read_text(path, MAX_RECOVERY_OUTPUT_SIZE))
+        value = json.loads(
+            _read_text(path, MAX_RECOVERY_OUTPUT_SIZE),
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_constant,
+            parse_float=_finite_float,
+            parse_int=_bounded_int,
+        )
     except OSError as error:
         raise OutputError(f"cannot read {path}: {error.strerror}") from error
     except json.JSONDecodeError as error:
