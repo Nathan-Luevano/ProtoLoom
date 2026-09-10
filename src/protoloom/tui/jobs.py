@@ -63,17 +63,25 @@ class ExtractionJob:
         )
         assert self._process.stdout is not None
         try:
-            while line := await self._process.stdout.readline():
+            while True:
+                try:
+                    line = await self._process.stdout.readline()
+                except ValueError:
+                    message = f"Output line exceeded {MAX_JOB_OUTPUT_LINE_BYTES} bytes"
+                    on_line(message)
+                    await asyncio.shield(self._stop())
+                    await self._drain_output()
+                    assert self._process.returncode is not None
+                    return JobResult(self._process.returncode, self._cancelled)
+                if not line:
+                    break
                 on_line(line.decode(errors="replace").rstrip())
             returncode = await self._process.wait()
-        except ValueError:
-            on_line(f"Process output line exceeded {MAX_JOB_OUTPUT_LINE_BYTES} bytes")
-            await asyncio.shield(self._stop())
-            await self._drain_output()
-            assert self._process.returncode is not None
-            returncode = self._process.returncode
         except asyncio.CancelledError:
             await asyncio.shield(self.cancel())
+            raise
+        except BaseException:
+            await asyncio.shield(self._stop())
             raise
         return JobResult(returncode, self._cancelled)
 
