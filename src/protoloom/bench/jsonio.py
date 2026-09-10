@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import stat
 from pathlib import Path
@@ -20,6 +21,13 @@ def _reject_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON number: {value}")
 
 
+def _finite_float(value: str) -> float:
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"JSON number exceeds finite range: {value}")
+    return result
+
+
 def read_json(path: Path, max_size: int = MAX_BENCH_JSON_SIZE) -> Any:
     if max_size <= 0:
         raise ValueError("maximum JSON size must be positive")
@@ -36,4 +44,5 @@ def read_json(path: Path, max_size: int = MAX_BENCH_JSON_SIZE) -> Any:
         payload,
         object_pairs_hook=_unique_object,
         parse_constant=_reject_constant,
+        parse_float=_finite_float,
     )
