@@ -89,6 +89,22 @@ def test_benchmark_json_reader_rejects_non_finite_numbers(
         read_json(path)
 
 
+@pytest.mark.parametrize("value", ["1e999", "-1e999"])
+def test_benchmark_json_reader_rejects_float_overflow(
+    tmp_path: Path, value: str
+) -> None:
+    path = tmp_path / "overflow.json"
+    path.write_text(f'{{"value":{value}}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON number exceeds finite range"):
+        read_json(path)
+
+
+def test_benchmark_json_reader_preserves_finite_float(tmp_path: Path) -> None:
+    path = tmp_path / "finite.json"
+    path.write_text('{"value":1.25}', encoding="utf-8")
+    assert read_json(path) == {"value": 1.25}
+
+
 def test_schema_rejects_non_finite_json_numbers(tmp_path: Path) -> None:
     path = tmp_path / "schema.json"
     path.write_text('{"messages":[],"unknown":NaN}', encoding="utf-8")
@@ -99,6 +115,13 @@ def test_schema_rejects_non_finite_json_numbers(tmp_path: Path) -> None:
 def test_manifest_wraps_non_finite_json_numbers(tmp_path: Path) -> None:
     path = tmp_path / "manifest.json"
     path.write_text('{"name":NaN,"targets":[]}', encoding="utf-8")
+    with pytest.raises(CorpusError, match="invalid corpus manifest"):
+        load_manifest(path)
+
+
+def test_manifest_wraps_float_overflow(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text('{"name":1e999,"targets":[]}', encoding="utf-8")
     with pytest.raises(CorpusError, match="invalid corpus manifest"):
         load_manifest(path)
 
