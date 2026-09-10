@@ -128,6 +128,7 @@ def load_manifest(path: Path) -> CorpusManifest:
         raw = read_json(path)
         if not isinstance(raw, dict):
             raise CorpusError("manifest root must be an object")
+        _reject_unknown(raw, {"name", "targets", "matrix"}, "manifest")
         targets = tuple(_target(item) for item in _list(raw, "targets"))
         if not targets:
             raise CorpusError("manifest must contain at least one target")
@@ -139,9 +140,9 @@ def load_manifest(path: Path) -> CorpusManifest:
             raise CorpusError("matrix must be an object")
         matrix: dict[str, tuple[str, ...]] = {}
         for key, values in matrix_raw.items():
-            axis = _string(key, "matrix axis")
+            axis = _safe_string(key, "matrix axis")
             matrix[axis] = tuple(
-                _string(value, "matrix value")
+                _safe_string(value, "matrix value")
                 for value in _as_list(values, "matrix value")
             )
         if any(not values for values in matrix.values()):
@@ -279,6 +280,7 @@ def _copy_bounded(reader: BinaryIO, writer: BinaryIO, max_size: int) -> None:
 def _target(value: object) -> CorpusTarget:
     if not isinstance(value, dict):
         raise CorpusError("target must be an object")
+    _reject_unknown(value, {"name", "truth", "recovered"}, "target")
     return CorpusTarget(
         _string(value["name"], "target name"),
         _artifact(_mapping(value["truth"], "truth")),
@@ -287,6 +289,7 @@ def _target(value: object) -> CorpusTarget:
 
 
 def _artifact(value: Mapping[str, Any]) -> Artifact:
+    _reject_unknown(value, {"name", "sha256", "path", "url"}, "artifact")
     return Artifact(
         name=_string(value["name"], "artifact name"),
         sha256=_string(value["sha256"], "artifact SHA-256"),
@@ -315,3 +318,15 @@ def _string(value: object, label: str) -> str:
     if not isinstance(value, str):
         raise CorpusError(f"{label} must be a string")
     return value
+
+
+def _safe_string(value: object, label: str) -> str:
+    text = _string(value, label)
+    _validate_name(text, label)
+    return text
+
+
+def _reject_unknown(value: Mapping[str, Any], allowed: set[str], label: str) -> None:
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise CorpusError(f"{label} has unknown field: {unknown[0]}")
