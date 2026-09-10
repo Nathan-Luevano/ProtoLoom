@@ -105,6 +105,25 @@ def test_benchmark_json_reader_preserves_finite_float(tmp_path: Path) -> None:
     assert read_json(path) == {"value": 1.25}
 
 
+@pytest.mark.parametrize(
+    "value",
+    ["1" * 1001, f"0.{'1' * 1001}"],
+)
+def test_benchmark_json_reader_bounds_number_characters(
+    tmp_path: Path, value: str
+) -> None:
+    path = tmp_path / "large-number.json"
+    path.write_text(f'{{"value":{value}}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON number exceeds 1000 characters"):
+        read_json(path)
+
+
+def test_benchmark_json_reader_preserves_bounded_integers(tmp_path: Path) -> None:
+    path = tmp_path / "integer.json"
+    path.write_text('{"value":-123}', encoding="utf-8")
+    assert read_json(path) == {"value": -123}
+
+
 def test_schema_rejects_non_finite_json_numbers(tmp_path: Path) -> None:
     path = tmp_path / "schema.json"
     path.write_text('{"messages":[],"unknown":NaN}', encoding="utf-8")

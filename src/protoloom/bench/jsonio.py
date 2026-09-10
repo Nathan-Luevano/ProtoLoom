@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 MAX_BENCH_JSON_SIZE = 16 * 1024 * 1024
+MAX_JSON_NUMBER_CHARACTERS = 1000
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -21,8 +22,18 @@ def _reject_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON number: {value}")
 
 
+def _bounded_number(value: str) -> str:
+    if len(value) > MAX_JSON_NUMBER_CHARACTERS:
+        raise ValueError(f"JSON number exceeds {MAX_JSON_NUMBER_CHARACTERS} characters")
+    return value
+
+
+def _bounded_int(value: str) -> int:
+    return int(_bounded_number(value))
+
+
 def _finite_float(value: str) -> float:
-    result = float(value)
+    result = float(_bounded_number(value))
     if not math.isfinite(result):
         raise ValueError(f"JSON number exceeds finite range: {value}")
     return result
@@ -45,4 +56,5 @@ def read_json(path: Path, max_size: int = MAX_BENCH_JSON_SIZE) -> Any:
         object_pairs_hook=_unique_object,
         parse_constant=_reject_constant,
         parse_float=_finite_float,
+        parse_int=_bounded_int,
     )
