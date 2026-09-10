@@ -462,6 +462,59 @@ def test_extract_refuses_traversal_and_links(tmp_path: Path) -> None:
             extract(archive, tmp_path / f"out-{kind!s}")
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["root/bad\nname", f"root/{'x' * 256}", f"root/{'x/' * 2048}item"],
+)
+def test_extract_refuses_unsafe_member_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    archive = tmp_path / "unsafe.tar.gz"
+    archive.write_bytes(b"archive")
+    member = tarfile.TarInfo(name)
+
+    class Bundle:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def __iter__(self) -> object:
+            yield member
+
+    monkeypatch.setattr(
+        "protoloom.bench.upstream.tarfile.open", lambda **kwargs: Bundle()
+    )
+    with pytest.raises(ValueError, match="unsafe archive member"):
+        extract(archive, tmp_path / "output")
+
+
+def test_extract_refuses_negative_member_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive = tmp_path / "negative.tar.gz"
+    archive.write_bytes(b"archive")
+    member = tarfile.TarInfo("root/item")
+    member.size = -1
+
+    class Bundle:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def __iter__(self) -> object:
+            yield member
+
+    monkeypatch.setattr(
+        "protoloom.bench.upstream.tarfile.open", lambda **kwargs: Bundle()
+    )
+    with pytest.raises(ValueError, match="negative size"):
+        extract(archive, tmp_path / "output")
+
+
 def test_extract_refuses_empty_archive(tmp_path: Path) -> None:
     archive = tmp_path / "empty.tar.gz"
     with tarfile.open(archive, "w:gz"):
