@@ -86,6 +86,25 @@ def test_reports_invalid_utf8(tmp_path: Path) -> None:
         load_output(tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ('{"schemas":[],"schemas":[],"conflicts":[]}', "duplicate"),
+        ('{"schemas":[],"conflicts":[],"value":NaN}', "non-finite"),
+        ('{"schemas":[],"conflicts":[],"value":1e999}', "finite range"),
+        (
+            f'{{"schemas":[],"conflicts":[],"value":{"1" * 1001}}}',
+            "exceeds 1000 characters",
+        ),
+    ],
+)
+def test_rejects_unsafe_json_values(tmp_path: Path, payload: str, message: str) -> None:
+    (tmp_path / "recovery.json").write_text(payload, encoding="utf-8")
+
+    with pytest.raises(OutputError, match=message):
+        load_output(tmp_path)
+
+
 def test_rejects_oversized_recovery_output(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
