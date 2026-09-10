@@ -711,8 +711,41 @@ def test_materialize_source_downloads_individual_files(
     result = materialize_source(source, tmp_path / "cache", root)
 
     assert result == root
-    assert downloads == [("https://example.test/one", root / "proto/one.proto")]
+    assert [
+        (url, output.relative_to(output.parents[1])) for url, output in downloads
+    ] == [("https://example.test/one", Path("proto/one.proto"))]
     assert (root / "proto/one.proto").read_text() == "a" * 64
+
+
+def test_materialize_source_removes_partial_tree_after_download_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+
+    def fail_second_download(url: str, expected: str, size: int, output: Path) -> None:
+        nonlocal calls
+        calls += 1
+        output.write_bytes(expected.encode())
+        if calls == 2:
+            raise OSError("download failed")
+
+    monkeypatch.setattr("protoloom.bench.upstream.download", fail_second_download)
+    source = {
+        "files": [
+            {
+                "path": f"proto/{name}.proto",
+                "url": f"https://example.test/{name}",
+                "sha256": character * 64,
+                "size": 1,
+            }
+            for name, character in (("one", "a"), ("two", "b"))
+        ]
+    }
+    root = tmp_path / "source"
+    with pytest.raises(OSError, match="download failed"):
+        materialize_source(source, tmp_path / "cache", root)
+    assert not root.exists()
+    assert not tuple(tmp_path.glob(".source.*"))
 
 
 def test_materialize_source_downloads_and_extracts_archive(
