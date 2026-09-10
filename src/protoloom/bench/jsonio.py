@@ -7,6 +7,15 @@ from typing import Any
 MAX_BENCH_JSON_SIZE = 16 * 1024 * 1024
 
 
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
 def read_json(path: Path, max_size: int = MAX_BENCH_JSON_SIZE) -> Any:
     if max_size <= 0:
         raise ValueError("maximum JSON size must be positive")
@@ -19,4 +28,4 @@ def read_json(path: Path, max_size: int = MAX_BENCH_JSON_SIZE) -> Any:
         payload = stream.read(max_size + 1)
     if len(payload) > max_size:
         raise ValueError(f"JSON input exceeds {max_size} bytes: {path}")
-    return json.loads(payload)
+    return json.loads(payload, object_pairs_hook=_unique_object)
