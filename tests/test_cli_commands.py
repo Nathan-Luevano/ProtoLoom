@@ -17,6 +17,7 @@ from protoloom.cli import (
     _find,
     _output_names,
     _publish_outputs,
+    _remove_stale_artifacts,
     app,
 )
 from protoloom.container.detect import ContainerKind, Detection
@@ -840,3 +841,52 @@ def test_extract_removes_only_manifested_stale_artifacts(tmp_path: Path) -> None
     assert (output / "other.proto").is_file()
     assert (output / "other.desc").is_file()
     assert unrelated.read_text(encoding="utf-8") == "preserve"
+
+
+def test_stale_artifact_removal_syncs_output_directory(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    stale = tmp_path / "stale.proto"
+    current = tmp_path / "current.proto"
+    stale.write_bytes(b"stale")
+    current.write_bytes(b"current")
+    synced: list[int] = []
+    real_fsync = os.fsync
+
+    def record_fsync(descriptor: int) -> None:
+        synced.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", record_fsync)
+    _remove_stale_artifacts(tmp_path, {stale.name, current.name}, {current.name})
+    assert not stale.exists()
+    assert current.read_bytes() == b"current"
+    assert len(synced) == 1
+
+
+def test_stale_artifact_partial_failure_syncs_prior_deletions(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    first = tmp_path / "first.proto"
+    second = tmp_path / "second.proto"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    real_unlink = Path.unlink
+    synced = 0
+
+    def fail_second(path: Path, missing_ok: bool = False) -> None:
+        if path == second:
+            raise OSError("unlink failed")
+        real_unlink(path, missing_ok=missing_ok)
+
+    def record_sync(descriptor: int) -> None:
+        nonlocal synced
+        synced += 1
+
+    monkeypatch.setattr(Path, "unlink", fail_second)
+    monkeypatch.setattr(os, "fsync", record_sync)
+    with pytest.raises(OSError, match="unlink failed"):
+        _remove_stale_artifacts(tmp_path, {first.name, second.name}, set())
+    assert not first.exists()
+    assert second.read_bytes() == b"second"
+    assert synced == 1
