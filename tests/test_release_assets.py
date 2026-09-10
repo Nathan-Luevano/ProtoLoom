@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import sys
@@ -7,6 +8,11 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).parents[1]
+
+
+def workflow_actions(path: Path) -> set[str]:
+    source = path.read_text(encoding="utf-8")
+    return set(re.findall(r"uses:\s*([^@\s]+)@", source))
 
 
 def version_project(tmp_path: Path) -> tuple[Path, Path]:
@@ -26,9 +32,20 @@ def version_project(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def test_release_workflow_has_every_distribution_channel() -> None:
-    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    assert "pypa/gh-action-pypi-publish@release/v1" in workflow
-    assert "softprops/action-gh-release@v2" in workflow
+    path = ROOT / ".github/workflows/release.yml"
+    workflow = path.read_text(encoding="utf-8")
+    assert {
+        "actions/attest",
+        "actions/download-artifact",
+        "actions/upload-artifact",
+        "docker/build-push-action",
+        "docker/login-action",
+        "docker/metadata-action",
+        "docker/setup-buildx-action",
+        "docker/setup-qemu-action",
+        "pypa/gh-action-pypi-publish",
+        "softprops/action-gh-release",
+    } <= workflow_actions(path)
     assert "linux/amd64,linux/arm64" in workflow
     assert "protoloom-linux-x86_64" in workflow
     assert "protoloom-linux-aarch64" in workflow
@@ -36,6 +53,21 @@ def test_release_workflow_has_every_distribution_channel() -> None:
     assert "id-token: write" in workflow
     assert "packages: write" in workflow
     assert workflow.count('scripts/set_version.py "${RELEASE_VERSION#v}"') == 2
+
+
+def test_ci_workflow_covers_source_and_installed_distributions() -> None:
+    path = ROOT / ".github/workflows/ci.yml"
+    workflow = path.read_text(encoding="utf-8")
+
+    assert {
+        "actions/checkout",
+        "astral-sh/setup-uv",
+    } <= workflow_actions(path)
+    assert 'python-version: "3.11"' in workflow
+    assert 'python-version: "3.14"' in workflow
+    assert "uv run make check" in workflow
+    assert "uv build" in workflow
+    assert "protoloom --help" in workflow
 
 
 def test_runtime_install_includes_fallback_compiler() -> None:
