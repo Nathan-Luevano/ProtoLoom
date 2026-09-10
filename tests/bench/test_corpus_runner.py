@@ -76,6 +76,33 @@ def test_benchmark_json_reader_rejects_duplicate_keys(
         read_json(path)
 
 
+@pytest.mark.parametrize(
+    ("payload", "constant"),
+    [("NaN", "NaN"), ('{"value":Infinity}', "Infinity"), ("[-Infinity]", "-Infinity")],
+)
+def test_benchmark_json_reader_rejects_non_finite_numbers(
+    tmp_path: Path, payload: str, constant: str
+) -> None:
+    path = tmp_path / "non-finite.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError, match=f"non-finite JSON number: {constant}"):
+        read_json(path)
+
+
+def test_schema_rejects_non_finite_json_numbers(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text('{"messages":[],"unknown":NaN}', encoding="utf-8")
+    with pytest.raises(ValueError, match="non-finite JSON number: NaN"):
+        load_schema(path)
+
+
+def test_manifest_wraps_non_finite_json_numbers(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text('{"name":NaN,"targets":[]}', encoding="utf-8")
+    with pytest.raises(CorpusError, match="invalid corpus manifest"):
+        load_manifest(path)
+
+
 def test_manifest_wraps_duplicate_json_keys(tmp_path: Path) -> None:
     path = tmp_path / "manifest.json"
     path.write_text('{"name":"first","name":"second"}', encoding="utf-8")

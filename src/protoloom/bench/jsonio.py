@@ -16,6 +16,10 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _reject_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON number: {value}")
+
+
 def read_json(path: Path, max_size: int = MAX_BENCH_JSON_SIZE) -> Any:
     if max_size <= 0:
         raise ValueError("maximum JSON size must be positive")
@@ -28,4 +32,8 @@ def read_json(path: Path, max_size: int = MAX_BENCH_JSON_SIZE) -> Any:
         payload = stream.read(max_size + 1)
     if len(payload) > max_size:
         raise ValueError(f"JSON input exceeds {max_size} bytes: {path}")
-    return json.loads(payload, object_pairs_hook=_unique_object)
+    return json.loads(
+        payload,
+        object_pairs_hook=_unique_object,
+        parse_constant=_reject_constant,
+    )
