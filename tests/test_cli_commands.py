@@ -16,6 +16,7 @@ from protoloom.cli import (
     _dex_inputs,
     _find,
     _output_names,
+    _previous_artifacts,
     _publish_outputs,
     _remove_stale_artifacts,
     app,
@@ -600,6 +601,37 @@ def test_extract_replaces_file_symlink_without_following_it(tmp_path: Path) -> N
     assert victim.read_text() == "preserve"
     assert not recovery.is_symlink()
     assert json.loads(recovery.read_text())["schemas"][0]["name"] == "demo.proto"
+
+
+def test_previous_artifacts_reads_safe_output_names(tmp_path: Path) -> None:
+    (tmp_path / "recovery.json").write_text(
+        json.dumps(
+            {
+                "artifacts": [
+                    "old.proto",
+                    "old.desc",
+                    "report.md",
+                    "../outside.proto",
+                    1,
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _previous_artifacts(tmp_path) == {"old.proto", "old.desc"}
+
+
+def test_previous_artifacts_rejects_excessive_entries(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    (tmp_path / "recovery.json").write_text(
+        json.dumps({"artifacts": ["first.proto", "second.proto"]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("protoloom.cli.MAX_PREVIOUS_ARTIFACTS", 1)
+
+    assert _previous_artifacts(tmp_path) == set()
 
 
 def test_atomic_write_respects_process_umask(tmp_path: Path) -> None:
