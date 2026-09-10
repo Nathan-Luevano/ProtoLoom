@@ -1,10 +1,14 @@
 import hashlib
 import importlib.util
+import io
 import json
+import os
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
+from pytest import MonkeyPatch
 
 
 def load_fetcher() -> ModuleType:
@@ -127,3 +131,48 @@ def test_symlink_target_is_refused(tmp_path: Path) -> None:
     (tmp_path / "sample-app.apk").symlink_to(source)
     with pytest.raises(ValueError, match="symlink"):
         fetch_app(app(hashlib.sha256(b"apk").hexdigest()), tmp_path)
+
+
+def test_download_publishes_verified_artifact(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    payload = b"verified apk"
+    response: Any = io.BytesIO(payload)
+    response.url = "https://example.invalid/app.apk"
+    monkeypatch.setattr(
+        fetcher.urllib.request,
+        "urlopen",
+        lambda request, timeout: response,
+    )
+
+    target = fetch_app(app(hashlib.sha256(payload).hexdigest(), len(payload)), tmp_path)
+
+    assert target.read_bytes() == payload
+    assert list(tmp_path.glob("*.part")) == []
+
+
+def test_download_never_replaces_racing_destination(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    payload = b"verified apk"
+    response: Any = io.BytesIO(payload)
+    response.url = "https://example.invalid/app.apk"
+    monkeypatch.setattr(
+        fetcher.urllib.request,
+        "urlopen",
+        lambda request, timeout: response,
+    )
+    target = tmp_path / "sample-app.apk"
+    real_link = os.link
+
+    def race_link(source: str, destination: Path) -> None:
+        target.write_bytes(b"racing file")
+        real_link(source, destination)
+
+    monkeypatch.setattr(fetcher.os, "link", race_link)
+
+    with pytest.raises(ValueError, match="appeared during download"):
+        fetch_app(app(hashlib.sha256(payload).hexdigest(), len(payload)), tmp_path)
+
+    assert target.read_bytes() == b"racing file"
+    assert list(tmp_path.glob("*.part")) == []
