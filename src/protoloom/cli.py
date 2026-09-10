@@ -400,6 +400,9 @@ def _stage_output(path: Path, payload: bytes) -> Path:
 
 
 def _publish_outputs(outputs: list[tuple[Path, bytes]]) -> None:
+    paths = [path for path, _ in outputs]
+    if len(paths) != len(set(paths)):
+        raise ValueError("duplicate output publication path")
     staged: dict[Path, Path] = {}
     backups: dict[Path, Path] = {}
     installed: list[Path] = []
@@ -440,10 +443,16 @@ def _publish_outputs(outputs: list[tuple[Path, bytes]]) -> None:
         raise
     finally:
         for temporary in staged.values():
-            temporary.unlink(missing_ok=True)
+            with suppress(OSError):
+                temporary.unlink(missing_ok=True)
         if published:
             for backup in backups.values():
-                backup.unlink(missing_ok=True)
+                with suppress(OSError):
+                    backup.unlink(missing_ok=True)
+            if backups:
+                for parent in parents:
+                    with suppress(OSError):
+                        _sync_directory(parent)
 
 
 def _sync_directory(path: Path) -> None:

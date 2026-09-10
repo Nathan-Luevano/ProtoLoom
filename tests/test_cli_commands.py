@@ -651,6 +651,34 @@ def test_output_publication_rolls_back_all_files(
     assert not tuple(tmp_path.glob(".*"))
 
 
+def test_output_publication_rejects_duplicate_paths(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    output.write_bytes(b"preserve")
+    with pytest.raises(ValueError, match="duplicate output publication path"):
+        _publish_outputs([(output, b"first"), (output, b"second")])
+    assert output.read_bytes() == b"preserve"
+    assert not tuple(tmp_path.glob(".*"))
+
+
+def test_output_publication_syncs_backup_removal(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    synced: list[int] = []
+    real_fsync = os.fsync
+
+    def record_fsync(descriptor: int) -> None:
+        synced.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", record_fsync)
+    output = tmp_path / "output"
+    output.write_bytes(b"old")
+    _atomic_write(output, b"new")
+    assert output.read_bytes() == b"new"
+    assert len(synced) == 3
+    assert not tuple(tmp_path.glob(".*"))
+
+
 def test_output_publication_continues_after_restore_failure(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
