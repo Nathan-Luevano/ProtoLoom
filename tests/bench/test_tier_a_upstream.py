@@ -154,6 +154,42 @@ def test_manifest_refuses_unsafe_file_and_include_paths() -> None:
         validate_source_manifest(manifest)
 
 
+@pytest.mark.parametrize("location", ["file", "include", "target"])
+@pytest.mark.parametrize("path", ["bad\npath.proto", "x" * 256, "x/" * 2049])
+def test_manifest_bounds_and_sanitizes_paths(location: str, path: str) -> None:
+    manifest = _manifest()
+    if location == "file":
+        manifest["sources"][0]["files"] = [
+            {
+                "path": path,
+                "url": "https://example.test/file",
+                "sha256": "a" * 64,
+                "size": 1,
+            }
+        ]
+    elif location == "include":
+        manifest["sources"][0]["includes"] = [path]
+    else:
+        manifest["sources"][0]["targets"][0]["proto"] = path
+    with pytest.raises(ValueError, match="unsafe"):
+        validate_source_manifest(manifest)
+
+
+def test_manifest_rejects_conflicting_source_paths() -> None:
+    manifest = _manifest()
+    artifact = {
+        "url": "https://example.test/file",
+        "sha256": "a" * 64,
+        "size": 1,
+    }
+    manifest["sources"][0]["files"] = [
+        {**artifact, "path": "proto"},
+        {**artifact, "path": "proto/sample.proto"},
+    ]
+    with pytest.raises(ValueError, match="conflicting source file path"):
+        validate_source_manifest(manifest)
+
+
 def test_manifest_refuses_invalid_and_duplicate_targets() -> None:
     manifest = _manifest()
     manifest["sources"][0]["targets"] = ["target"]

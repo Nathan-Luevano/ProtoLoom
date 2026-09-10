@@ -15,6 +15,7 @@ MAX_SOURCE_EXTRACTED_SIZE = 1024 * 1024 * 1024
 MAX_SOURCE_DOWNLOAD_SIZE = 128 * 1024 * 1024
 MAX_SOURCE_MEMBER_PATH_BYTES = 4096
 MAX_UPSTREAM_NAME_BYTES = 255
+MAX_UPSTREAM_PATH_BYTES = 4096
 MAX_UPSTREAM_SOURCES = 100
 MAX_UPSTREAM_FILES = 10_000
 MAX_UPSTREAM_INCLUDES = 1_000
@@ -85,11 +86,14 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
             for artifact in files:
                 if not isinstance(artifact, dict):
                     raise ValueError("source file must be an object")
-                path = Path(_string(artifact.get("path"), "source file path"))
-                if path.is_absolute() or ".." in path.parts or not path.name:
-                    raise ValueError(f"unsafe source file path: {path}")
+                path = _safe_path(artifact.get("path"), "source file path")
                 if path in file_paths:
                     raise ValueError(f"duplicate source file path: {path}")
+                if any(
+                    path.is_relative_to(existing) or existing.is_relative_to(path)
+                    for existing in file_paths
+                ):
+                    raise ValueError(f"conflicting source file path: {path}")
                 file_paths.add(path)
                 _validate_remote(artifact, f"source file {path}")
         else:
@@ -101,9 +105,7 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
             raise ValueError(f"source {name} exceeds {MAX_UPSTREAM_INCLUDES} includes")
         include_paths: set[Path] = set()
         for include in includes:
-            path = Path(_string(include, "include root"))
-            if path.is_absolute() or ".." in path.parts:
-                raise ValueError(f"unsafe include root: {include}")
+            path = _safe_path(include, "include root", allow_dot=True)
             if path in include_paths:
                 raise ValueError(f"duplicate include root: {include}")
             include_paths.add(path)
@@ -116,10 +118,10 @@ def validate_source_manifest(value: object) -> dict[str, Any]:
             if not isinstance(target, dict):
                 raise ValueError("target entry must be an object")
             target_name = _safe_name(target.get("name"), "target")
-            proto = Path(_string(target.get("proto"), "target proto"))
+            proto = _safe_path(target.get("proto"), "target proto")
             if target_name in targets:
                 raise ValueError(f"unsafe or duplicate target name: {target_name}")
-            if proto.is_absolute() or ".." in proto.parts or proto.suffix != ".proto":
+            if proto.suffix != ".proto":
                 raise ValueError(f"unsafe target proto: {proto}")
             if target.get("compiled_leg") not in {None, "cpp-object"}:
                 raise ValueError(f"unsupported compiled leg: {target['compiled_leg']}")
@@ -157,6 +159,23 @@ def _safe_name(value: object, label: str) -> str:
     ):
         raise ValueError(f"unsafe or duplicate {label} name: {name}")
     return name
+
+
+def _safe_path(value: object, label: str, *, allow_dot: bool = False) -> Path:
+    raw = _string(value, label)
+    path = Path(raw)
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or (not allow_dot and not path.name)
+        or len(raw.encode("utf-8")) > MAX_UPSTREAM_PATH_BYTES
+        or any(
+            len(part.encode("utf-8")) > MAX_UPSTREAM_NAME_BYTES for part in path.parts
+        )
+        or any(unicodedata.category(character).startswith("C") for character in raw)
+    ):
+        raise ValueError(f"unsafe {label}: {raw}")
+    return path
 
 
 def download(url: str, expected: str, size: int, destination: Path) -> None:
