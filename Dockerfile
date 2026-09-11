@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bookworm AS jadx
+FROM python:3.14-slim-bookworm AS jadx
 
 ARG JADX_VERSION=1.5.1
 ARG JADX_SHA256=12fd966431903b8e15c36e5007f19343475be7d8f2a55f082e7a929eeabc937e
@@ -12,7 +12,7 @@ RUN apt-get update \
     && mkdir /opt/jadx \
     && unzip -q /tmp/jadx.zip -d /opt/jadx
 
-FROM python:3.11-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 ARG VERSION=0.1.3
 LABEL org.opencontainers.image.title="PROTOLOOM" \
