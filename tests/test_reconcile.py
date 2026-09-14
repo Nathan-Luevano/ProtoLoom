@@ -17,6 +17,7 @@ from protoloom.reconcile import (
     Conflict,
     _merge_fields,
     _merge_named_enums,
+    _merge_schema,
     reconcile,
 )
 
@@ -311,3 +312,103 @@ def test_reconcile_merges_service_methods_across_dex_files() -> None:
     assert call.confidence == Confidence.HIGH
     assert {item.source for item in call.evidence} == {"classes.dex", "classes2.dex"}
     assert not result.conflicts
+
+
+def test_merge_schema_records_package_and_syntax_conflicts() -> None:
+    # reconcile() itself keys merges by (package, name), so two merged
+    # schemas always already agree on package -- _merge_schema's own guard
+    # is defensive for any other caller, exercised directly here.
+    target = RecoveredSchema("a.proto", package="one", syntax="proto2")
+    source = RecoveredSchema("a.proto", package="two", syntax="proto3")
+    conflicts: list[Conflict] = []
+
+    _merge_schema(target, source, conflicts, {})
+
+    assert {(item.attribute, item.kept, item.rejected) for item in conflicts} == {
+        ("package", "one", "two"),
+        ("syntax", "proto2", "proto3"),
+    }
+
+
+def test_reconcile_adds_new_field_enum_and_service_not_present_in_target() -> None:
+    target = RecoveredSchema(
+        "a.proto",
+        messages=[Message("M", [Field("existing", 1, "string", Confidence.HIGH)])],
+        enums=[EnumType("Existing", [EnumValue("A", 0)], Confidence.HIGH)],
+        services=[Service("Existing", [])],
+    )
+    source = RecoveredSchema(
+        "a.proto",
+        messages=[
+            Message(
+                "M",
+                [
+                    Field("existing", 1, "string", Confidence.HIGH),
+                    Field("added", 2, "int32", Confidence.HIGH),
+                ],
+            )
+        ],
+        enums=[EnumType("New", [EnumValue("B", 0)], Confidence.HIGH)],
+        services=[
+            Service("New", [ServiceMethod("Call", "Req", "Res", Confidence.HIGH)])
+        ],
+    )
+
+    result = reconcile([target, source])
+
+    schema = result.schemas[0]
+    assert {field.number for field in schema.messages[0].fields} == {1, 2}
+    assert {enum.name for enum in schema.enums} == {"Existing", "New"}
+    assert {service.name for service in schema.services} == {"Existing", "New"}
+    assert not result.conflicts
+
+
+def test_reconcile_records_enum_value_name_conflict_at_same_number() -> None:
+    first = RecoveredSchema(
+        "a.proto",
+        enums=[EnumType("E", [EnumValue("ALPHA", 0)], Confidence.HIGH)],
+    )
+    second = RecoveredSchema(
+        "a.proto",
+        enums=[EnumType("E", [EnumValue("BETA", 0)], Confidence.HIGH)],
+    )
+
+    result = reconcile([first, second])
+
+    # Equal confidence keeps the first-seen (target) value on a tie.
+    assert result.schemas[0].enums[0].values[0].name == "ALPHA"
+    assert {
+        (item.attribute, item.kept, item.rejected) for item in result.conflicts
+    } == {("value[0]", "ALPHA", "BETA")}
+
+
+def test_reconcile_records_service_method_type_conflict() -> None:
+    first = RecoveredSchema(
+        "Foo.proto",
+        package="svc",
+        services=[
+            Service("Foo", [ServiceMethod("Call", "Req", "Res", Confidence.HIGH)])
+        ],
+    )
+    second = RecoveredSchema(
+        "Foo.proto",
+        package="svc",
+        services=[
+            Service("Foo", [ServiceMethod("Call", "OtherReq", "Res", Confidence.HIGH)])
+        ],
+    )
+
+    result = reconcile([first, second])
+
+    assert {
+        (item.attribute, item.kept, item.rejected) for item in result.conflicts
+    } == {("rpc signature", "Req->Res", "OtherReq->Res")}
+
+
+def test_reconcile_bounds_total_items_via_top_level_enum() -> None:
+    schema = RecoveredSchema(
+        "a.proto",
+        enums=[EnumType("E", [EnumValue("A", 0), EnumValue("B", 1)], Confidence.HIGH)],
+    )
+    with pytest.raises(ValueError, match="exceeds 2 items"):
+        reconcile([schema], max_items=2)
