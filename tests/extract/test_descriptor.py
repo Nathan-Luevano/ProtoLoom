@@ -270,6 +270,24 @@ def test_gzip_scan_rejects_nonpositive_limits() -> None:
         scan_gzip_descriptors(b"", max_inflated_size=0)
     with pytest.raises(ValueError, match="gzip members"):
         scan_gzip_descriptors(b"", max_members=0)
+    with pytest.raises(ValueError, match="gzip depth"):
+        scan_gzip_descriptors(b"", max_depth=0)
+
+
+def test_gzip_scan_recovers_descriptor_nested_inside_gzip_inside_gzip() -> None:
+    expected = _descriptor().SerializeToString()
+    triple = gzip.compress(gzip.compress(gzip.compress(expected)))
+
+    findings = scan_gzip_descriptors(triple)
+
+    assert any(f.descriptor.SerializeToString() == expected for f in findings)
+
+
+def test_gzip_scan_depth_limit_stops_recursion() -> None:
+    expected = _descriptor().SerializeToString()
+    triple = gzip.compress(gzip.compress(gzip.compress(expected)))
+
+    assert scan_gzip_descriptors(triple, max_depth=1) == []
 
 
 def test_descriptor_conversion_and_emission() -> None:
