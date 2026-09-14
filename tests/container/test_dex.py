@@ -176,6 +176,117 @@ def test_uleb128_rejects_value_without_terminating_byte() -> None:
         dex._uleb128(offset)
 
 
+def _dex_with_method_and_interface() -> bytes:
+    strings = (b"I", b"Ljava/lang/String;", b"LOwner;", b"LIface;", b"f", b"name")
+    string_ids_offset = 112
+    type_ids_offset = string_ids_offset + 4 * len(strings)
+    proto_ids_offset = type_ids_offset + 4 * 4
+    field_ids_offset = proto_ids_offset + 12 * 1
+    method_ids_offset = field_ids_offset + 8 * 1
+    class_defs_offset = method_ids_offset + 8 * 1
+    data_offset = class_defs_offset + 32 * 1
+
+    data = bytearray()
+
+    def _place(chunk: bytes) -> int:
+        offset = data_offset + len(data)
+        data.extend(chunk)
+        return offset
+
+    string_offsets = [
+        _place(bytes((len(value),)) + value + b"\x00") for value in strings
+    ]
+    proto_params_offset = _place(struct.pack("<I", 1) + struct.pack("<H", 0))
+    interfaces_offset = _place(struct.pack("<I", 1) + struct.pack("<H", 3))
+
+    type_ids = struct.pack("<4I", 0, 1, 2, 3)
+    proto_ids = struct.pack("<III", 0, 1, proto_params_offset)
+    field_ids = struct.pack("<HHI", 2, 0, 4)
+    method_ids = struct.pack("<HHI", 2, 0, 5)
+    class_defs = struct.pack(
+        "<8I", 2, 0, 0xFFFFFFFF, interfaces_offset, 0xFFFFFFFF, 0, 0, 0
+    )
+
+    file_size = data_offset + len(data)
+    header = bytearray(112)
+    header[:8] = b"dex\n039\x00"
+    values = [
+        file_size,
+        112,
+        0x12345678,
+        0,
+        0,
+        0,
+        len(strings),
+        string_ids_offset,
+        4,
+        type_ids_offset,
+        1,
+        proto_ids_offset,
+        1,
+        field_ids_offset,
+        1,
+        method_ids_offset,
+        1,
+        class_defs_offset,
+        len(data),
+        data_offset,
+    ]
+    struct.pack_into("<20I", header, 32, *values)
+    string_id_table = struct.pack(f"<{len(string_offsets)}I", *string_offsets)
+    return (
+        bytes(header)
+        + string_id_table
+        + type_ids
+        + proto_ids
+        + field_ids
+        + method_ids
+        + class_defs
+        + bytes(data)
+    )
+
+
+def test_reads_prototype_parameters_and_interfaces() -> None:
+    dex = DexFile(_dex_with_method_and_interface())
+    (proto,) = dex.prototypes
+    assert dex.types[proto.return_type_index] == "Ljava/lang/String;"
+    assert tuple(dex.types[index] for index in proto.parameter_type_indexes) == ("I",)
+    (method,) = dex.methods
+    assert dex.method_name(method) == "name"
+    assert dex.method_return_type(method) == "Ljava/lang/String;"
+    assert dex.method_parameter_types(method) == ("I",)
+    (field,) = dex.fields
+    assert dex.field_name(field) == "f"
+
+
+def test_rejects_out_of_range_method_identifier() -> None:
+    malformed = bytearray(_dex_with_method_and_interface())
+    struct.pack_into("<HHI", malformed, 172, 2, 0, 6)
+    with pytest.raises(DexError, match="method identifier"):
+        DexFile(malformed)
+
+
+def test_rejects_out_of_range_field_identifier() -> None:
+    malformed = bytearray(_dex_with_method_and_interface())
+    struct.pack_into("<HHI", malformed, 164, 2, 9, 4)
+    with pytest.raises(DexError, match="field identifier"):
+        DexFile(malformed)
+
+
+def test_rejects_out_of_range_class_type_identifier() -> None:
+    malformed = bytearray(_dex_with_method_and_interface())
+    struct.pack_into("<I", malformed, 180, 9)
+    with pytest.raises(DexError, match="class type identifier"):
+        DexFile(malformed)
+
+
+def test_rejects_out_of_range_interface_identifier() -> None:
+    malformed = bytearray(_dex_with_method_and_interface())
+    struct.pack_into("<H", malformed, 268 + 4, 9)
+    with pytest.raises(DexError, match="interface identifier"):
+        DexFile(malformed)
+
+
 def _dex_with_enclosing_class() -> bytes:
     strings = (
         b"Outer",
