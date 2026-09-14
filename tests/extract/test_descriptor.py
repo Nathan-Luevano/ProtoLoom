@@ -107,6 +107,17 @@ def test_valid_rejects_missing_name_unprintable_name_and_bad_syntax() -> None:
     assert _valid(bad_syntax) is False
 
 
+def test_valid_rejects_invalid_utf8_name_without_crashing() -> None:
+    # upb stores an invalid-UTF-8 string field as raw bytes instead of
+    # raising, so a malformed name must not reach str-only methods.
+    raw_name = b"\xff\xfex.proto"
+    payload = bytes([0x0A, len(raw_name)]) + raw_name
+    descriptor = FileDescriptorProto()
+    descriptor.ParseFromString(payload)
+
+    assert _valid(descriptor) is False
+
+
 def test_field_ends_stops_when_a_valid_value_overruns_the_boundary() -> None:
     # tag + value together read cleanly but exceed the caller's own limit.
     data = b"\x08\x01"

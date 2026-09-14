@@ -37,7 +37,10 @@ def _candidate_name(data: bytes, offset: int) -> bool:
 
 
 def _valid(descriptor: FileDescriptorProto) -> bool:
-    if not descriptor.HasField("name") or not descriptor.name.endswith(".proto"):
+    # upb stores invalid-UTF-8 string fields as raw bytes instead of raising
+    if not descriptor.HasField("name") or not isinstance(descriptor.name, str):
+        return False
+    if not descriptor.name.endswith(".proto"):
         return False
     if not descriptor.name.isprintable():
         return False
