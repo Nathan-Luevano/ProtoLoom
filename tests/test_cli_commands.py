@@ -1,5 +1,6 @@
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -16,6 +17,7 @@ from protoloom.cli import (
     _compiled_descriptors_many,
     _dex_inputs,
     _find,
+    _find_grpc,
     _find_wire,
     _output_names,
     _previous_artifacts,
@@ -435,6 +437,140 @@ def test_find_wire_falls_back_to_adapter_writes_without_annotations(
         "string",
     )
     assert lineage == {("example", "Record.proto"): ("Lexample/Record;", None)}
+
+
+def test_find_grpc_decodes_real_service_end_to_end(tmp_path: Path) -> None:
+    @dataclass(frozen=True, slots=True)
+    class _M:
+        class_index: int
+        name: str
+        params: tuple[str, ...] = ()
+
+    @dataclass(frozen=True, slots=True)
+    class _EM:
+        method_index: int
+        code_offset: int
+
+    @dataclass(frozen=True, slots=True)
+    class _F:
+        class_index: int
+        name: str
+
+    @dataclass(frozen=True, slots=True)
+    class _Class:
+        class_index: int
+
+    def const_string(reg: int, index: int) -> tuple[int, int]:
+        return (0x1A | reg << 8, index)
+
+    def sget_object(reg: int, index: int) -> tuple[int, int]:
+        return (0x62 | reg << 8, index)
+
+    def sput_object(reg: int, index: int) -> tuple[int, int]:
+        return (0x69 | reg << 8, index)
+
+    def invoke_static0(method_index: int) -> tuple[int, int, int]:
+        return (0x71, method_index, 0)
+
+    def invoke_direct3(
+        method_index: int, this: int, name: int, ordinal: int
+    ) -> tuple[int, int, int]:
+        packed = this | (name << 4) | (ordinal << 8)
+        return (0x70 | 3 << 12, method_index, packed)
+
+    def const4(reg: int, value: int) -> tuple[int]:
+        return (0x12 | reg << 8 | (value & 0xF) << 12,)
+
+    def return_object(reg: int) -> tuple[int]:
+        return (0x11 | reg << 8,)
+
+    # scan_grpc_services cross-validates the SERVICE_NAME string across
+    # methods (Counter.most_common) and requires it repeat at least
+    # twice, so this fixture needs two getXxxMethod() candidates, not one.
+    strings = ("svc.Foo", "Unary", "Stream", "UNARY", "SERVER_STREAMING")
+    methods_by_index = {
+        0: _M(2, "getDefaultInstance"),
+        1: _M(3, "getDefaultInstance"),
+        2: _M(1, "<init>", ("Ljava/lang/String;", "I")),
+        3: _M(1, "<clinit>"),
+        10: _M(0, "getUnaryMethod"),
+        11: _M(0, "getStreamMethod"),
+    }
+    methods = [
+        methods_by_index.get(index, _M(0, ""))
+        for index in range(max(methods_by_index) + 1)
+    ]
+    fields = [_F(0, "cachedUnary"), _F(1, "l"), _F(1, "m")]
+    unary_code = (
+        *sget_object(0, 0),
+        *const_string(1, 0),
+        *const_string(2, 1),
+        *sget_object(3, 1),
+        *invoke_static0(0),
+        *invoke_static0(1),
+        *return_object(0),
+    )
+    stream_code = (
+        *sget_object(0, 0),
+        *const_string(1, 0),
+        *const_string(2, 2),
+        *sget_object(3, 2),
+        *invoke_static0(0),
+        *invoke_static0(1),
+        *return_object(0),
+    )
+    clinit_code = (
+        *const_string(0, 3),
+        *const4(1, 0),
+        *invoke_direct3(2, 9, 0, 1),
+        *sput_object(9, 1),
+        *const_string(0, 4),
+        *const4(1, 2),
+        *invoke_direct3(2, 9, 0, 1),
+        *sput_object(9, 2),
+    )
+
+    def resolve(item: object) -> _M:
+        if hasattr(item, "method_index"):
+            return methods[cast(_EM, item).method_index]
+        return cast(_M, item)
+
+    code_items = {
+        100: SimpleNamespace(instructions=unary_code),
+        200: SimpleNamespace(instructions=stream_code),
+    }
+    dex: object = SimpleNamespace(
+        types=("Lsvc/FooGrpc;", "Lgrpc/MethodType;", "Lsvc/Req;", "Lsvc/Res;"),
+        classes=(_Class(0),),
+        strings=strings,
+        fields=fields,
+        methods=methods,
+        field_name=lambda item: item.name,
+        method_name=lambda item: resolve(item).name,
+        method_parameter_types=lambda item: resolve(item).params,
+        class_methods=lambda item: (
+            (_EM(10, 100), _EM(11, 200)) if item.class_index == 0 else ()
+        ),
+        code_item=lambda offset: code_items[offset],
+        iter_code_items=lambda: (
+            (_EM(3, 999), SimpleNamespace(instructions=clinit_code)),
+        ),
+    )
+
+    schemas = _find_grpc(
+        tmp_path / "input.bin",
+        dex_inputs=[("classes.dex", b"")],
+        dex_cache={"classes.dex": dex},  # type: ignore[dict-item]
+    )
+
+    assert len(schemas) == 1
+    service = schemas[0].services[0]
+    assert service.name == "Foo"
+    by_name = {method.name: method for method in service.methods}
+    assert (by_name["Unary"].input_type, by_name["Unary"].output_type) == (
+        "Req",
+        "Res",
+    )
 
 
 def test_extract_reuses_loaded_dex_inputs(
