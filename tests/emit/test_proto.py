@@ -311,6 +311,55 @@ def test_sanitized_names_remain_unique_and_compilable() -> None:
     assert compile_proto(emitted).success
 
 
+def test_omits_invalid_bool_default() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto2",
+        messages=[
+            Message(
+                "Settings",
+                fields=[
+                    Field(
+                        "flag",
+                        1,
+                        "bool",
+                        Confidence.CERTAIN,
+                        default_value="maybe",
+                    )
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "default" not in emitted
+    assert compile_proto(emitted).success
+
+
+def test_enum_type_default_is_sanitized_as_a_name() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto2",
+        messages=[
+            Message(
+                "Settings",
+                fields=[
+                    Field(
+                        "mode",
+                        1,
+                        "Mode",
+                        Confidence.CERTAIN,
+                        default_value="bad-value",
+                    )
+                ],
+                enums=[EnumType("Mode", [EnumValue("bad_value", 0)])],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "default = bad_value" in emitted
+    assert compile_proto(emitted).success
+
+
 def test_emits_escaped_proto2_string_default() -> None:
     schema = RecoveredSchema(
         name="fixture",
