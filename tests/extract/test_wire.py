@@ -1,7 +1,14 @@
 from types import SimpleNamespace
 from typing import Any
 
-from protoloom.container.dex import AnnotationItem, DexClass, DexField
+from protoloom.container.dex import (
+    AnnotationItem,
+    DexClass,
+    DexField,
+    DexMethod,
+    DexPrototype,
+    EncodedMethod,
+)
 from protoloom.decode.wire import (
     decode_wire_adapter_fields,
     decode_wire_adapters,
@@ -25,10 +32,12 @@ from protoloom.extract.wire import (
     _default_constructor_nulls,
     _default_constructor_state,
     _label,
+    _method_writes,
     _move_register,
     _parameter_registers,
     _string,
     _wire_enum_method,
+    extract_wire_adapter_writes,
     extract_wire_annotations,
     extract_wire_messages,
     extract_wire_names,
@@ -730,6 +739,179 @@ def test_wire_enum_method_skips_unrecoverable_evidence() -> None:
         method_parameter_types=lambda _: (),
     )
     assert _wire_enum_method(dex_not_self_ref, method, descriptor) is None
+
+
+_WRITE_TYPES = (
+    "Lexample/Record;",
+    "Ljava/lang/Object;",
+    "I",
+    "V",
+    "Lexample/BaseAdapter;",
+    "Lexample/RecordAdapter;",
+    "Lwire/Adapters;",
+    "Ljava/lang/String;",
+)
+
+
+def test_method_writes_finds_direct_adapter_write() -> None:
+    model_field = DexField(0, 7, 3)
+    adapter_field = DexField(6, 6, 4)
+    encode_target = object()
+    # iget model field, sget adapter field, const/4 tag, then invoke-static
+    # the wire encode(int, Object) call with (adapter, writer, tag, field).
+    code = (0x0054, 0, 0x0162, 1, 0x7212, 0x4071, 0, 0x0231)
+    dex: Any = SimpleNamespace(
+        fields=(model_field, adapter_field),
+        methods=(encode_target,),
+        types=_WRITE_TYPES,
+        method_parameter_types=lambda m: ("I", "Ljava/lang/Object;"),
+        method_name=lambda m: "encodeWithTag",
+        code_item=lambda off: SimpleNamespace(instructions=code),
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=9)
+
+    findings = _method_writes(dex, method)
+
+    assert findings == [
+        WireAdapterFinding(
+            "Lexample/Record;", model_field, 7, adapter_field, 9, 5, "optional", False
+        )
+    ]
+
+
+def test_method_writes_resolves_pending_packed_adapter() -> None:
+    model_field = DexField(0, 7, 3)
+    adapter_field = DexField(6, 6, 4)
+    encode_target = object()
+    as_packed_target = object()
+    # sget adapter, invoke asPacked(adapter), move-result-object stashes it,
+    # then iget the model field and invoke the encode(int, Object) call.
+    code = (
+        0x0162,
+        1,
+        0x1071,
+        0,
+        0x0001,
+        0x030C,
+        0x0054,
+        0,
+        0x7212,
+        0x4071,
+        1,
+        0x0243,
+    )
+    methods = (as_packed_target, encode_target)
+    dex: Any = SimpleNamespace(
+        fields=(model_field, adapter_field),
+        methods=methods,
+        types=_WRITE_TYPES,
+        method_parameter_types=(
+            lambda m: (
+                ("Lcom/squareup/wire/ProtoAdapter;",)
+                if m is as_packed_target
+                else ("I", "Ljava/lang/Object;")
+            )
+        ),
+        method_name=lambda m: "asPacked" if m is as_packed_target else "encodeWithTag",
+        code_item=lambda off: SimpleNamespace(instructions=code),
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=9)
+
+    findings = _method_writes(dex, method)
+
+    assert findings == [
+        WireAdapterFinding(
+            "Lexample/Record;", model_field, 7, adapter_field, 9, 9, "repeated", True
+        )
+    ]
+
+
+def test_extract_wire_adapter_writes_scans_adapter_subclasses() -> None:
+    types = (
+        "Lexample/Record;",
+        "Ljava/lang/Object;",
+        "I",
+        "V",
+        "Lexample/BaseAdapter;",
+        "Lexample/RecordAdapter;",
+        "Lwire/Adapters;",
+        "Ljava/lang/String;",
+        "Lexample/Other;",
+    )
+    proto = DexPrototype(return_type_index=3, parameter_type_indexes=(2, 1))
+    bad_proto = DexPrototype(return_type_index=1, parameter_type_indexes=(2, 1))
+    methods = (
+        DexMethod(class_index=4, prototype_index=0, name_index=0),
+        DexMethod(class_index=5, prototype_index=0, name_index=1),
+        DexMethod(class_index=5, prototype_index=0, name_index=2),
+        DexMethod(class_index=9, prototype_index=0, name_index=3),
+        DexMethod(class_index=5, prototype_index=1, name_index=5),
+    )
+    model_field = DexField(0, 7, 4)
+    adapter_field = DexField(6, 6, 5)
+    code = (0x0054, 0, 0x0162, 1, 0x7212, 0x4071, 3, 0x0231)
+    owner = DexClass(5, 0, 4, 0, 0, 0, 0, 0)
+    other_owner = DexClass(8, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    encode_method = EncodedMethod(method_index=1, access_flags=0, code_offset=1)
+    no_code_method = EncodedMethod(method_index=2, access_flags=0, code_offset=0)
+    bad_shape_method = EncodedMethod(method_index=4, access_flags=0, code_offset=2)
+    dex: Any = SimpleNamespace(
+        types=types,
+        prototypes=(proto, bad_proto),
+        methods=methods,
+        classes=(owner, other_owner),
+        fields=(model_field, adapter_field),
+        class_methods=(
+            lambda item: (
+                (encode_method, no_code_method, bad_shape_method)
+                if item is owner
+                else ()
+            )
+        ),
+        method_parameter_types=lambda m: ("I", "Ljava/lang/Object;"),
+        method_name=lambda m: "encodeWithTag",
+        code_item=lambda off: SimpleNamespace(instructions=code),
+    )
+
+    findings = extract_wire_adapter_writes(dex)
+
+    assert findings == (
+        WireAdapterFinding(
+            "Lexample/Record;", model_field, 7, adapter_field, 1, 5, "optional", False
+        ),
+    )
+
+
+def test_extract_wire_adapter_writes_skips_malformed_code() -> None:
+    types = (
+        "Lexample/Record;",
+        "Ljava/lang/Object;",
+        "I",
+        "V",
+        "Lexample/BaseAdapter;",
+    )
+    proto = DexPrototype(return_type_index=3, parameter_type_indexes=(2, 1))
+    methods = (
+        DexMethod(class_index=4, prototype_index=0, name_index=0),
+        DexMethod(class_index=5, prototype_index=0, name_index=1),
+    )
+    owner = DexClass(5, 0, 4, 0, 0, 0, 0, 0)
+    # iget-object needs two code units; only one is present, so decoding it
+    # raises and extract_wire_adapter_writes must swallow that per-method.
+    truncated = EncodedMethod(method_index=1, access_flags=0, code_offset=3)
+    dex: Any = SimpleNamespace(
+        types=types,
+        prototypes=(proto,),
+        methods=methods,
+        classes=(owner,),
+        fields=(),
+        class_methods=lambda item: (truncated,),
+        method_parameter_types=lambda m: ("I", "Ljava/lang/Object;"),
+        method_name=lambda m: "encodeWithTag",
+        code_item=lambda off: SimpleNamespace(instructions=(0x0054,)),
+    )
+
+    assert extract_wire_adapter_writes(dex) == ()
 
 
 def test_decodes_adapter_write_evidence() -> None:
