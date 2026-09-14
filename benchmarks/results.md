@@ -749,3 +749,34 @@ limits; this one-app differential does not characterize them. The pinned
 adapter is
 `scripts/pbtk_1_1_2_adapter.sh`; `scripts/compare_pbtk.sh` records isolated
 tool logs and statuses for a directory of artifacts.
+
+## Extraction performance
+
+Profiling a full `protoloom extract` run against the pinned Signal APK
+(cProfile, wall clock) showed 28 of its 56 measured seconds inside
+`compile_proto` — 830 separate real `protoc` subprocess spawns, each
+individually validating one recovered schema compiles standalone before it
+is written out, or one per-package group before its combined descriptor set
+is assembled. Each call is a real, independent OS process whose Python-side
+wait (`subprocess.Popen.wait`) releases the GIL, so the calls were being
+serialized for no reason: nothing about validating schema N depends on
+having already validated schema N-1. `_compiled_descriptors_many` now runs
+these through a `ThreadPoolExecutor` (capped at 32 workers) instead of a
+plain loop, in both call sites (`cli.py`'s per-schema pre-write validation
+and `_combined_lite_descriptors`'s per-package group compile), preserving
+submission order so output ordering and first-failure error attribution are
+unchanged.
+
+| APK | Files recovered | Wall time before | Wall time after |
+|---|---:|---:|---:|
+| Signal 8.22.2 | 789 | 56.1s | 30.4s |
+| Mullvad 2026.8 | 130 | — | 29.1s |
+| Molly 8.19.2-4 | 589 | — | 18.8s |
+| Smartspacer 1.11.2 | 70 | — | 7.3s |
+
+Signal's output directory is byte-for-byte identical before and after
+(`diff -rq`, zero differences across all 789 files); the other three
+reproduce their documented file counts and zero bail-outs unchanged. This is
+a pure concurrency change — no extraction, decoding, or emission logic was
+touched — verified by the fact that the one app measured both before and
+after did not move by a single byte.
