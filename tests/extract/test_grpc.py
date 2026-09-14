@@ -154,6 +154,23 @@ def test_enum_constant_names_survive_inlined_constructor() -> None:
     assert names == {"UNARY": "l", "SERVER_STREAMING": "m"}
 
 
+def test_enum_constant_names_returns_empty_for_unknown_descriptor() -> None:
+    assert enum_constant_names(_dex(), "Lnot/Present;") == {}
+
+
+def test_enum_constant_names_skips_methods_from_other_classes() -> None:
+    dex = _dex()
+    real = (_EM(3, 999), SimpleNamespace(instructions=_CLINIT_CODE))
+    # method_index 2 resolves to "<init>", not "<clinit>" -- must be
+    # skipped before the real MethodType initializer at method_index 3.
+    decoy = (_EM(2, 999), SimpleNamespace(instructions=_CLINIT_CODE))
+    dex.iter_code_items = lambda: (decoy, real)
+
+    names = enum_constant_names(dex, "Lgrpc/MethodType;")
+
+    assert names == {"UNARY": "l", "SERVER_STREAMING": "m"}
+
+
 def test_scan_ignores_classes_without_grpc_shape() -> None:
     dex = _dex()
     dex.classes = (*dex.classes, _Class(4))
@@ -162,3 +179,88 @@ def test_scan_ignores_classes_without_grpc_shape() -> None:
     services = scan_grpc_services(dex)
 
     assert len(services) == 1
+
+
+def test_scan_ignores_nested_grpc_classes() -> None:
+    dex = _dex()
+    dex.classes = (*dex.classes, _Class(4))
+    dex.types = (*dex.types, "Lsvc/Foo$FooGrpc;")
+
+    services = scan_grpc_services(dex)
+
+    assert len(services) == 1
+
+
+def test_scan_skips_codeless_method_and_class_without_candidates() -> None:
+    dex = _dex()
+    dex.classes = (*dex.classes, _Class(4))
+    dex.types = (*dex.types, "Lsvc/BarGrpc;")
+    original_class_methods = dex.class_methods
+    dex.class_methods = lambda item: (
+        (_EM(10, 0),) if item.class_index == 4 else original_class_methods(item)
+    )
+
+    services = scan_grpc_services(dex)
+
+    assert len(services) == 1
+
+
+def test_scan_skips_candidate_with_no_extracted_strings() -> None:
+    dex = _dex()
+    dex.classes = (*dex.classes, _Class(4))
+    dex.types = (*dex.types, "Lsvc/BazGrpc;")
+    code_items = {
+        100: SimpleNamespace(instructions=_UNARY_CODE),
+        200: SimpleNamespace(instructions=_STREAM_CODE),
+        300: SimpleNamespace(instructions=return_object(0)),
+    }
+    dex.code_item = lambda offset: code_items[offset]
+    original_class_methods = dex.class_methods
+    dex.class_methods = lambda item: (
+        (_EM(10, 300),) if item.class_index == 4 else original_class_methods(item)
+    )
+
+    services = scan_grpc_services(dex)
+
+    assert len(services) == 1
+
+
+def test_scan_requires_service_name_to_repeat_across_methods() -> None:
+    # A single candidate can never cross-validate the SERVICE_NAME string
+    # against a sibling method, even if its own shape is otherwise valid.
+    dex = _dex()
+    dex.classes = (*dex.classes, _Class(4))
+    dex.types = (*dex.types, "Lsvc/BazGrpc;")
+    code_items = {
+        100: SimpleNamespace(instructions=_UNARY_CODE),
+        200: SimpleNamespace(instructions=_STREAM_CODE),
+    }
+    dex.code_item = lambda offset: code_items[offset]
+    original_class_methods = dex.class_methods
+    dex.class_methods = lambda item: (
+        (_EM(10, 100),) if item.class_index == 4 else original_class_methods(item)
+    )
+
+    services = scan_grpc_services(dex)
+
+    assert len(services) == 1
+    assert services[0].class_descriptor == "Lsvc/FooGrpc;"
+
+
+def test_scan_skips_method_with_mismatched_string_or_default_count() -> None:
+    dex = _dex()
+    # Stream's own code is swapped for one that only yields the shared
+    # service-name string -- no request/response defaults, no distinct RPC
+    # name -- so it fails the final per-method shape check and is dropped,
+    # while Unary (still valid) keeps counts["svc.Foo"] at 2 so the class
+    # still passes the cross-validation threshold.
+    code_items = {
+        100: SimpleNamespace(instructions=_UNARY_CODE),
+        200: SimpleNamespace(instructions=(*const_string(0, 0), *return_object(0))),
+    }
+    dex.code_item = lambda offset: code_items[offset]
+
+    services = scan_grpc_services(dex)
+
+    assert len(services) == 1
+    assert {method.name for method in services[0].methods} == {"Unary"}
