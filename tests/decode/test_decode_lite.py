@@ -4,7 +4,12 @@ import pytest
 
 from protoloom.container.dex import DexClass, DexField, DexMethod
 from protoloom.decode.infostring import HAS_HAS_BIT, InfoField
-from protoloom.decode.lite import _field_objects, _field_oneof, decode_lite_finding
+from protoloom.decode.lite import (
+    _enclosing_descriptor,
+    _field_objects,
+    _field_oneof,
+    decode_lite_finding,
+)
 from protoloom.extract.lite import LiteFinding, LiteObject
 
 
@@ -193,7 +198,7 @@ class _FakeFieldNumberConstantDex(_FakeDex):
         self.types = ("LOwner;", "LOwner$FlatVariant;")
         self.fields = ()
         self._own_class = DexClass(0, 0, 0xFFFFFFFF, 0, 0xFFFFFFFF, 0, 1, 1)
-        self._static_fields = (DexField(0, 4, 2),)
+        self._static_fields: tuple[DexField, ...] = (DexField(0, 4, 2),)
         self.strings = (*self.strings, "CUSTOM_FIELD_NUMBER")
 
     def class_by_type_index(self, type_index: int) -> DexClass:
@@ -322,3 +327,86 @@ def test_lite_decoder_rejects_stale_class_index() -> None:
     finding = LiteFinding(0, 0, 0, _info_string(0, 0), ())
     with pytest.raises(ValueError, match="class index"):
         decode_lite_finding(dex, finding, "test.dex")
+
+
+def test_class_literal_enum_object_names_the_verifier_directly() -> None:
+    dex: Any = _FakeVerifierDex(singleton_name="INSTANCE")
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 12)
+    finding = LiteFinding(
+        0,
+        0,
+        0,
+        info,
+        (
+            LiteObject("string", "mode_"),
+            LiteObject("class", "LOwner$Mode$ModeVerifier;"),
+        ),
+    )
+    assert _field_objects(dex, finding)[3] == ["LOwner$Mode$ModeVerifier;"]
+
+
+def test_call_result_enum_object_is_not_trusted_as_a_verifier() -> None:
+    dex: Any = _FakeVerifierDex(singleton_name="INSTANCE")
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 12)
+    finding = LiteFinding(
+        0,
+        0,
+        0,
+        info,
+        (LiteObject("string", "mode_"), LiteObject("call_result", 5)),
+    )
+    assert _field_objects(dex, finding)[3] == [None]
+
+
+def test_map_field_reads_the_static_field_index_from_the_objects_array() -> None:
+    dex: Any = _FakeDex()
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 50)
+    finding = LiteFinding(
+        0,
+        0,
+        0,
+        info,
+        (LiteObject("static_field", 3),),
+    )
+    assert _field_objects(dex, finding)[2] == [3]
+
+
+def test_enclosing_descriptor_returns_none_for_unknown_type() -> None:
+    dex: Any = _FakeDex()
+    assert _enclosing_descriptor(dex, "LUnknown;") is None
+
+
+def test_enclosing_descriptor_falls_back_to_dollar_split_when_unannotated() -> None:
+    dex: Any = _FakeDex()
+    dex.types = ("LOwner;", "LOwner$Nested;")
+    assert _enclosing_descriptor(dex, "LOwner$Nested;") == "LOwner;"
+
+
+class _FakeNonIntStaticValueDex(_FakeFieldNumberConstantDex):
+    def __init__(self) -> None:
+        super().__init__()
+        self._static_fields = (DexField(0, 4, 5), DexField(0, 4, 2))
+        self.strings = (*self.strings, "SOME_OTHER_CONSTANT")
+
+    def static_field_values(self, item: DexClass) -> tuple[object, ...]:
+        # a non-int static (e.g. a String constant) must be skipped, not
+        # crash the FIELD_NUMBER constant scan.
+        return ("not-a-number", 1)
+
+
+def test_non_int_static_field_value_is_skipped() -> None:
+    info = _info_string(0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 60, 0)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(
+            LiteObject("string", "group_"),
+            LiteObject("string", "groupCase_"),
+            LiteObject("class", "LOwner$FlatVariant;"),
+        ),
+    )
+    decoded = decode_lite_finding(_FakeNonIntStaticValueDex(), finding, "test.dex")  # type: ignore[arg-type]
+    field = decoded.schema.messages[0].fields[0]
+    assert field.name == "custom"
