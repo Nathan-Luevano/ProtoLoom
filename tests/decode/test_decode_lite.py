@@ -2,7 +2,13 @@ from typing import Any
 
 import pytest
 
-from protoloom.container.dex import DexClass, DexField, DexMethod
+from protoloom.container.dex import (
+    CodeItem,
+    DexClass,
+    DexField,
+    DexMethod,
+    EncodedMethod,
+)
 from protoloom.decode.infostring import HAS_HAS_BIT, InfoField
 from protoloom.decode.lite import (
     _enclosing_descriptor,
@@ -410,3 +416,201 @@ def test_non_int_static_field_value_is_skipped() -> None:
     decoded = decode_lite_finding(_FakeNonIntStaticValueDex(), finding, "test.dex")  # type: ignore[arg-type]
     field = decoded.schema.messages[0].fields[0]
     assert field.name == "custom"
+
+
+def _enum_info_string() -> str:
+    return _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 12)
+
+
+class _EnumMessageDex:
+    def __init__(self, mode_type: str = "LOwner$Mode;") -> None:
+        self.types: tuple[str, ...] = ("LOwner;", mode_type)
+        self.strings: tuple[str, ...] = (
+            "newMessageInfo",
+            "mode_",
+            "getMode",
+            "<init>",
+            "<clinit>",
+            "MODE_UNSPECIFIED",
+            "MODE_ACTIVE",
+        )
+        self.methods: tuple[DexMethod, ...] = (
+            DexMethod(0, 0, 2),
+            DexMethod(1, 0, 3),
+            DexMethod(1, 0, 4),
+        )
+        self.fields: tuple[DexField, ...] = (DexField(1, 1, 5), DexField(1, 1, 6))
+        instructions = (
+            0x22,
+            1,
+            0x011A,
+            5,
+            0x0212,
+            0x4070,
+            1,
+            0x2210,
+            0x69,
+            0,
+            0x22,
+            1,
+            0x011A,
+            6,
+            0x1212,
+            0x4070,
+            1,
+            0x2210,
+            0x69,
+            1,
+            0x0E,
+        )
+        self._items: tuple[tuple[EncodedMethod, CodeItem], ...] = (
+            (EncodedMethod(2, 0, 200), CodeItem(200, 3, 0, 4, 0, 0, instructions)),
+        )
+
+    def method_name(self, method: DexMethod) -> str:
+        return self.strings[method.name_index]
+
+    def method_return_type(self, method: DexMethod) -> str:
+        return self.types[1]
+
+    def method_parameter_types(self, method: DexMethod) -> tuple[str, ...]:
+        return ("Ljava/lang/String;", "I", "I") if method.name_index == 3 else ()
+
+    def field_name(self, field: DexField) -> str:
+        return self.strings[field.name_index]
+
+    def class_by_type_index(self, type_index: int) -> None:
+        return None
+
+    def iter_code_items(self) -> tuple[tuple[EncodedMethod, CodeItem], ...]:
+        return self._items
+
+
+def test_message_local_enum_is_fully_resolved_via_the_getter() -> None:
+    dex: Any = _EnumMessageDex()
+    finding = LiteFinding(
+        0, 0, 0, _enum_info_string(), (LiteObject("string", "mode_"),)
+    )
+
+    decoded = decode_lite_finding(dex, finding, "test.dex")
+
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "Mode"
+    assert field.confidence.value == "high"
+    assert [(v.name, v.number) for v in decoded.schema.messages[0].enums[0].values] == [
+        ("MODE_UNSPECIFIED", 0),
+        ("MODE_ACTIVE", 1),
+    ]
+
+
+def test_non_message_local_enum_records_its_own_enclosing_class() -> None:
+    dex: Any = _EnumMessageDex(mode_type="LOther$Mode;")
+    finding = LiteFinding(
+        0, 0, 0, _enum_info_string(), (LiteObject("string", "mode_"),)
+    )
+
+    decoded = decode_lite_finding(dex, finding, "test.dex")
+
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "Mode"
+    assert decoded.schema.messages[0].enums == []
+    assert [e.name for e in decoded.schema.enums] == ["Mode"]
+    assert decoded.enum_enclosing == {"Mode": "LOther;"}
+
+
+def test_unresolvable_enum_field_falls_back_to_int32() -> None:
+    dex: Any = _EnumMessageDex(mode_type="LMode;")
+    finding = LiteFinding(
+        0, 0, 0, _enum_info_string(), (LiteObject("string", "mode_"),)
+    )
+
+    decoded = decode_lite_finding(dex, finding, "test.dex")
+
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "int32"
+
+
+def test_enum_verifier_fallback_resolves_when_no_getter_name_is_known() -> None:
+    dex: Any = _EnumMessageDex()
+    dex.types = (*dex.types, "LOwner$Mode$ModeVerifier;")
+    finding = LiteFinding(
+        0,
+        0,
+        0,
+        _enum_info_string(),
+        (LiteObject("class", "LOwner$Mode$ModeVerifier;"),),
+    )
+
+    decoded = decode_lite_finding(dex, finding, "test.dex")
+
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "Mode"
+
+
+def test_well_known_auxiliary_class_resolves_type_and_dependency() -> None:
+    dex: Any = _FakeDex()
+    dex.types = ("LOwner;", "Lcom/google/protobuf/Timestamp;")
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 9)
+    finding = LiteFinding(
+        0, 0, 0, info, (LiteObject("class", "Lcom/google/protobuf/Timestamp;"),)
+    )
+
+    decoded = decode_lite_finding(dex, finding, "test.dex")
+
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == ".google.protobuf.Timestamp"
+    assert decoded.schema.dependencies == ["google/protobuf/timestamp.proto"]
+
+
+def test_message_field_without_any_type_signal_guesses_from_its_name() -> None:
+    dex: Any = _FakeDex()
+    dex.fields = ()
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 9)
+    finding = LiteFinding(0, 0, 0, info, (LiteObject("string", "thing_"),))
+
+    decoded = decode_lite_finding(dex, finding, "test.dex")
+
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "Thing"
+    assert field.confidence.value == "medium"
+
+
+def test_message_field_with_no_signal_at_all_gets_a_numbered_placeholder() -> None:
+    dex: Any = _FakeDex()
+    dex.fields = ()
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 9)
+    finding = LiteFinding(0, 0, 0, info, ())
+
+    decoded = decode_lite_finding(dex, finding, "test.dex")
+
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "RecoveredField1"
+    assert field.confidence.value == "speculative"
+
+
+def test_map_field_without_recoverable_evidence_falls_back_to_bytes() -> None:
+    dex: Any = _FakeDex()
+    dex.fields = ()
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 50)
+    finding = LiteFinding(0, 0, 0, info, (LiteObject("static_field", 3),))
+
+    decoded = decode_lite_finding(dex, finding, "test.dex")
+
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "bytes"
+
+
+def test_heuristic_finding_downgrades_a_resolved_field_to_medium() -> None:
+    info = _info_string(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 9)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(LiteObject("string", "nested_"),),
+        heuristic=True,
+    )
+    decoded = decode_lite_finding(_FakeDex(), finding, "test.dex")  # type: ignore[arg-type]
+    field = decoded.schema.messages[0].fields[0]
+    assert field.type_name == "Nested"
+    assert field.confidence.value == "medium"
