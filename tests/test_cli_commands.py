@@ -316,6 +316,19 @@ def test_dex_inputs_ignore_non_android_container(tmp_path: Path) -> None:
     assert _dex_inputs(binary) == []
 
 
+def test_dex_inputs_reads_dex_bundled_inside_a_plain_jar(tmp_path: Path) -> None:
+    # A jar with no AndroidManifest.xml still classifies as JAR, not APK, but
+    # some Android build artifacts (e.g. pre-dexed library jars) legitimately
+    # carry a classes.dex member alongside .class files.
+    dex = b"dex\n039\x00payload"
+    jar = tmp_path / "hybrid.jar"
+    with ZipFile(jar, "w") as archive:
+        archive.writestr("com/example/Foo.class", b"classfile")
+        archive.writestr("classes.dex", dex)
+
+    assert _dex_inputs(jar) == [("classes.dex", dex)]
+
+
 def test_find_wire_decodes_annotated_message_end_to_end(tmp_path: Path) -> None:
     owner = DexClass(0, 0, 1, 0, 0, 1, 0, 0)
     field = DexField(0, 2, 1)

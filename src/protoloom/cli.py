@@ -165,7 +165,7 @@ def _dex_inputs(
     detection = detection if detection is not None else detect(path)
     if detection.kind is ContainerKind.DEX:
         return [(path.name, read_limited(path))]
-    if detection.kind not in {ContainerKind.APK, ContainerKind.AAB}:
+    if detection.kind not in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
         return []
     archive = AndroidArchive(path)
     inv = inventory if inventory is not None else archive.inventory()
