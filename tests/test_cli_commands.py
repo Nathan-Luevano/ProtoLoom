@@ -1,5 +1,6 @@
 import json
 import os
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,7 +19,9 @@ from protoloom.cli import (
     _dex_inputs,
     _find,
     _find_grpc,
+    _find_lite,
     _find_wire,
+    _lite_worker,
     _output_names,
     _previous_artifacts,
     _publish_outputs,
@@ -730,6 +733,90 @@ def test_extract_reports_uncompilable_recovery(
 
     assert result.exit_code == 2
     assert "recovery failed: protoc rejected schema" in result.output
+
+
+def _minimal_dex(strings: tuple[bytes, ...]) -> bytes:
+    string_ids_offset = 112
+    data_offset = string_ids_offset + 4 * len(strings)
+    data = bytearray()
+    offsets: list[int] = []
+    for value in strings:
+        offsets.append(data_offset + len(data))
+        data.extend((len(value),))
+        data.extend(value)
+        data.append(0)
+    file_size = data_offset + len(data)
+    header = bytearray(112)
+    header[:8] = b"dex\n039\x00"
+    values = [
+        file_size,
+        112,
+        0x12345678,
+        0,
+        0,
+        0,
+        len(strings),
+        string_ids_offset,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        len(data),
+        data_offset,
+    ]
+    struct.pack_into("<20I", header, 32, *values)
+    return bytes(header) + struct.pack(f"<{len(offsets)}I", *offsets) + bytes(data)
+
+
+def test_find_lite_uses_process_pool_across_multiple_dex_inputs(
+    tmp_path: Path,
+) -> None:
+    dex_inputs = [
+        ("a.dex", _minimal_dex((b"a",))),
+        ("b.dex", _minimal_dex((b"b", b"c"))),
+        ("c.dex", _minimal_dex(())),
+    ]
+
+    schemas, bailouts, lineage, enum_lineage = _find_lite(
+        tmp_path / "unused.apk", dex_inputs=dex_inputs
+    )
+
+    # Real subprocess round trip through _lite_worker for each classless
+    # dex: no findings, no bailouts, but no crash pickling/combining either.
+    assert schemas == []
+    assert bailouts == []
+    assert lineage == {}
+    assert enum_lineage == {}
+
+
+def test_find_lite_skips_pool_for_a_single_dex_input(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    def _fail_pool(*args: object, **kwargs: object) -> None:
+        raise AssertionError("pool should not be used for a single dex input")
+
+    monkeypatch.setattr("protoloom.cli.ProcessPoolExecutor", _fail_pool)
+
+    schemas, bailouts, lineage, enum_lineage = _find_lite(
+        tmp_path / "unused.apk", dex_inputs=[("only.dex", _minimal_dex(()))]
+    )
+
+    assert schemas == []
+    assert bailouts == []
+    assert lineage == {}
+    assert enum_lineage == {}
+
+
+def test_lite_worker_parses_its_own_dex_from_raw_bytes() -> None:
+    result = _lite_worker(("only.dex", _minimal_dex(()), False))
+
+    assert result == ([], [], {}, {})
 
 
 def test_compiled_descriptors_many_preserves_order(monkeypatch: MonkeyPatch) -> None:

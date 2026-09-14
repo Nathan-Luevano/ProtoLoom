@@ -1,4 +1,5 @@
 import json
+import multiprocessing
 import os
 import re
 import secrets
@@ -6,7 +7,7 @@ import tempfile
 import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import asdict
 from functools import wraps
@@ -280,43 +281,91 @@ def _find_grpc(
     return schemas
 
 
-def _find_lite(
-    path: Path,
-    *,
-    allow_heuristic: bool = False,
-    dex_inputs: list[tuple[str, bytes]] | None = None,
-    dex_cache: dict[str, DexFile] | None = None,
-) -> tuple[
+_LiteResult = tuple[
     list[RecoveredSchema],
     list[str],
     dict[tuple[str, str], tuple[str, str | None]],
     dict[tuple[str, str], dict[str, str | None]],
-]:
+]
+
+
+def _lite_from_dex(source: str, dex: DexFile, *, allow_heuristic: bool) -> _LiteResult:
     schemas: list[RecoveredSchema] = []
     bailouts: list[str] = []
     # Keyed by (package, name): two unrelated classes can share a bare file
     # name across different packages (e.g. two distinct "Relay" classes).
     lineage: dict[tuple[str, str], tuple[str, str | None]] = {}
     enum_lineage: dict[tuple[str, str], dict[str, str | None]] = {}
+    extraction = extract_lite(dex, allow_heuristic=allow_heuristic)
+    for finding in extraction.findings:
+        try:
+            decoded = decode_lite_finding(dex, finding, source)
+        except ValueError as error:
+            bailouts.append(f"{source}: {error}")
+            continue
+        schemas.append(decoded.schema)
+        key = (decoded.schema.package, decoded.schema.name)
+        lineage[key] = (decoded.class_descriptor, decoded.enclosing_descriptor)
+        if decoded.enum_enclosing:
+            enum_lineage[key] = decoded.enum_enclosing
+    bailouts.extend(
+        f"{source}: method {item.containing_method}: {item.reason}"
+        for item in extraction.bailouts
+    )
+    return schemas, bailouts, lineage, enum_lineage
+
+
+def _lite_worker(args: tuple[str, bytes, bool]) -> _LiteResult:
+    # Runs in a separate process: parses its own DexFile from raw bytes
+    # rather than sharing the thread-side dex_cache, which can't cross a
+    # process boundary.
+    source, data, allow_heuristic = args
+    return _lite_from_dex(source, DexFile(data), allow_heuristic=allow_heuristic)
+
+
+def _find_lite(
+    path: Path,
+    *,
+    allow_heuristic: bool = False,
+    dex_inputs: list[tuple[str, bytes]] | None = None,
+    dex_cache: dict[str, DexFile] | None = None,
+) -> _LiteResult:
+    schemas: list[RecoveredSchema] = []
+    bailouts: list[str] = []
+    lineage: dict[tuple[str, str], tuple[str, str | None]] = {}
+    enum_lineage: dict[tuple[str, str], dict[str, str | None]] = {}
     raw_inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
     cache = dex_cache if dex_cache is not None else {}
+    # Instruction-walking (extract_lite/decode_lite_finding) is CPU-bound
+    # pure Python and holds the GIL, so it doesn't benefit from threads;
+    # a process pool overlaps it across cores. Pool startup isn't worth it
+    # for a single dex, so that case stays on the sequential/cached path.
+    if len(raw_inputs) > 1:
+        workers = min(32, len(raw_inputs))
+        # fork (the default mp start method) inherits the parent's upb
+        # (protobuf) C-extension state, which segfaulted intermittently
+        # under real APKs; spawn re-execs a clean interpreter per worker.
+        with ProcessPoolExecutor(
+            max_workers=workers, mp_context=multiprocessing.get_context("spawn")
+        ) as pool:
+            results = pool.map(
+                _lite_worker,
+                [(source, data, allow_heuristic) for source, data in raw_inputs],
+            )
+        for dex_schemas, dex_bailouts, dex_lineage, dex_enum_lineage in results:
+            schemas.extend(dex_schemas)
+            bailouts.extend(dex_bailouts)
+            lineage.update(dex_lineage)
+            enum_lineage.update(dex_enum_lineage)
+        return schemas, bailouts, lineage, enum_lineage
     for source, dex in _cached_dex(raw_inputs, cache):
-        extraction = extract_lite(dex, allow_heuristic=allow_heuristic)
-        for finding in extraction.findings:
-            try:
-                decoded = decode_lite_finding(dex, finding, source)
-            except ValueError as error:
-                bailouts.append(f"{source}: {error}")
-                continue
-            schemas.append(decoded.schema)
-            key = (decoded.schema.package, decoded.schema.name)
-            lineage[key] = (decoded.class_descriptor, decoded.enclosing_descriptor)
-            if decoded.enum_enclosing:
-                enum_lineage[key] = decoded.enum_enclosing
-        bailouts.extend(
-            f"{source}: method {item.containing_method}: {item.reason}"
-            for item in extraction.bailouts
+        dex_schemas, dex_bailouts, dex_lineage, dex_enum_lineage = _lite_from_dex(
+            source, dex, allow_heuristic=allow_heuristic
         )
+        schemas.extend(dex_schemas)
+        bailouts.extend(dex_bailouts)
+        lineage.update(dex_lineage)
+        enum_lineage.update(dex_enum_lineage)
     return schemas, bailouts, lineage, enum_lineage
 
 
