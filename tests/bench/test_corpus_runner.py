@@ -660,6 +660,135 @@ def test_as_list_rejects_non_array_matrix_value(tmp_path: Path) -> None:
         load_manifest(path)
 
 
+def test_json_reader_rejects_non_positive_max_size(tmp_path: Path) -> None:
+    path = tmp_path / "x.json"
+    path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="maximum JSON size must be positive"):
+        read_json(path, max_size=0)
+
+
+def test_json_reader_enforces_bound_during_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "x.json"
+    path.write_text('{"a": 1}', encoding="utf-8")
+    real_fstat = os.fstat
+
+    class FakeStat:
+        def __init__(self, real: os.stat_result) -> None:
+            self._real = real
+            self.st_size = 3
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._real, name)
+
+    monkeypatch.setattr(
+        "protoloom.bench.jsonio.os.fstat", lambda fd: FakeStat(real_fstat(fd))
+    )
+    with pytest.raises(ValueError, match="JSON input exceeds 3 bytes"):
+        read_json(path, max_size=3)
+
+
+def test_aggregate_reports_rejects_empty_list() -> None:
+    from protoloom.bench.metrics import aggregate_reports
+
+    with pytest.raises(ValueError, match="at least one target report is required"):
+        aggregate_reports([])
+
+
+def test_schema_rejects_non_object_root(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text("[]", encoding="utf-8")
+    with pytest.raises(ValueError, match="benchmark schema must be an object"):
+        load_schema(path)
+
+
+def test_schema_rejects_non_object_round_trip(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text('{"round_trip": []}', encoding="utf-8")
+    with pytest.raises(ValueError, match="round_trip must be an object"):
+        load_schema(path)
+
+
+def test_schema_rejects_invalid_round_trip_counts(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text('{"round_trip": {"passed": 5, "total": 1}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="round-trip counts are invalid"):
+        load_schema(path)
+
+
+def test_schema_bounds_top_level_items(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(json.dumps({"messages": [{}, {}, {}]}), encoding="utf-8")
+    monkeypatch.setattr("protoloom.bench.runner.MAX_BENCH_SCHEMA_ITEMS", 2)
+    with pytest.raises(ValueError, match="benchmark schema exceeds 2 items"):
+        load_schema(path)
+
+
+def test_schema_skips_non_object_message_in_budget(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(json.dumps({"messages": [1]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="message must be an object"):
+        load_schema(path)
+
+
+def test_enum_value_count_ignores_non_object_enum(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    payload = {"messages": [{"enums": [1]}]}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="enum must be an object"):
+        load_schema(path)
+
+
+def test_message_rejects_non_object(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(json.dumps({"messages": ["x"]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="message must be an object"):
+        load_schema(path)
+
+
+def test_field_rejects_non_object(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    payload = {"messages": [{"fields": ["x"]}]}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="field must be an object"):
+        load_schema(path)
+
+
+def test_field_rejects_invalid_number(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    field = {"number": 0, "name": "x", "proto_type": "int32", "wire_type": 0}
+    payload = {"messages": [{"fields": [field]}]}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="field number is invalid"):
+        load_schema(path)
+
+
+def test_enum_rejects_non_object(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    payload = {"enums": ["x"]}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="enum must be an object"):
+        load_schema(path)
+
+
+def test_items_rejects_non_array(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    path.write_text(json.dumps({"messages": "x"}), encoding="utf-8")
+    with pytest.raises(ValueError, match="messages must be an array"):
+        load_schema(path)
+
+
+def test_ambiguities_rejects_non_array(tmp_path: Path) -> None:
+    path = tmp_path / "schema.json"
+    payload = {"messages": [], "type_fidelity_ambiguities": "int32"}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="type_fidelity_ambiguities must be an array"):
+        load_schema(path)
+
+
 def test_report_renders_unmeasured_metrics_as_na() -> None:
     schema = BenchmarkSchema((BenchmarkMessage("Empty", ()),))
     report = aggregate_reports([score_target("empty", schema, schema)])
