@@ -828,3 +828,49 @@ faster, unreliable one. The underlying idea (real CPU-bound work that would
 benefit from process-level parallelism) is still correct — it needs a
 correctness root-cause first, not a smaller tweak to the same design, before
 it's attempted again.
+
+## Test coverage hardening
+
+Following the four extraction-performance fixes above, a wide coverage pass
+closed nearly every remaining real gap in the engine, mostly via
+worktree-isolated subagents (each given real-bytecode fixture conventions
+to follow, no padding, `make check` gating) merged back and independently
+re-verified — real-APK output was diffed byte-for-byte against the last
+verified state after every merge; none of this changed production
+behavior.
+
+| Module | Before | After |
+|---|---:|---:|
+| `container/dex.py` | 73% | 100% |
+| `container/apk.py` | 94% | 100% |
+| `container/detect.py` | 89% | 100% |
+| `container/elf.py` | 87% | 100% |
+| `container/macho.py` | 90% | 100% |
+| `extract/wire.py` | 56% | 99% |
+| `extract/lite.py` | 89% | 99% |
+| `extract/grpc.py` | 93% | 100% |
+| `extract/gotags.py` | 84% | 100% |
+| `extract/descriptor.py` | 88% | 100% |
+| `decode/wire.py` | 91% | 99% |
+| `decode/lite.py` | 82% | 100% |
+| `decode/names.py` | 89% | 100% |
+| `decode/infostring.py` | 94% | 100% |
+| `reconcile.py` | 90% | 100% |
+| `emit/report.py` | 93% | 99% |
+| `emit/dashboard.py` | 94% | 100% |
+| `cli.py` | 89% | 93% |
+| **Overall (6211 statements)** | **87%** | **97%** |
+
+Test count rose from 730 to 961 across this pass. The handful of lines left
+uncovered were checked individually and found genuinely unreachable rather
+than skipped by default: `decode/wire.py`'s `raw_type not in dex.types`
+guard (the value is always extracted from that same list, so membership is
+trivially guaranteed), `emit/report.py`'s outer message-count budget check
+(the per-schema helper it follows already enforces a shrinking sub-budget
+that makes this exact overflow impossible by construction), and 4 lines in
+`extract/lite.py`'s packed-switch bounds validation (only a corrupted,
+backward payload delta reaches them, and real D8/R8 output never produces
+one — confirmed experimentally). Remaining gaps outside this pass
+(`bench/*.py`, `extract/jadx.py`, `tui/*`, `validate/roundtrip.py`) sit
+outside the core recovery engine — CLI-adjacent, benchmark-harness, or
+interactive-TUI code — and were left for a future session.
