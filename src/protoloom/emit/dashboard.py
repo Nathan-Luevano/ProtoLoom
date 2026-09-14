@@ -107,9 +107,15 @@ def emit_dashboard(
             attribute = escape(_conflict_value(conflict, "attribute", "value"))
             kept = escape(_conflict_value(conflict, "kept", ""))
             rejected = escape(_conflict_value(conflict, "rejected", ""))
+            kept_confidence = _conflict_confidence(conflict, "kept_confidence")
+            rejected_confidence = _conflict_confidence(conflict, "rejected_confidence")
+            kept_label = f" ({escape(kept_confidence)})" if kept_confidence else ""
+            rejected_label = (
+                f" ({escape(rejected_confidence)})" if rejected_confidence else ""
+            )
             parts.append(
-                f"<li><b>{path}</b> · {attribute}: kept <code>{kept}</code>, "
-                f"rejected <code>{rejected}</code></li>"
+                f"<li><b>{path}</b> · {attribute}: kept <code>{kept}</code>"
+                f"{kept_label}, rejected <code>{rejected}</code>{rejected_label}</li>"
             )
         parts.append("</ul>")
     else:
@@ -157,6 +163,17 @@ def _conflict_value(
     if isinstance(conflict, Mapping):
         return str(conflict.get(name, default))
     return str(getattr(conflict, name))
+
+
+def _conflict_confidence(
+    conflict: Mapping[str, object] | ConflictLike, name: str
+) -> str | None:
+    value = (
+        conflict.get(name)
+        if isinstance(conflict, Mapping)
+        else getattr(conflict, name, None)
+    )
+    return None if value is None else str(value)
 
 
 _CSS = """

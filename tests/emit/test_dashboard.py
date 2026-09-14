@@ -76,6 +76,22 @@ def test_dashboard_renders_conflict_dict_missing_fields_with_defaults() -> None:
     assert "rejected <code></code>" in page
 
 
+def test_dashboard_renders_conflict_confidence_levels() -> None:
+    conflict = Conflict(
+        "Record.1",
+        "type_name",
+        "string",
+        "bytes",
+        Confidence.CERTAIN,
+        Confidence.SPECULATIVE,
+    )
+
+    page = emit_dashboard([], [conflict])
+
+    assert "kept <code>string</code> (certain)" in page
+    assert "rejected <code>bytes</code> (speculative)" in page
+
+
 def test_dashboard_bounds_top_level_schema_count() -> None:
     schemas = [RecoveredSchema("a"), RecoveredSchema("b")]
     with pytest.raises(ValueError, match="exceeds 1 schemas"):
