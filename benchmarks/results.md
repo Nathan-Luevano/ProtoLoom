@@ -904,3 +904,27 @@ one — confirmed experimentally). Remaining gaps outside this pass
 (`bench/*.py`, `extract/jadx.py`, `tui/*`, `validate/roundtrip.py`) sit
 outside the core recovery engine — CLI-adjacent, benchmark-harness, or
 interactive-TUI code — and were left for a future session.
+
+### Follow-up sweep
+
+A later pass closed the remaining core-engine gaps
+(`emit/jsonout.py`, `extract/gozip.py`, `container/read.py`, `doctor.py`,
+`validate/compile.py`, `emit/descset.py` — all real TOCTOU/budget/fallback
+edges, no contrived tests) and the CLI-adjacent gaps left above
+(`bench/*.py`, `extract/jadx.py`, `tui/*`, `validate/roundtrip.py`), taking
+the suite from 961 to 1060 tests. Two real bugs surfaced along the way, both
+fixed and verified against the full Signal APK re-extraction:
+
+- **TUI**: pressing Escape on the Setup/Open/Results screens while a text
+  input had focus never returned to Home — the generic "go back" escape
+  binding was the only screen-transition escape handler in the file without
+  `eager=True`, so prompt_toolkit's own buffer key handling won the race.
+  Fixed with `eager=True`.
+- **Emit**: a recovered proto3 enum whose first value isn't 0 but that has
+  some *other* value literally equal to 0 collided with the synthesized
+  `_UNSPECIFIED = 0` placeholder without `allow_alias` being set, producing
+  a proto that fails to compile. Fixed by checking the synthetic zero
+  against the real values before deciding whether `allow_alias` is needed.
+  Signal's own schemas never hit this shape (`diff -rq` against the prior
+  commit's extraction is empty), so this closes a real gap with zero
+  behavior change on the pinned corpus.
