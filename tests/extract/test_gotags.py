@@ -81,6 +81,21 @@ def test_resolves_repeated_zigzag_field_type() -> None:
     assert _protobuf_type(memory, 0x1040, tag) == "sint32"
 
 
+def test_resolves_plain_varint_int32_and_int64_field_types() -> None:
+    data = bytearray(128)
+    data[64 + 23] = 5
+    memory = _Memory(FakeElf(bytes(data)))
+    tag = parse_protobuf_tag('protobuf:"varint,1,opt,name=nanos,proto3"')
+    assert tag is not None
+    assert _protobuf_type(memory, 0x1040, tag) == "int32"
+
+    data[64 + 23] = 6
+    memory = _Memory(FakeElf(bytes(data)))
+    tag = parse_protobuf_tag('protobuf:"varint,1,opt,name=seconds,proto3"')
+    assert tag is not None
+    assert _protobuf_type(memory, 0x1040, tag) == "int64"
+
+
 def test_builds_field_from_linked_go_metadata() -> None:
     data = bytearray(256)
     name = b"Id"

@@ -126,6 +126,8 @@ def _protobuf_type(memory: _Memory, address: int, tag: GoProtobufTag) -> str | N
         return tag.enum_name.rsplit(".", 1)[-1]
     scalar = {
         ("varint", 1): "bool",
+        ("varint", 5): "int32",
+        ("varint", 6): "int64",
         ("varint", 10): "uint32",
         ("varint", 11): "uint64",
         ("zigzag32", 5): "sint32",
