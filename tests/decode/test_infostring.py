@@ -5,9 +5,12 @@ from hypothesis import strategies as st
 from protoloom.decode.infostring import (
     CHECK_INITIALIZED_BIT,
     HAS_HAS_BIT,
+    LEGACY_ENUM_IS_CLOSED_BIT,
     ONEOF_TYPE_OFFSET,
     REQUIRED_BIT,
     UTF8_CHECK_BIT,
+    InfoField,
+    InfoHeader,
     InfoStringError,
     decode_info_string,
     decode_integers,
@@ -196,6 +199,12 @@ def test_zero_field_encoding_stops_after_count() -> None:
         ((0, 1, 0, 0, 1, 1, 2, 0, 0, 0, 1, 4), "entry count"),
         ((0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 4), "field number"),
         ((0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 69), "field type"),
+        ((0, 1, 0, 0, 0, 1, 1, 0, 0, 0), "invalid field-number range"),
+        ((0, 1, 0, 0, 5, 5, 1, 0, 0, 0, 5, 51, 0), "oneof index"),
+        ((0, 1, 0, 0, 5, 5, 1, 0, 0, 0, 5, 4101, 0), "hasbits index"),
+        ((0, 1, 0, 0, 5, 5, 1, 0, 0, 0, 5, 1, 99), "trailing integers"),
+        ((0, 1, 0, 0, 5, 5, 1, 0, 0, 0, 6, 1), "field-number range"),
+        ((0, 2, 0, 0, 5, 5, 2, 0, 0, 0, 5, 1, 5, 1), "duplicate field number"),
     ],
 )
 def test_rejects_malformed_streams(values: tuple[int, ...], match: str) -> None:
@@ -206,3 +215,21 @@ def test_rejects_malformed_streams(values: tuple[int, ...], match: str) -> None:
 def test_rejects_unterminated_integer() -> None:
     with pytest.raises(InfoStringError, match="unterminated"):
         decode_integers(chr(0xE000))
+
+
+def test_header_is_message_set_flag() -> None:
+    assert InfoHeader(flags=2, field_count=0).is_message_set
+    assert not InfoHeader(flags=0, field_count=0).is_message_set
+
+
+def test_field_legacy_enum_and_presence_flags() -> None:
+    closed = InfoField(1, 14, LEGACY_ENUM_IS_CLOSED_BIT | 14)
+    assert closed.legacy_enum_is_closed
+
+    present = InfoField(1, 1, HAS_HAS_BIT | 1)
+    assert present.has_presence
+
+
+def test_rejects_map_and_repeated_counts_exceeding_field_count() -> None:
+    with pytest.raises(InfoStringError, match="map and repeated counts"):
+        decode_info_string(encode(0, 1, 0, 0, 5, 5, 1, 1, 1, 0))

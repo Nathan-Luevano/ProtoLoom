@@ -46,3 +46,27 @@ def test_unpacks_packed_and_separate_object_layouts() -> None:
 def test_bad_object_layout_is_loud() -> None:
     with pytest.raises(ValueError, match="expected 2"):
         unpack_field_names(("only_", object()), 2)
+
+
+def test_java_name_with_no_alphanumeric_content_falls_back_to_field() -> None:
+    assert java_to_proto_name("$$$") == "field"
+
+
+def test_recover_names_rejects_mismatched_lengths() -> None:
+    with pytest.raises(ValueError, match="same length"):
+        recover_names(("a_", "b_"), (1,))
+
+
+def test_unpack_field_names_rejects_negative_expected_count() -> None:
+    with pytest.raises(ValueError, match="cannot be negative"):
+        unpack_field_names((), -1)
+
+
+def test_unpack_field_names_returns_empty_for_zero_expected_count() -> None:
+    assert unpack_field_names((), 0) == ()
+    assert unpack_field_names(("anything",), 0) == ()
+
+
+def test_unpack_field_names_rejects_non_string_leading_entry() -> None:
+    with pytest.raises(ValueError, match="does not start with field-name data"):
+        unpack_field_names((object(),), 1)
