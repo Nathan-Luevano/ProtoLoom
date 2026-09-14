@@ -39,6 +39,7 @@ from protoloom.extract.wire import (
     _wire_enum_method,
     extract_wire_adapter_writes,
     extract_wire_annotations,
+    extract_wire_enums,
     extract_wire_messages,
     extract_wire_names,
     extract_wire_null_defaults,
@@ -561,6 +562,85 @@ def test_recovers_standard_enum_constructor() -> None:
 
     assert finding is not None
     assert finding.values == (("UNUSED", 0),)
+
+
+def test_extract_wire_enums_discovers_via_getvalue_accessor() -> None:
+    record_owner = "Lexample/Record;"
+    enum_descriptor = "Lexample/Mode;"
+    # descriptor at index 0: the hand-encoded new-instance operand below is
+    # baked in as type index 0 (matches test_recovers_standard_enum_constructor).
+    enum_class = DexClass(0, 0, 2, 0, 0, 0, 0, 0)
+    get_value_method = object()
+    clinit_method = SimpleNamespace(code_offset=1, method_index=7)
+    ctor_target = object()
+    field = DexField(0, 0, 0)
+    finding = WireAdapterFinding(
+        record_owner, DexField(0, 1, 0), 1, DexField(2, 3, 1), 7, 12
+    )
+    dex: Any = SimpleNamespace(
+        NO_INDEX=0xFFFFFFFF,
+        classes=(enum_class,),
+        types=(enum_descriptor, record_owner, "Ljava/lang/Enum;"),
+        fields=(field,),
+        methods=(ctor_target,),
+        strings=("UNUSED",),
+        class_by_type_index=lambda index: enum_class if index == 0 else None,
+        class_methods=lambda cls: (get_value_method, clinit_method),
+        method_name=lambda m: (
+            "getValue"
+            if m is get_value_method
+            else "<clinit>"
+            if m is clinit_method
+            else "<init>"
+        ),
+        method_parameter_types=lambda m: (
+            () if m is get_value_method else ("Ljava/lang/String;", "I")
+        ),
+        method_return_type=lambda m: "I" if m is get_value_method else "V",
+        code_item=lambda offset: SimpleNamespace(
+            instructions=(0x0022, 0, 0x011A, 0, 0x0212, 0x3070, 0, 0x0210, 0x0069, 0)
+        ),
+        field_name=lambda f: "UNUSED",
+    )
+
+    findings = extract_wire_enums(dex, (finding,))
+
+    assert len(findings) == 1
+    assert findings[0].descriptor == enum_descriptor
+    assert findings[0].values == (("UNUSED", 0),)
+
+
+def test_extract_wire_enums_skips_non_enum_superclass_and_missing_initializer() -> None:
+    record_owner = "Lexample/Record;"
+    other_class = DexClass(1, 0, 2, 0, 0, 0, 0, 0)
+    no_super_class = DexClass(1, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    finding = WireAdapterFinding(
+        record_owner, DexField(0, 1, 0), 1, DexField(2, 3, 1), 7, 12
+    )
+
+    wrong_super_dex: Any = SimpleNamespace(
+        NO_INDEX=0xFFFFFFFF,
+        classes=(),
+        types=(record_owner, "Lexample/Mode;", "Ljava/lang/Object;"),
+        fields=(),
+        strings=(),
+        class_by_type_index=lambda index: other_class,
+        class_methods=lambda cls: (),
+        method_name=lambda m: "<init>",
+    )
+    assert extract_wire_enums(wrong_super_dex, (finding,)) == ()
+
+    no_super_dex: Any = SimpleNamespace(
+        NO_INDEX=0xFFFFFFFF,
+        classes=(),
+        types=(record_owner, "Lexample/Mode;"),
+        fields=(),
+        strings=(),
+        class_by_type_index=lambda index: no_super_class,
+        class_methods=lambda cls: (),
+        method_name=lambda m: "<init>",
+    )
+    assert extract_wire_enums(no_super_dex, (finding,)) == ()
 
 
 def test_move_register_handles_16bit_and_wide_forms() -> None:
