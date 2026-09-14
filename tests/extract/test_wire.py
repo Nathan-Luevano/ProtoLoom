@@ -126,6 +126,152 @@ def test_wire_syntax_extraction_skips_invalid_field_operand() -> None:
     assert extract_wire_syntaxes(dex, {"Lexample/Record;"}) == {}
 
 
+def test_extract_wire_syntaxes_resolves_single_consistent_value() -> None:
+    owner = DexClass(0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    field = DexField(1, 1, 0)
+    dex: Any = SimpleNamespace(
+        classes=(owner,),
+        types=("Lexample/Record;", "Lcom/squareup/wire/Syntax;"),
+        strings=("PROTO2",),
+        fields=(field,),
+        class_methods=lambda _: (SimpleNamespace(code_offset=1, method_index=0),),
+        method_name=lambda _: "<clinit>",
+        code_item=lambda _: SimpleNamespace(instructions=(0x0060, 0)),
+        field_name=lambda f: "PROTO2",
+    )
+
+    assert extract_wire_syntaxes(dex, {"Lexample/Record;"}) == {
+        "Lexample/Record;": "proto2"
+    }
+
+
+def test_extract_wire_syntaxes_skips_ambiguous_values() -> None:
+    owner = DexClass(0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    field_a = DexField(1, 1, 0)
+    field_b = DexField(1, 1, 1)
+    dex: Any = SimpleNamespace(
+        classes=(owner,),
+        types=("Lexample/Record;", "Lcom/squareup/wire/Syntax;"),
+        strings=("PROTO2", "PROTO3"),
+        fields=(field_a, field_b),
+        class_methods=lambda _: (SimpleNamespace(code_offset=1, method_index=0),),
+        method_name=lambda _: "<clinit>",
+        code_item=lambda _: SimpleNamespace(instructions=(0x0060, 0, 0x0161, 1)),
+        field_name=lambda f: "PROTO2" if f is field_a else "PROTO3",
+    )
+
+    assert extract_wire_syntaxes(dex, {"Lexample/Record;"}) == {}
+
+
+def test_extract_wire_oneofs_skips_unselected_owners_and_methods() -> None:
+    owner = DexClass(0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    other = SimpleNamespace(code_offset=1, method_index=0)
+    no_code = SimpleNamespace(code_offset=0, method_index=0)
+    dex: Any = SimpleNamespace(
+        classes=(owner,),
+        types=("Lexample/Record;",),
+        strings=(),
+        fields=(),
+        class_methods=lambda _: (other, no_code),
+        method_name=lambda m: "toString" if m is other else "<init>",
+        code_item=lambda _: SimpleNamespace(instructions=()),
+    )
+
+    assert extract_wire_oneofs(dex, set()) == ()
+    assert extract_wire_oneofs(dex, {"Lexample/Record;"}) == ()
+
+
+def test_extract_wire_syntaxes_skips_unselected_owners_methods_and_opcodes() -> None:
+    owner = DexClass(0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    field = DexField(1, 1, 0)
+    non_init = SimpleNamespace(code_offset=1, method_index=0)
+    clinit = SimpleNamespace(code_offset=1, method_index=0)
+    # a leading const (opcode 0x12) exercises the non-sput opcode skip.
+    code = (0x0012, 0x0060, 0)
+    dex: Any = SimpleNamespace(
+        classes=(owner,),
+        types=("Lexample/Record;", "Lcom/squareup/wire/Syntax;"),
+        strings=("PROTO2",),
+        fields=(field,),
+        class_methods=lambda _: (non_init,),
+        method_name=lambda m: "toString",
+        code_item=lambda _: SimpleNamespace(instructions=code),
+        field_name=lambda f: "PROTO2",
+    )
+    clinit_dex: Any = SimpleNamespace(
+        classes=(owner,),
+        types=("Lexample/Record;", "Lcom/squareup/wire/Syntax;"),
+        strings=("PROTO2",),
+        fields=(field,),
+        class_methods=lambda _: (clinit,),
+        method_name=lambda m: "<clinit>",
+        code_item=lambda _: SimpleNamespace(instructions=code),
+        field_name=lambda f: "PROTO2",
+    )
+
+    assert extract_wire_syntaxes(dex, set()) == {}
+    assert extract_wire_syntaxes(dex, {"Lexample/Record;"}) == {}
+    assert extract_wire_syntaxes(clinit_dex, {"Lexample/Record;"}) == {
+        "Lexample/Record;": "proto2"
+    }
+
+
+def test_extract_wire_oneofs_requires_more_than_one_field() -> None:
+    owner = DexClass(0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    method = SimpleNamespace(code_offset=1, method_index=0)
+    strings = (
+        "At most one of a, b may be non-null",
+        "At most one of a may be non-null",
+    )
+    dex: Any = SimpleNamespace(
+        classes=(owner,),
+        types=("Lexample/Record;",),
+        strings=strings,
+        fields=(),
+        class_methods=lambda _: (method,),
+        method_name=lambda _: "<init>",
+        code_item=lambda _: SimpleNamespace(instructions=(0x001A, 0)),
+    )
+    single_field_dex: Any = SimpleNamespace(
+        classes=(owner,),
+        types=("Lexample/Record;",),
+        strings=strings,
+        fields=(),
+        class_methods=lambda _: (method,),
+        method_name=lambda _: "<init>",
+        code_item=lambda _: SimpleNamespace(instructions=(0x011A, 1)),
+    )
+
+    matches = extract_wire_oneofs(dex, {"Lexample/Record;"})
+    assert matches == (WireOneofFinding("Lexample/Record;", ("a", "b"), 0),)
+    assert extract_wire_oneofs(single_field_dex, {"Lexample/Record;"}) == ()
+
+
+def test_extract_wire_names_finds_nearest_preceding_field_read() -> None:
+    owner = DexClass(0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    method = SimpleNamespace(code_offset=1, method_index=0)
+    field = DexField(0, 0, 0)
+    code = (0x001A, 0, 0x0054, 0, 0x031A, 1)
+    dex: Any = SimpleNamespace(
+        classes=(owner,),
+        types=("Lexample/Record;",),
+        strings=("Record{", "title="),
+        fields=(field,),
+        methods=(),
+        class_methods=lambda _: (method,),
+        method_name=lambda _: "toString",
+        code_item=lambda _: SimpleNamespace(instructions=code),
+    )
+
+    finding = extract_wire_names(dex)[0]
+
+    assert (finding.field, finding.name, finding.message_name) == (
+        field,
+        "title",
+        "Record",
+    )
+
+
 def test_resolves_wire_adapter_types() -> None:
     assert wire_adapter_type("com.squareup.wire.ProtoAdapter#SINT64") == "sint64"
     assert wire_adapter_type("example.Outer$Inner#ADAPTER") == ".example.Outer.Inner"
