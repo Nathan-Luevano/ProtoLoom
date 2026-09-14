@@ -512,6 +512,18 @@ def test_proto_output_bounds_total_items() -> None:
         emit_proto(schema, max_items=1)
 
 
+def test_proto_output_bounds_top_level_items_before_messages() -> None:
+    # dependencies/enums/services alone can exceed the budget before the
+    # message-depth walk even starts.
+    schema = RecoveredSchema(
+        "fixture",
+        enums=[EnumType("A", [EnumValue("X", 0)]), EnumType("B", [EnumValue("Y", 0)])],
+    )
+
+    with pytest.raises(ValueError, match="exceeds 1 items"):
+        emit_proto(schema, max_items=1)
+
+
 def test_proto_output_bounds_message_depth() -> None:
     schema = RecoveredSchema("fixture", messages=[Message("Outer")])
     schema.messages[0].messages.append(Message("Inner"))
