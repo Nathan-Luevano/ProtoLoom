@@ -346,6 +346,75 @@ def test_wire_dex_type_rejects_out_of_range_fields() -> None:
     assert wire_dex_type(dex, 0, 99) is None
 
 
+def test_wire_dex_type_resolves_scalar_from_adapter_field_name() -> None:
+    model = DexField(0, 5, 0)
+    adapter = DexField(9, 9, 1)
+    dex: Any = SimpleNamespace(
+        fields=(model, adapter),
+        types=(
+            "Lexample/Record;",
+            "x",
+            "x",
+            "x",
+            "x",
+            "Lcustom/Type;",
+            "x",
+            "x",
+            "x",
+            "Ladapter/Owner;",
+        ),
+        field_name=lambda f: "INT32" if f is adapter else "value",
+    )
+
+    assert wire_dex_type(dex, 0, 1) == "int32"
+
+
+def test_wire_dex_type_resolves_nested_message_from_adapter_owner() -> None:
+    model = DexField(0, 5, 0)
+    adapter = DexField(5, 9, 1)
+    dex: Any = SimpleNamespace(
+        fields=(model, adapter),
+        types=(
+            "Lexample/Record;",
+            "x",
+            "x",
+            "x",
+            "x",
+            "Lexample/Outer$Nested;",
+            "x",
+            "x",
+            "x",
+            "Ladapter/Owner;",
+        ),
+        field_name=lambda f: "ADAPTER" if f is adapter else "value",
+    )
+
+    assert wire_dex_type(dex, 0, 1) == "Outer_Nested"
+
+
+def test_wire_dex_type_returns_none_for_unrecognized_adapter_field_name() -> None:
+    model = DexField(0, 5, 0)
+    adapter = DexField(9, 9, 1)
+    dex: Any = SimpleNamespace(
+        fields=(model, adapter),
+        types=(
+            "Lexample/Record;",
+            "x",
+            "x",
+            "x",
+            "x",
+            "Lcustom/Type;",
+            "x",
+            "x",
+            "x",
+            "Ladapter/Owner;",
+        ),
+        field_name=lambda f: "MYSTERY" if f is adapter else "value",
+    )
+
+    assert wire_dex_type(dex, 0, 1) is None
+
+
 def test_wire_decoder_skips_stale_field_findings() -> None:
     dex: Any = _wire_dex()
     stale = DexField(0, 2, 99)
@@ -376,6 +445,61 @@ def test_decodes_proven_wire_scalar_presence() -> None:
         "classes.dex",
         {finding.owner: "proto3"},
         {finding.owner: frozenset({2})},
+    )[0]
+
+    assert schema.messages[0].fields[0].proto3_optional
+
+
+def test_field_skips_unresolvable_adapter_type() -> None:
+    dex = _wire_dex()
+    finding = extract_wire_annotations(dex)[0]
+    unresolvable = WireFieldFinding(
+        finding.owner, finding.field, 7, "no-hash-separator", "optional", None
+    )
+
+    schemas = decode_wire_annotations(dex, (unresolvable,), "classes.dex")
+
+    assert schemas[0].messages[0].fields == []
+
+
+def test_field_strips_qualified_adapter_owner_name() -> None:
+    dex = _wire_dex()
+    finding = extract_wire_annotations(dex)[0]
+    nested = WireFieldFinding(
+        finding.owner,
+        finding.field,
+        7,
+        "com.example.Foo$Bar#ADAPTER",
+        "optional",
+        None,
+    )
+
+    schema = decode_wire_annotations(dex, (nested,), "classes.dex")[0]
+
+    assert schema.messages[0].fields[0].type_name == "Bar"
+
+
+def test_wire_presence_type_confirms_enum_adapter_field() -> None:
+    dex = _wire_dex()
+    finding = extract_wire_annotations(dex)[0]
+    enum_type_index = len(dex.types)
+    dex.types = (*dex.types, "Lexample/Mode;", "Ljava/lang/Enum;")
+    dex.NO_INDEX = 0xFFFFFFFF
+    enum_class = SimpleNamespace(superclass_index=enum_type_index + 1)
+    dex.class_by_type_index = lambda idx: enum_class if idx == enum_type_index else None
+    enum_field = DexField(
+        finding.field.class_index, enum_type_index, finding.field.name_index
+    )
+    enum_finding = WireFieldFinding(
+        finding.owner, enum_field, 7, "Mode#ADAPTER", "optional", None, 0
+    )
+
+    schema = decode_wire_annotations(
+        dex,
+        (enum_finding,),
+        "classes.dex",
+        {finding.owner: "proto3"},
+        {finding.owner: frozenset({0})},
     )[0]
 
     assert schema.messages[0].fields[0].proto3_optional
@@ -1039,6 +1163,32 @@ def test_extract_wire_adapter_writes_skips_malformed_code() -> None:
     )
 
     assert extract_wire_adapter_writes(dex) == ()
+
+
+def test_decode_wire_adapter_fields_skips_unresolvable_type() -> None:
+    model = DexField(0, 5, 0)
+    adapter = DexField(9, 9, 1)
+    dex: Any = SimpleNamespace(
+        fields=(model, adapter),
+        types=(
+            "Lexample/Record;",
+            "x",
+            "x",
+            "x",
+            "x",
+            "Lcustom/Type;",
+            "x",
+            "x",
+            "x",
+            "Ladapter/Owner;",
+        ),
+        field_name=lambda field: "MYSTERY" if field is adapter else "value",
+    )
+    finding = WireAdapterFinding("Lexample/Record;", model, 4, adapter, 7, 12)
+
+    fields = decode_wire_adapter_fields(dex, (finding,), (), (), "classes.dex")
+
+    assert fields == {}
 
 
 def test_decodes_adapter_write_evidence() -> None:
