@@ -811,3 +811,20 @@ was real but small next to the two fixes above; still worth fixing, since
 it's the same bug shape and the file no longer carries dead re-parsing.
 Verified byte-identical against Signal, Mullvad, Molly, and Smartspacer's
 prior outputs.
+
+A fourth attempt — parallelizing `_find_lite`'s remaining genuine per-dex
+CPU work (`iter_code_items`/`extract_lite`/`decode_lite_finding`) across a
+`ProcessPoolExecutor` — was implemented, initially measured as a real
+speedup (Signal 26.1s → 19.3s) with byte-identical output on a handful of
+runs, and merged, but a stress run of 5 back-to-back real Signal
+extractions immediately afterward failed 4 of 5 times with three different
+real errors (`BrokenProcessPool`, a `DEX structure lies outside the file`
+decode error, and a `TypeError` on an internal object). Switching the pool's
+start method from `fork` to `spawn` had reduced but not eliminated the
+failure rate — the small number of clean verification runs during
+development simply hadn't hit it. **Reverted in full** rather than shipped
+in a known-flaky state; a slower, reliable extractor is worth more than a
+faster, unreliable one. The underlying idea (real CPU-bound work that would
+benefit from process-level parallelism) is still correct — it needs a
+correctness root-cause first, not a smaller tweak to the same design, before
+it's attempted again.
