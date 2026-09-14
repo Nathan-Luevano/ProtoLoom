@@ -126,6 +126,43 @@ def test_compile_rejects_oversized_descriptor(
         compile_proto('syntax = "proto3";')
 
 
+def test_compile_rejects_descriptor_that_grows_past_the_fstat_check(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    # A file could grow between the fstat-based size check and the actual
+    # read; the read result itself must be bounded too, not just trusted
+    # once the initial size check passes.
+    start = _compiler(monkeypatch)
+
+    def compile_output(args: list[str], **kwargs: object) -> object:
+        output_arg = next(
+            item for item in args if item.startswith("--descriptor_set_out=")
+        )
+        Path(output_arg.partition("=")[2]).write_bytes(b"large")
+        return start(args, **kwargs)
+
+    real_fstat = os.fstat
+
+    class _FakeStatResult:
+        def __init__(self, real: object) -> None:
+            self._real = real
+
+        def __getattr__(self, name: str) -> object:
+            if name == "st_size":
+                return 4
+            return getattr(self._real, name)
+
+    def fake_fstat(fd: int) -> object:
+        return _FakeStatResult(real_fstat(fd))
+
+    monkeypatch.setattr("protoloom.validate.compile.MAX_DESCRIPTOR_SET_SIZE", 4)
+    monkeypatch.setattr("protoloom.validate.compile.subprocess.Popen", compile_output)
+    monkeypatch.setattr("protoloom.validate.compile.os.fstat", fake_fstat)
+
+    with pytest.raises(ValueError, match="descriptor set exceeds 4 bytes"):
+        compile_proto('syntax = "proto3";')
+
+
 def test_compile_rejects_special_descriptor(monkeypatch: MonkeyPatch) -> None:
     start = _compiler(monkeypatch)
 

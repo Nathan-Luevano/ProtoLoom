@@ -1,4 +1,4 @@
-from protoloom.doctor import diagnose, format_report
+from protoloom.doctor import _module_available, diagnose, format_report
 
 
 def test_doctor_distinguishes_required_and_optional_dependencies() -> None:
@@ -47,3 +47,9 @@ def test_doctor_accepts_bundled_protoc_without_system_executable() -> None:
         "(python -m grpc_tools.protoc (not the pinned protoc binary))"
         in format_report(report)
     )
+
+
+def test_module_available_treats_a_missing_parent_package_as_unavailable() -> None:
+    # find_spec raises ModuleNotFoundError (not just returning None) when
+    # the parent package of a dotted name doesn't exist at all.
+    assert _module_available("nonexistent.sub.module") is False
