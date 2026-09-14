@@ -94,6 +94,17 @@ def test_rejects_data_section_outside_file() -> None:
         DexFile(malformed)
 
 
+def test_rejects_invalid_modified_utf8_string() -> None:
+    with pytest.raises(DexError, match="invalid modified UTF-8"):
+        DexFile(_minimal_dex((b"\x80",)))
+
+
+def test_unpack_rejects_offset_outside_file() -> None:
+    dex = DexFile(_minimal_dex(()))
+    with pytest.raises(DexError, match="outside the file"):
+        dex._unpack("<I", len(dex._data))
+
+
 def test_rejects_unterminated_string_data() -> None:
     raw = bytearray(_minimal_dex((b"ab",)))[:-1]
     struct.pack_into("<I", raw, 32, len(raw))
