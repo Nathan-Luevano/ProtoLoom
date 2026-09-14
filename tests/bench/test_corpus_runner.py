@@ -412,6 +412,254 @@ def test_materialize_bounds_existing_cache_reads(tmp_path: Path) -> None:
         materialize(manifest, cache, max_artifact_size=4)
 
 
+def test_artifact_rejects_two_sources() -> None:
+    from protoloom.bench.corpus import Artifact
+
+    with pytest.raises(CorpusError, match="needs exactly one source"):
+        Artifact(name="a", sha256="0" * 64, path="a", url="https://example.test/a")
+
+
+def test_artifact_rejects_invalid_sha256() -> None:
+    from protoloom.bench.corpus import Artifact
+
+    with pytest.raises(CorpusError, match="invalid SHA-256"):
+        Artifact(name="a", sha256="not-hex", path="a")
+
+
+def test_target_rejects_duplicate_artifact_names() -> None:
+    from protoloom.bench.corpus import Artifact, CorpusTarget
+
+    artifact = Artifact(name="same.json", sha256="0" * 64, path="same.json")
+    with pytest.raises(CorpusError, match="duplicate artifact names"):
+        CorpusTarget(name="target", truth=artifact, recovered=artifact)
+
+
+def test_manifest_dataclass_rejects_empty_targets() -> None:
+    from protoloom.bench.corpus import CorpusManifest
+
+    with pytest.raises(CorpusError, match="at least one target"):
+        CorpusManifest(name="empty", targets=(), matrix={}, root=Path("."))
+
+
+def test_manifest_dataclass_rejects_duplicate_target_names() -> None:
+    from protoloom.bench.corpus import Artifact, CorpusManifest, CorpusTarget
+
+    truth = Artifact(name="truth.json", sha256="0" * 64, path="truth.json")
+    recovered = Artifact(name="recovered.json", sha256="1" * 64, path="recovered.json")
+    target = CorpusTarget(name="dup", truth=truth, recovered=recovered)
+    with pytest.raises(CorpusError, match="target names must be unique"):
+        CorpusManifest(name="c", targets=(target, target), matrix={}, root=Path("."))
+
+
+def test_manifest_dataclass_rejects_too_many_matrix_axes() -> None:
+    from protoloom.bench.corpus import Artifact, CorpusManifest, CorpusTarget
+
+    truth = Artifact(name="truth.json", sha256="0" * 64, path="truth.json")
+    recovered = Artifact(name="recovered.json", sha256="1" * 64, path="recovered.json")
+    target = CorpusTarget(name="t", truth=truth, recovered=recovered)
+    matrix = {f"axis{i}": ("v",) for i in range(33)}
+    with pytest.raises(CorpusError, match="more than 32 axes"):
+        CorpusManifest(name="c", targets=(target,), matrix=matrix, root=Path("."))
+
+
+def test_manifest_dataclass_rejects_empty_matrix_axis() -> None:
+    from protoloom.bench.corpus import Artifact, CorpusManifest, CorpusTarget
+
+    truth = Artifact(name="truth.json", sha256="0" * 64, path="truth.json")
+    recovered = Artifact(name="recovered.json", sha256="1" * 64, path="recovered.json")
+    target = CorpusTarget(name="t", truth=truth, recovered=recovered)
+    with pytest.raises(CorpusError, match="matrix axes cannot be empty"):
+        CorpusManifest(
+            name="c", targets=(target,), matrix={"runtime": ()}, root=Path(".")
+        )
+
+
+def test_manifest_rejects_non_object_root(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text("[]", encoding="utf-8")
+    with pytest.raises(CorpusError, match="manifest root must be an object"):
+        load_manifest(path)
+
+
+def test_manifest_rejects_empty_targets_list(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text('{"name": "c", "targets": []}', encoding="utf-8")
+    with pytest.raises(CorpusError, match="at least one target"):
+        load_manifest(path)
+
+
+def test_manifest_rejects_duplicate_target_names_from_json(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    payload["targets"] = [payload["targets"][0], payload["targets"][0]]
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(CorpusError, match="target names must be unique"):
+        load_manifest(path)
+
+
+def test_manifest_rejects_non_object_matrix(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    payload["matrix"] = []
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(CorpusError, match="matrix must be an object"):
+        load_manifest(path)
+
+
+def test_manifest_rejects_empty_matrix_axis_from_json(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    payload["matrix"] = {"runtime": []}
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(CorpusError, match="matrix axes cannot be empty"):
+        load_manifest(path)
+
+
+def test_materialize_rejects_non_positive_artifact_size(tmp_path: Path) -> None:
+    manifest = load_manifest(FIXTURES / "manifest.json")
+    with pytest.raises(ValueError, match="maximum artifact size must be positive"):
+        materialize(manifest, tmp_path / "cache", max_artifact_size=0)
+
+
+def test_materialize_rejects_symlinked_destination(tmp_path: Path) -> None:
+    manifest = load_manifest(FIXTURES / "manifest.json")
+    real = tmp_path / "real"
+    real.mkdir()
+    cache = tmp_path / "cache"
+    cache.symlink_to(real, target_is_directory=True)
+    with pytest.raises(CorpusError, match="corpus cache is a symlink"):
+        materialize(manifest, cache)
+
+
+def test_materialize_rejects_symlinked_artifact_output(tmp_path: Path) -> None:
+    manifest = load_manifest(FIXTURES / "manifest.json")
+    cache = tmp_path / "cache"
+    target_root = cache / manifest.targets[0].name
+    target_root.mkdir(parents=True)
+    victim = tmp_path / "victim.json"
+    victim.write_text("{}", encoding="utf-8")
+    (target_root / manifest.targets[0].truth.name).symlink_to(victim)
+
+    with pytest.raises(CorpusError, match="artifact cache is a symlink"):
+        materialize(manifest, cache)
+
+
+def test_hash_rejects_non_positive_max_size(tmp_path: Path) -> None:
+    path = tmp_path / "artifact.bin"
+    path.write_bytes(b"data")
+    with pytest.raises(ValueError, match="maximum artifact size must be positive"):
+        sha256(path, max_size=0)
+
+
+def test_hash_enforces_bound_during_streaming(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "artifact.bin"
+    path.write_bytes(b"x" * 10)
+    real_fstat = os.fstat
+
+    class FakeStat:
+        def __init__(self, real: os.stat_result) -> None:
+            self._real = real
+            self.st_size = 5
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._real, name)
+
+    monkeypatch.setattr(
+        "protoloom.bench.corpus.os.fstat", lambda fd: FakeStat(real_fstat(fd))
+    )
+    with pytest.raises(CorpusError, match="artifact exceeds 5 bytes"):
+        sha256(path, max_size=5)
+
+
+def test_copy_artifact_rejects_path_escaping_root(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    root = tmp_path / "corpus_root"
+    root.mkdir()
+    manifest_path = root / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "name": "escape",
+                "targets": [
+                    {
+                        "name": "target",
+                        "truth": {
+                            "name": "truth.json",
+                            "path": "../outside.json",
+                            "sha256": "0" * 64,
+                        },
+                        "recovered": {
+                            "name": "recovered.json",
+                            "path": "../outside.json",
+                            "sha256": "0" * 64,
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_manifest(manifest_path)
+    with pytest.raises(CorpusError, match="artifact path escapes corpus root"):
+        materialize(manifest, tmp_path / "cache")
+
+
+def test_materialize_downloads_valid_https_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    artifact = payload["targets"][0]["truth"]
+    artifact.pop("path")
+    artifact["url"] = "https://example.test/artifact"
+    content = (FIXTURES / "truth.json").read_bytes()
+    import hashlib
+
+    artifact["sha256"] = hashlib.sha256(content).hexdigest()
+    (tmp_path / "recovered.json").write_bytes(
+        (FIXTURES / "recovered.json").read_bytes()
+    )
+    payload["targets"][0]["recovered"]["path"] = "recovered.json"
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(
+        "protoloom.bench.corpus.urllib.request.urlopen",
+        lambda url, timeout: Response(content, "https://example.test/artifact"),
+    )
+    resolved = materialize(load_manifest(path), tmp_path / "cache")
+    key = f"{payload['targets'][0]['name']}/truth.json"
+    assert resolved[key].read_bytes() == content
+
+
+def test_target_rejects_non_object(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    payload["targets"] = [1]
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(CorpusError, match="target must be an object"):
+        load_manifest(path)
+
+
+def test_mapping_rejects_non_object(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    payload["targets"][0]["truth"] = "not-a-mapping"
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(CorpusError, match="truth must be an object"):
+        load_manifest(path)
+
+
+def test_as_list_rejects_non_array_matrix_value(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
+    payload["matrix"] = {"runtime": "go"}
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(CorpusError, match="matrix value must be an array"):
+        load_manifest(path)
+
+
 def test_report_renders_unmeasured_metrics_as_na() -> None:
     schema = BenchmarkSchema((BenchmarkMessage("Empty", ()),))
     report = aggregate_reports([score_target("empty", schema, schema)])
