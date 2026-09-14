@@ -287,6 +287,124 @@ def test_rejects_out_of_range_interface_identifier() -> None:
         DexFile(malformed)
 
 
+def _uleb(value: int) -> bytes:
+    out = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        if value:
+            out.append(byte | 0x80)
+        else:
+            out.append(byte)
+            return bytes(out)
+
+
+def _dex_with_direct_method_code() -> bytes:
+    strings = (b"I", b"Ljava/lang/String;", b"LOwner;", b"name")
+    string_ids_offset = 112
+    type_ids_offset = string_ids_offset + 4 * len(strings)
+    proto_ids_offset = type_ids_offset + 4 * 3
+    method_ids_offset = proto_ids_offset + 12 * 1
+    class_defs_offset = method_ids_offset + 8 * 1
+    data_offset = class_defs_offset + 32 * 1
+
+    data = bytearray()
+
+    def _place(chunk: bytes) -> int:
+        offset = data_offset + len(data)
+        data.extend(chunk)
+        return offset
+
+    string_offsets = [
+        _place(bytes((len(value),)) + value + b"\x00") for value in strings
+    ]
+    # tries_size=1 with an odd instruction count exercises the 2-byte alignment pad.
+    code_offset = _place(
+        struct.pack("<HHHHII", 1, 0, 0, 1, 0, 1)
+        + struct.pack("<1H", 0x000E)
+        + b"\x00\x00"
+        + b"\x00" * 8
+    )
+    class_data_offset = _place(
+        _uleb(0)
+        + _uleb(0)
+        + _uleb(1)
+        + _uleb(0)  # static=0, instance=0, direct=1, virtual=0
+        + _uleb(0)
+        + _uleb(0)
+        + _uleb(code_offset)  # method_idx_diff, access_flags, code_off
+    )
+
+    type_ids = struct.pack("<3I", 0, 1, 2)
+    proto_ids = struct.pack("<III", 0, 1, 0)
+    method_ids = struct.pack("<HHI", 2, 0, 3)
+    class_defs = struct.pack(
+        "<8I", 2, 0, 0xFFFFFFFF, 0, 0xFFFFFFFF, 0, class_data_offset, 0
+    )
+
+    file_size = data_offset + len(data)
+    header = bytearray(112)
+    header[:8] = b"dex\n039\x00"
+    values = [
+        file_size,
+        112,
+        0x12345678,
+        0,
+        0,
+        0,
+        len(strings),
+        string_ids_offset,
+        3,
+        type_ids_offset,
+        1,
+        proto_ids_offset,
+        0,
+        0,
+        1,
+        method_ids_offset,
+        1,
+        class_defs_offset,
+        len(data),
+        data_offset,
+    ]
+    struct.pack_into("<20I", header, 32, *values)
+    string_id_table = struct.pack(f"<{len(string_offsets)}I", *string_offsets)
+    return (
+        bytes(header)
+        + string_id_table
+        + type_ids
+        + proto_ids
+        + method_ids
+        + class_defs
+        + bytes(data)
+    )
+
+
+def test_reads_direct_method_and_code_item() -> None:
+    dex = DexFile(_dex_with_direct_method_code())
+    (owner,) = dex.classes
+    (method,) = dex.class_methods(owner)
+    code = dex.code_item(method.code_offset)
+    assert code.registers_size == 1
+    assert code.tries_size == 1
+    assert code.instructions == (0x000E,)
+    assert dex.iter_code_items() == ((method, code),)
+    assert dex.method_name(method) == "name"
+
+
+def test_code_item_rejects_zero_offset() -> None:
+    dex = DexFile(_dex_with_direct_method_code())
+    with pytest.raises(DexError, match="no code item"):
+        dex.code_item(0)
+
+
+def test_class_static_fields_and_values_empty_when_no_class_data() -> None:
+    dex = DexFile(_dex_with_method_and_interface())
+    (owner,) = dex.classes
+    assert dex.class_static_fields(owner) == ()
+    assert dex.static_field_values(owner) == ()
+
+
 def _dex_with_enclosing_class() -> bytes:
     strings = (
         b"Outer",
