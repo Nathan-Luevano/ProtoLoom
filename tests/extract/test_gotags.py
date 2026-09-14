@@ -5,6 +5,7 @@ import pytest
 from protoloom.container.elf import ElfSection
 from protoloom.extract.gotags import (
     GoProtobufTag,
+    GoTagExtraction,
     _Memory,
     _protobuf_type,
     _struct_schema,
@@ -295,6 +296,66 @@ def test_struct_schema_returns_none_with_bailouts_when_a_field_fails() -> None:
 
     assert schema is None
     assert bailouts == [f"pkg.Big.X: unsupported tag/type: {field_tag.decode()}"]
+
+
+def test_rejects_unsupported_go_elf_architecture() -> None:
+    elf = FakeElf(b"")
+    elf.bits = 32
+
+    result = scan_go_struct_tags(elf, "fixture")
+
+    assert result.bailouts == ("unsupported Go ELF architecture",)
+
+
+def test_scan_returns_empty_when_go_metadata_sections_are_missing() -> None:
+    elf = FakeElf(b"")
+
+    result = scan_go_struct_tags(elf, "fixture")
+
+    assert result == GoTagExtraction((), ())
+
+
+def test_scan_skips_typelinks_that_are_not_struct_pointers() -> None:
+    data = bytearray(1024)
+    data[64 + 23] = 1
+    data[256 + 23] = 22
+    data[256 + 48 : 256 + 56] = (0x1100).to_bytes(8, "little")
+    data[384 + 23] = 5
+    elf = FakeElf(bytes(data))
+    elf.payloads.update(
+        {
+            ".typelink": (64).to_bytes(4, "little") + (256).to_bytes(4, "little"),
+            ".go.buildinfo": b"go1.24.0",
+        }
+    )
+    elf.sections += (
+        ElfSection(".typelink", 0, 8, 0x2000, 2, 1),
+        ElfSection(".go.buildinfo", 0, 8, 0x3000, 2, 1),
+    )
+
+    result = scan_go_struct_tags(elf, "fixture")
+
+    assert result == GoTagExtraction((), ())
+
+
+def test_scan_skips_typelinks_that_raise_decoding_errors() -> None:
+    data = bytearray(1024)
+    data[64 + 23] = 22
+    data[64 + 48 : 64 + 56] = (0x1100).to_bytes(8, "little")
+    data[256 + 23] = 25
+    data[256 + 40 : 256 + 44] = (5000).to_bytes(4, "little", signed=True)
+    elf = FakeElf(bytes(data))
+    elf.payloads.update(
+        {".typelink": (64).to_bytes(4, "little"), ".go.buildinfo": b"go1.24.0"}
+    )
+    elf.sections += (
+        ElfSection(".typelink", 0, 4, 0x2000, 2, 1),
+        ElfSection(".go.buildinfo", 0, 8, 0x3000, 2, 1),
+    )
+
+    result = scan_go_struct_tags(elf, "fixture")
+
+    assert result == GoTagExtraction((), ())
 
 
 def test_rejects_malformed_go_type_links() -> None:
