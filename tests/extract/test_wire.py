@@ -25,6 +25,7 @@ from protoloom.extract.wire import (
     _default_constructor_nulls,
     _default_constructor_state,
     _label,
+    _move_register,
     _parameter_registers,
     _string,
     _wire_enum_method,
@@ -551,6 +552,184 @@ def test_recovers_standard_enum_constructor() -> None:
 
     assert finding is not None
     assert finding.values == (("UNUSED", 0),)
+
+
+def test_move_register_handles_16bit_and_wide_forms() -> None:
+    registers: dict[int, object] = {9: "value"}
+    assert _move_register(registers, _Instruction(0, 0x02, (0x0100, 9)))
+    assert registers[1] == "value"
+
+    registers = {2: "wide"}
+    assert _move_register(registers, _Instruction(0, 0x03, (0, 1, 2)))
+    assert registers[1] == "wide"
+
+
+def test_wire_enum_method_moves_registers_and_second_parameter_shape() -> None:
+    descriptor = "Lexample/Mode;"
+    target = object()
+    field = DexField(9, 9, 0)
+    code = (
+        0x0507,  # move-object v5, v0 (unused, exercises _move_register)
+        0x0022,
+        0,  # new-instance v0, descriptor
+        0x021B,
+        0,
+        0,  # const-string/jumbo v2, "FOO"
+        0x9312,  # const/4 v3, unused
+        0x7412,  # const/4 v4, #7 (number)
+        0x4070,
+        0,
+        0x4320,  # invoke-direct {v0,v2,v3,v4}, target
+        0x0069,
+        0,  # sput-object v0, field@0
+    )
+    dex: Any = SimpleNamespace(
+        methods=(target,),
+        fields=(field,),
+        types=(descriptor,),
+        strings=("FOO",),
+        code_item=lambda _: SimpleNamespace(instructions=code),
+        method_name=lambda _: "<init>",
+        method_parameter_types=lambda _: ("Ljava/lang/String;", "I", "I"),
+        field_name=lambda _: "FOO",
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=3)
+
+    finding = _wire_enum_method(dex, method, descriptor)
+
+    assert finding is not None
+    assert finding.values == (("FOO", 7),)
+
+
+def test_wire_enum_method_third_parameter_shape() -> None:
+    descriptor = "Lexample/Mode;"
+    target = object()
+    field = DexField(9, 9, 0)
+    code = (
+        0x0022,
+        0,  # new-instance v0
+        0x9312,  # const/4 v3, unused
+        0x7412,  # const/4 v4, #7 (number)
+        0x011B,
+        0,
+        0,  # const-string/jumbo v1, "BAR" (name)
+        0x4070,
+        0,
+        0x1430,  # invoke-direct {v0,v3,v4,v1}, target
+        0x0069,
+        0,  # sput-object v0, field@0
+    )
+    dex: Any = SimpleNamespace(
+        methods=(target,),
+        fields=(field,),
+        types=(descriptor,),
+        strings=("BAR",),
+        code_item=lambda _: SimpleNamespace(instructions=code),
+        method_name=lambda _: "<init>",
+        method_parameter_types=lambda _: ("I", "I", "Ljava/lang/String;"),
+        field_name=lambda _: "BAR",
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=0)
+
+    finding = _wire_enum_method(dex, method, descriptor)
+
+    assert finding is not None
+    assert finding.values == (("BAR", 7),)
+
+
+def test_wire_enum_method_skips_unrecoverable_evidence() -> None:
+    descriptor = "Lexample/Mode;"
+    method: Any = SimpleNamespace(code_offset=1, method_index=0)
+
+    # jumbo const-string index out of range.
+    dex_bad_string: Any = SimpleNamespace(
+        methods=(),
+        fields=(),
+        types=(descriptor,),
+        strings=(),
+        code_item=lambda _: SimpleNamespace(instructions=(0x021B, 99, 0)),
+        method_name=lambda _: "<init>",
+        method_parameter_types=lambda _: (),
+    )
+    assert _wire_enum_method(dex_bad_string, method, descriptor) is None
+
+    # invoke method index out of range.
+    dex_bad_method: Any = SimpleNamespace(
+        methods=(),
+        fields=(),
+        types=(descriptor,),
+        strings=(),
+        code_item=lambda _: SimpleNamespace(instructions=(0x1070, 99, 0)),
+        method_name=lambda _: "<init>",
+        method_parameter_types=lambda _: (),
+    )
+    assert _wire_enum_method(dex_bad_method, method, descriptor) is None
+
+    # invoke target is not a constructor.
+    other_target = object()
+    dex_not_init: Any = SimpleNamespace(
+        methods=(other_target,),
+        fields=(),
+        types=(descriptor,),
+        strings=(),
+        code_item=lambda _: SimpleNamespace(instructions=(0x1070, 0, 0)),
+        method_name=lambda _: "other",
+        method_parameter_types=lambda _: (),
+    )
+    assert _wire_enum_method(dex_not_init, method, descriptor) is None
+
+    # argument count doesn't match the constructor's parameters.
+    mismatched_target = object()
+    dex_mismatch: Any = SimpleNamespace(
+        methods=(mismatched_target,),
+        fields=(),
+        types=(descriptor,),
+        strings=(),
+        code_item=lambda _: SimpleNamespace(instructions=(0x1070, 0, 0)),
+        method_name=lambda _: "<init>",
+        method_parameter_types=lambda _: ("I", "I"),
+    )
+    assert _wire_enum_method(dex_mismatch, method, descriptor) is None
+
+    # constructor parameter shape isn't one of the recognized ones.
+    unrecognized_target = object()
+    dex_unrecognized: Any = SimpleNamespace(
+        methods=(unrecognized_target,),
+        fields=(),
+        types=(descriptor,),
+        strings=(),
+        code_item=lambda _: SimpleNamespace(
+            instructions=(0x0022, 0, 0x3070, 0, 0x0210)
+        ),
+        method_name=lambda _: "<init>",
+        method_parameter_types=lambda _: ("I", "I"),
+    )
+    assert _wire_enum_method(dex_unrecognized, method, descriptor) is None
+
+    # sput field index out of range.
+    dex_bad_field: Any = SimpleNamespace(
+        methods=(),
+        fields=(),
+        types=(descriptor,),
+        strings=(),
+        code_item=lambda _: SimpleNamespace(instructions=(0x0069, 99)),
+        method_name=lambda _: "<init>",
+        method_parameter_types=lambda _: (),
+    )
+    assert _wire_enum_method(dex_bad_field, method, descriptor) is None
+
+    # sput to a field that isn't self-referential (class_index != type_index).
+    other_field = DexField(1, 2, 0)
+    dex_not_self_ref: Any = SimpleNamespace(
+        methods=(),
+        fields=(other_field,),
+        types=(descriptor,),
+        strings=(),
+        code_item=lambda _: SimpleNamespace(instructions=(0x0069, 0)),
+        method_name=lambda _: "<init>",
+        method_parameter_types=lambda _: (),
+    )
+    assert _wire_enum_method(dex_not_self_ref, method, descriptor) is None
 
 
 def test_decodes_adapter_write_evidence() -> None:
