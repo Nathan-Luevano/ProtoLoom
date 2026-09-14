@@ -87,6 +87,62 @@ def test_roundtrip_rejects_oversized_descriptor(
     assert result.error == "descriptor set exceeds 2 bytes"
 
 
+def test_roundtrip_descriptor_set_rejects_oversized_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(roundtrip_module, "MAX_ROUNDTRIP_PAYLOAD_SIZE", 2)
+
+    result = roundtrip_descriptor_set(descriptor_set(), "sample.Record", b"123")
+
+    assert not result.decoded
+    assert result.input_size == 3
+    assert result.error == "payload exceeds 2 bytes"
+
+
+def _dependent_descriptor_set() -> bytes:
+    base = descriptor_pb2.FileDescriptorProto(
+        name="base.proto", package="sample", syntax="proto3"
+    )
+    base.message_type.add(name="Base")
+    dependent = descriptor_pb2.FileDescriptorProto(
+        name="dependent.proto", package="sample", syntax="proto3"
+    )
+    dependent.dependency.append("base.proto")
+    message = dependent.message_type.add(name="Record")
+    message.field.add(
+        name="base",
+        number=1,
+        label=descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL,
+        type=descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE,
+        type_name=".sample.Base",
+    )
+    files = descriptor_pb2.FileDescriptorSet()
+    files.file.append(dependent)
+    files.file.append(base)
+    return files.SerializeToString()
+
+
+def test_roundtrip_resolves_out_of_order_dependencies() -> None:
+    result = roundtrip_descriptor_set(_dependent_descriptor_set(), "sample.Record", b"")
+    assert result.decoded
+
+
+def test_roundtrip_reports_unresolvable_dependency() -> None:
+    dependent = descriptor_pb2.FileDescriptorProto(
+        name="dependent.proto", package="sample", syntax="proto3"
+    )
+    dependent.dependency.append("missing.proto")
+    dependent.message_type.add(name="Record")
+    files = descriptor_pb2.FileDescriptorSet()
+    files.file.append(dependent)
+
+    result = roundtrip_descriptor_set(files.SerializeToString(), "sample.Record", b"")
+
+    assert not result.decoded
+    assert "dependencies cannot be resolved" in (result.error or "")
+    assert "dependent.proto" in (result.error or "")
+
+
 def test_roundtrip_bounds_descriptor_file_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
