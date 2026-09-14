@@ -372,6 +372,7 @@ class TuiApplication:
         @self.bindings.add(
             "escape",
             filter=~on_home & ~on_running & ~has_focus(self.search) & ~help_visible,
+            eager=True,
         )
         def go_back(event: KeyPressEvent) -> None:
             self._show_home()
