@@ -72,6 +72,23 @@ def test_scan_dedupes_byte_identical_descriptor_copies() -> None:
     assert len(findings) == 1
 
 
+def test_scan_falls_back_past_an_editions_descriptor_instead_of_surfacing_it() -> None:
+    # A real protoc-emitted editions file sets syntax="editions" (edition
+    # comes after message_type in field-number order); the scanner must not
+    # surface that boundary as a find, since decode_file_descriptor raises
+    # on unsupported syntax -- it should fall back to the shorter boundary
+    # that ends before the syntax field is written, if that one is valid.
+    editions = _descriptor()
+    editions.syntax = "editions"
+    from google.protobuf.descriptor_pb2 import EDITION_2023
+
+    editions.edition = EDITION_2023
+
+    findings = scan_descriptors(editions.SerializeToString(), "fixture")
+
+    assert all(f.descriptor.syntax != "editions" for f in findings)
+
+
 def test_descriptor_scan_bounds_candidates_before_valid_schema() -> None:
     decoy = FileDescriptorProto(name="decoy.proto").SerializeToString()
     expected = _descriptor().SerializeToString()
@@ -137,6 +154,13 @@ def test_valid_rejects_missing_name_unprintable_name_and_bad_syntax() -> None:
     bad_syntax = _descriptor()
     bad_syntax.syntax = "proto4"
     assert _valid(bad_syntax) is False
+
+    # RecoveredSchema only supports proto2/proto3; a real protoc-emitted
+    # editions descriptor must not reach decode_file_descriptor and raise
+    # there uncaught -- it should simply not be treated as a valid find.
+    editions = _descriptor()
+    editions.syntax = "editions"
+    assert _valid(editions) is False
 
 
 def test_valid_rejects_invalid_utf8_name_without_crashing() -> None:

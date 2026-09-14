@@ -388,6 +388,33 @@ def test_extract_rejects_whole_descriptor_referencing_missing_type(
     assert not (tmp_path / "out" / "badref.proto").exists()
 
 
+def test_extract_recovers_editions_descriptor_without_crashing(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    # A real protoc-emitted editions file (syntax="editions", a modern
+    # protoc feature this codebase doesn't model) must degrade to a
+    # best-effort recovery or a clean bail-out, never an uncaught
+    # ValueError -- RecoveredSchema only accepts proto2/proto3.
+    from google.protobuf.descriptor_pb2 import EDITION_2023
+
+    descriptor = FileDescriptorSet().file.add(
+        name="ed.proto", package="demo", syntax="editions"
+    )
+    descriptor.edition = EDITION_2023
+    message = descriptor.message_type.add(name="M")
+    field = message.field.add(name="a", number=1)
+    field.label = field.LABEL_OPTIONAL
+    field.type = field.TYPE_INT32
+
+    binary = tmp_path / "ed.bin"
+    binary.write_bytes(descriptor.SerializeToString())
+
+    result = runner.invoke(app, ["extract", str(binary), "-o", str(tmp_path / "out")])
+
+    assert "Traceback" not in result.output
+    assert result.exit_code in {0, 2}
+
+
 def test_dex_inputs_ignore_non_android_container(tmp_path: Path) -> None:
     binary = tmp_path / "unknown.bin"
     binary.write_bytes(b"unknown")

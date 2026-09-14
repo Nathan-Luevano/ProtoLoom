@@ -44,7 +44,11 @@ def _valid(descriptor: FileDescriptorProto) -> bool:
         return False
     if not descriptor.name.isprintable():
         return False
-    if descriptor.syntax not in {"", "proto2", "proto3", "editions"}:
+    # RecoveredSchema only supports proto2/proto3 (editions carries feature
+    # semantics this codebase doesn't model yet); accepting "editions" here
+    # let a real protoc-emitted editions descriptor reach decode_file_descriptor
+    # and raise an uncaught ValueError instead of just not being recovered.
+    if descriptor.syntax not in {"", "proto2", "proto3"}:
         return False
     return bool(descriptor.message_type or descriptor.enum_type or descriptor.service)
 
