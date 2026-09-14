@@ -8,6 +8,8 @@ from protoloom.model import (
     Field,
     Message,
     RecoveredSchema,
+    Service,
+    ServiceMethod,
 )
 from protoloom.validate.compile import compile_proto
 
@@ -406,3 +408,65 @@ def test_proto_output_bounds_encoded_size() -> None:
 def test_proto_output_rejects_nonpositive_limits(limits: dict[str, int]) -> None:
     with pytest.raises(ValueError, match="limits must be positive"):
         emit_proto(RecoveredSchema("fixture"), **limits)
+
+
+def test_service_emits_unary_and_streaming_rpcs() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        package="demo",
+        messages=[Message("Request"), Message("Response")],
+        services=[
+            Service(
+                "Demo",
+                methods=[
+                    ServiceMethod(
+                        "Call", ".demo.Request", ".demo.Response", Confidence.CERTAIN
+                    ),
+                    ServiceMethod(
+                        "Stream",
+                        ".demo.Request",
+                        ".demo.Response",
+                        Confidence.CERTAIN,
+                        server_streaming=True,
+                    ),
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "service Demo {" in emitted
+    assert "rpc Call(.demo.Request) returns (.demo.Response) {}" in emitted
+    assert "rpc Stream(.demo.Request) returns (stream .demo.Response) {}" in emitted
+    assert compile_proto(emitted).success
+
+
+def test_service_name_does_not_collide_with_message() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        messages=[Message("Shared")],
+        services=[Service("Shared")],
+    )
+    emitted = emit_proto(schema)
+    assert "message Shared {" in emitted
+    assert "service Shared_2 {" in emitted
+    assert compile_proto(emitted).success
+
+
+def test_service_reference_to_missing_type_gets_a_placeholder() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        services=[
+            Service(
+                "Demo",
+                methods=[
+                    ServiceMethod(
+                        "Call", "Missing", "google.protobuf.Empty", Confidence.CERTAIN
+                    )
+                ],
+            )
+        ],
+        dependencies=["google/protobuf/empty.proto"],
+    )
+    emitted = emit_proto(schema)
+    assert "message Missing {}" in emitted
+    assert compile_proto(emitted).success

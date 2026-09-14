@@ -68,12 +68,32 @@ class Message:
 
 
 @dataclass(slots=True)
+class ServiceMethod:
+    name: str
+    input_type: str
+    output_type: str
+    confidence: Confidence
+    evidence: list[Evidence] = field(default_factory=list)
+    client_streaming: bool = False
+    server_streaming: bool = False
+
+
+@dataclass(slots=True)
+class Service:
+    name: str
+    methods: list[ServiceMethod] = field(default_factory=list)
+    confidence: Confidence = Confidence.SPECULATIVE
+    evidence: list[Evidence] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class RecoveredSchema:
     name: str
     package: str = ""
     syntax: str = "proto2"
     messages: list[Message] = field(default_factory=list)
     enums: list[EnumType] = field(default_factory=list)
+    services: list[Service] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
     evidence: list[Evidence] = field(default_factory=list)
 

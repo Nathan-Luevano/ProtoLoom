@@ -1,7 +1,14 @@
 import json
 import re
 
-from protoloom.model import Confidence, EnumType, Field, Message, RecoveredSchema
+from protoloom.model import (
+    Confidence,
+    EnumType,
+    Field,
+    Message,
+    RecoveredSchema,
+    Service,
+)
 
 _IDENTIFIER = re.compile(r"[^A-Za-z0-9_]")
 _SCALARS = {
@@ -275,6 +282,27 @@ def _message(
     return lines
 
 
+def _service(
+    item: Service,
+    renames: dict[str, str],
+    package: str,
+    name: str,
+) -> list[str]:
+    lines = [f"service {name} {{"]
+    method_names = _unique_names([method.name for method in item.methods], "Method")
+    for method, method_name in zip(item.methods, method_names, strict=True):
+        input_type = _resolved_type(method.input_type, renames, package)
+        output_type = _resolved_type(method.output_type, renames, package)
+        client = "stream " if method.client_streaming else ""
+        server = "stream " if method.server_streaming else ""
+        lines.append(
+            f"  rpc {method_name}({client}{input_type}) "
+            f"returns ({server}{output_type}) {{}}"
+        )
+    lines.append("}")
+    return lines
+
+
 def _declared_types(
     message: Message, prefix: str = "", name: str | None = None
 ) -> set[str]:
@@ -304,6 +332,11 @@ def emit_proto(
     if schema.dependencies:
         lines.append("")
     message_names, enum_names = _declaration_names(schema.messages, schema.enums)
+    service_names = _unique_names(
+        [item.name for item in schema.services],
+        "RecoveredService",
+        {*message_names, *enum_names},
+    )
     renames = _symbol_renames(schema.messages, schema.enums)
     enum_scope = {*message_names, *enum_names}
     for enum, enum_name in zip(schema.enums, enum_names, strict=True):
@@ -320,6 +353,9 @@ def emit_proto(
             )
         )
         lines.append("")
+    for service, service_name in zip(schema.services, service_names, strict=True):
+        lines.extend(_service(service, renames, schema.package, service_name))
+        lines.append("")
     declared = set(enum_names)
     for message, message_name in zip(schema.messages, message_names, strict=True):
         declared.update(_declared_types(message, name=message_name))
@@ -334,6 +370,14 @@ def emit_proto(
                 (".", "map<")
             ):
                 referenced.add(emitted_type)
+    for service in schema.services:
+        for method in service.methods:
+            for raw_type in (method.input_type, method.output_type):
+                emitted_type = _resolved_type(raw_type, renames, schema.package)
+                if emitted_type not in _SCALARS and not emitted_type.startswith(
+                    (".", "map<")
+                ):
+                    referenced.add(emitted_type)
     for missing in sorted(referenced - declared):
         lines.extend((f"message {_name(missing, 'RecoveredType')} {{}}", ""))
     result = "\n".join(lines).rstrip() + "\n"
@@ -349,6 +393,9 @@ def _validate_proto_budget(
         raise ValueError("proto output limits must be positive")
     count = len(schema.dependencies) + len(schema.enums)
     count += sum(len(enum.values) for enum in schema.enums)
+    count += len(schema.services) + sum(len(item.methods) for item in schema.services)
+    if count > max_items:
+        raise ValueError(f"proto output exceeds {max_items} items")
     pending = [(message, 1) for message in schema.messages]
     while pending:
         message, depth = pending.pop()
