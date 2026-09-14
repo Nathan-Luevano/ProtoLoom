@@ -1327,3 +1327,253 @@ def test_map_field_name_lookup_exhausts_without_a_matching_store() -> None:
     )
 
     assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
+
+
+def test_written_register_clears_stale_value_on_wide_arithmetic_op() -> None:
+    dex = MapFakeDex()
+    dex.types = ("LHolder;", "LEntry;", "LFieldType;")
+    dex.strings += ("<init>", "STRING", "INT32", "key", "value")
+    dex.methods = (
+        DexMethod(0, 0, 0),
+        DexMethod(1, 0, 6),
+        DexMethod(2, 0, 0),
+        DexMethod(2, 0, 6),
+    )
+    dex.fields = (DexField(2, 2, 9), DexField(2, 2, 10), DexField(0, 1, 4))
+    holder = (0x0062, 0, 0x0162, 1, 0x0222, 1, 0x3070, 1, 0x0102, 0x0269, 2, 0x0E)
+    # add-int/2addr v0, v0 -- a stray wide-format op the name-lookup loop
+    # must clear its destination register for, not misread as a store.
+    constants = (
+        0x00B0,
+        0x0022,
+        2,
+        0x011A,
+        7,
+        0x2070,
+        3,
+        0x0010,
+        0x0069,
+        0,
+        0x0022,
+        2,
+        0x011A,
+        8,
+        0x2070,
+        3,
+        0x0010,
+        0x0069,
+        1,
+        0x0E,
+    )
+    dex._items = (
+        (EncodedMethod(0, 0, 300), CodeItem(300, 3, 0, 4, 0, 0, holder)),
+        (EncodedMethod(2, 0, 400), CodeItem(400, 2, 0, 2, 0, 0, constants)),
+    )
+
+    evidence = recover_map_evidence(dex, 2)  # type: ignore[arg-type]
+
+    assert evidence == LiteMapEvidence("string", "int32")
+
+
+def test_scan_method_reads_const16_and_const_wide_array_size_and_index() -> None:
+    # R8-optimized clinits use const/16 or const once a value no longer
+    # fits const/4; the array-size and index registers must decode the
+    # same regardless of which width encodes them.
+    replaced = list(complete_instructions())
+    size_at = replaced.index(0x2012)
+    replaced[size_at : size_at + 1] = [0x0013, 2]
+    index_at = replaced.index(0x1412)
+    replaced[index_at : index_at + 1] = [0x0414, 1, 0]
+    dex = FakeDex(tuple(replaced), ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert result.findings[0].objects == (
+        LiteObject("string", "name_"),
+        LiteObject("class", "LNested;"),
+    )
+
+
+def test_backward_goto_restores_branch_state_with_sign_extension() -> None:
+    # A real loop back-edge encodes a negative 8-bit delta; this must
+    # sign-extend correctly, not wrap into a huge forward offset.
+    base = list(complete_instructions())
+    goto_offset = 1 + len(base)
+    delta = (0 - goto_offset) & 0xFF
+    instructions = (0x00, *base, 0x28 | (delta << 8))
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert result.bailout_count == 0
+
+
+def test_backward_if_test_and_goto32_sign_extend_their_deltas() -> None:
+    base = list(complete_instructions())
+    if_offset = 1 + len(base)
+    delta_if = (0 - if_offset) & 0xFFFF
+    goto32_offset = if_offset + 2
+    delta32 = (0 - goto32_offset) & 0xFFFFFFFF
+    instructions = (
+        0x00,
+        *base,
+        0x38,
+        delta_if,
+        0x2A,
+        delta32 & 0xFFFF,
+        delta32 >> 16,
+    )
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert result.bailout_count == 0
+
+
+def test_resolve_call_rejects_invalid_info_string() -> None:
+    instructions = (
+        *const_string(2, 2),
+        *const_number(1, 0),
+        0x62,
+        7,
+        *invoke(1, (0, 2, 1)),
+    )
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", "not-a-valid-info-string"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert result.findings == ()
+    assert "invalid info string" in result.bailouts[0].reason
+
+
+def test_resolve_call_rejects_untracked_objects_register() -> None:
+    instructions = (
+        *const_string(2, 2),
+        *const_string(1, 3),
+        0x62,
+        7,
+        *invoke(1, (0, 2, 1)),
+    )
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string(), "bogus"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert result.findings == ()
+    assert result.bailouts[0].reason == "objects register is not a tracked new-array"
+
+
+def test_inlined_constructor_with_invalid_info_string_is_not_a_target() -> None:
+    base = complete_instructions()
+    instructions = (*base[:-4], 0x4070, 0, 0x1205, 0x0E)
+    dex = FakeDex(
+        instructions, ("<init>", "newMessageInfo", "garbage-not-info", "name_")
+    )
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert result.findings == ()
+    assert result.bailouts == ()
+
+
+def test_out_of_range_string_pool_index_is_preserved_as_invalid() -> None:
+    instructions = (
+        *const_string(2, 99),
+        *const_number(1, 0),
+        0x62,
+        7,
+        *invoke(1, (0, 2, 1)),
+    )
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string()))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert result.findings == ()
+    assert result.bailouts[0].reason == "info string register is not a const-string"
+
+
+def test_move_object_from16_and_16_variants_do_not_disturb_decoding() -> None:
+    instructions = (
+        *complete_instructions(),
+        0x08 | 6 << 8,
+        5,
+        0x0009,
+        7,
+        6,
+    )
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert result.bailout_count == 0
+
+
+def test_const_wide_and_invoke_polymorphic_widths_decode_without_error() -> None:
+    instructions = (
+        *complete_instructions(),
+        0x18,
+        1,
+        2,
+        3,
+        4,
+        0xFA,
+        0,
+        0,
+        0,
+    )
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert result.bailout_count == 0
+
+
+def test_sparse_switch_and_fill_array_data_payloads_decode_without_error() -> None:
+    instructions = (
+        *complete_instructions(),
+        0x0200,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0x0300,
+        1,
+        2,
+        0,
+        0xAB,
+        0xCD,
+    )
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert result.bailout_count == 0
+
+
+def test_scan_method_sign_extends_negative_const16_array_size() -> None:
+    replaced = list(complete_instructions())
+    size_at = replaced.index(0x2012)
+    replaced[size_at : size_at + 1] = [0x0013, 0xFFFF]
+    dex = FakeDex(tuple(replaced), ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert result.findings == ()
+    assert result.bailout_count == 1
+    assert "unresolved-order heuristics" in result.bailouts[0].reason
+
+
+def test_sparse_switch_instruction_is_not_treated_as_a_branch() -> None:
+    instructions = (*complete_instructions(), 0x2C, 0, 0)
+    dex = FakeDex(instructions, ("owner", "newMessageInfo", info_string(), "name_"))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+    assert result.bailout_count == 0
