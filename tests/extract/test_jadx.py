@@ -79,6 +79,21 @@ def test_jadx_rejects_unsafe_output_path(tmp_path: Path, kind: str) -> None:
         assert output.read_text(encoding="utf-8") == "occupied"
 
 
+def test_jadx_rejects_non_positive_timeout(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="jadx timeout must be positive"):
+        decompile_with_jadx(
+            tmp_path / "x.apk", tmp_path / "out", executable="jadx", timeout_seconds=0
+        )
+
+
+def test_jadx_reports_missing_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("protoloom.extract.jadx.shutil.which", lambda name: None)
+    with pytest.raises(JadxError, match="jadx is not installed"):
+        decompile_with_jadx(tmp_path / "x.apk", tmp_path / "out")
+
+
 def test_jadx_kills_timed_out_process(tmp_path: Path) -> None:
     tool = _executable(tmp_path / "jadx", "sleep 5\n")
     with pytest.raises(JadxError, match="exceeded"):
@@ -178,6 +193,109 @@ def test_jadx_rejects_source_replaced_during_open(
 
     with pytest.raises(JadxError, match="non-file Java source"):
         _index_candidates(output)
+
+
+def test_jadx_rejects_symlinked_source(tmp_path: Path) -> None:
+    output = tmp_path / "out"
+    output.mkdir()
+    victim = output / "A.java"
+    victim.write_text("class A {}", encoding="utf-8")
+    link = output / "B.java"
+    link.symlink_to(victim)
+
+    with pytest.raises(JadxError, match="symlinked Java source"):
+        _index_candidates(output)
+
+
+def test_jadx_enforces_size_bound_during_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "out"
+    output.mkdir()
+    source = output / "A.java"
+    source.write_text("x" * 10, encoding="utf-8")
+    real_fstat = os.fstat
+
+    class FakeStat:
+        def __init__(self, real: os.stat_result) -> None:
+            self._real = real
+            self.st_size = 5
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._real, name)
+
+    monkeypatch.setattr(
+        "protoloom.extract.jadx.os.fstat", lambda fd: FakeStat(real_fstat(fd))
+    )
+    monkeypatch.setattr("protoloom.extract.jadx.MAX_JADX_SOURCE_SIZE", 5)
+
+    with pytest.raises(JadxError, match="source exceeds 5 bytes"):
+        _index_candidates(output)
+
+
+def test_jadx_rejects_oversized_total_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "A.java").write_text("aaaa", encoding="utf-8")
+    (output / "B.java").write_text("bbbb", encoding="utf-8")
+    monkeypatch.setattr("protoloom.extract.jadx.MAX_JADX_SOURCE_TOTAL", 5)
+
+    with pytest.raises(JadxError, match="sources exceed 5 bytes"):
+        _index_candidates(output)
+
+
+def test_jadx_skips_source_deleted_before_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "out"
+    output.mkdir()
+    source = output / "A.java"
+    source.write_text("newMessageInfo(x);", encoding="utf-8")
+    real_open = Path.open
+
+    def missing_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path == source:
+            raise OSError("vanished")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", missing_open)
+
+    sources, candidates = _index_candidates(output)
+    assert sources == 1
+    assert candidates == 0
+
+
+def test_jadx_rejects_too_many_candidates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "A.java").write_text(
+        "newMessageInfo(a);\nnewMessageInfo(b);\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("protoloom.extract.jadx.MAX_JADX_CANDIDATES", 1)
+
+    with pytest.raises(JadxError, match="more than 1 candidates"):
+        _index_candidates(output)
+
+
+def test_jadx_write_candidates_cleans_up_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "A.java").write_text("newMessageInfo(x);", encoding="utf-8")
+
+    def fail_fsync(fd: int) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("protoloom.extract.jadx.os.fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="disk full"):
+        _index_candidates(output)
+    assert not tuple(output.glob(".protoloom-candidates.*"))
 
 
 def test_jadx_candidate_index_replaces_symlink(tmp_path: Path) -> None:
