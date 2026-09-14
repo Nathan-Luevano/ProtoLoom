@@ -91,6 +91,31 @@ def test_descriptor_set_bounds_message_depth() -> None:
         emit_descriptor_set([descriptor], max_depth=1)
 
 
+def test_descriptor_set_bounds_final_wrapped_size_beyond_raw_sum() -> None:
+    # The incremental check sums each descriptor's own encoded bytes; the
+    # final FileDescriptorSet wraps each file in a tag + length-prefix that
+    # the incremental sum never accounts for. A budget sitting between the
+    # raw sum and the wrapped size only trips the final check.
+    descriptor = FileDescriptorProto(name="schema.proto")
+    raw_size = len(descriptor.SerializeToString(deterministic=True))
+
+    with pytest.raises(ValueError, match=f"exceeds {raw_size + 1} bytes"):
+        emit_descriptor_set([descriptor], max_size=raw_size + 1)
+
+
+def test_descriptor_set_bounds_schema_level_items_with_no_messages() -> None:
+    # A descriptor's own top-level items (here: enum values) can already
+    # exceed the budget with no message_type entries at all, so the in-loop
+    # check never runs -- only the final aggregate check catches it.
+    descriptor = FileDescriptorProto(name="schema.proto")
+    enum = descriptor.enum_type.add(name="State")
+    enum.value.add(name="A", number=0)
+    enum.value.add(name="B", number=1)
+
+    with pytest.raises(ValueError, match="exceeds 2 items"):
+        emit_descriptor_set([descriptor], max_items=2)
+
+
 @pytest.mark.parametrize(
     "limits",
     [
