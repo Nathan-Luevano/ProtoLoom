@@ -826,6 +826,53 @@ def test_method_writes_resolves_pending_packed_adapter() -> None:
     ]
 
 
+def test_method_writes_skips_unrecoverable_invoke_evidence() -> None:
+    # same class_index on purpose: the adapter/field must come from different
+    # classes for a write to be plausible, so this exercises that guard too.
+    model_field = DexField(0, 7, 3)
+    adapter_field = DexField(0, 6, 4)
+    target_bad_shape = object()
+    target_ok = object()
+    code = (
+        0x0907,  # move-object v9, v0 (unrelated, exercises the move branch)
+        0x000E,  # unrecognized opcode, not iget/sget/const/move-result/invoke
+        0x1071,
+        99,
+        0,  # invoke-static with an out-of-range method index
+        0x4071,
+        0,
+        0,  # invoke-static target_bad_shape (wrong parameter shape)
+        0x4071,
+        1,
+        0,  # invoke-static target_ok with unset (non-DexField) registers
+        0x0154,
+        0,  # iget-object v1, v2, model_field
+        0x0262,
+        1,  # sget-object v2, adapter_field
+        0x5312,  # const/4 v3, #5
+        0x4071,
+        1,
+        0x1392,  # invoke-static target_ok {v2,v9,v3,v1}: same class_index
+    )
+    dex: Any = SimpleNamespace(
+        fields=(model_field, adapter_field),
+        methods=(target_bad_shape, target_ok),
+        types=("Lexample/Record;", "Ljava/lang/Object;", "I", "V"),
+        method_parameter_types=(
+            lambda m: (
+                ("Ljava/lang/String;",)
+                if m is target_bad_shape
+                else ("I", "Ljava/lang/Object;")
+            )
+        ),
+        method_name=lambda m: "encodeWithTag",
+        code_item=lambda off: SimpleNamespace(instructions=code),
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=0)
+
+    assert _method_writes(dex, method) == []
+
+
 def test_extract_wire_adapter_writes_scans_adapter_subclasses() -> None:
     types = (
         "Lexample/Record;",
