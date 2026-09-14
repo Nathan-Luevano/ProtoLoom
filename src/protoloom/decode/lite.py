@@ -338,7 +338,12 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
             ):
                 enum_evidence = recover_enum_evidence_from_owner(dex, descriptor)
             if enum_evidence is None:
+                # The field is a genuine enum (per newMessageInfo's field kind)
+                # but we couldn't recover its named type, so we fall back to
+                # its wire-compatible int32 representation. That's a lossy
+                # substitution, not an observed type -- don't claim HIGH.
                 type_name = "int32"
+                guessed_type = True
             else:
                 nested_prefix = descriptor.removesuffix(";") + "$"
                 message_local = enum_evidence.descriptor.startswith(nested_prefix)

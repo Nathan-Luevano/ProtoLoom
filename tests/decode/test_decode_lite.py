@@ -17,6 +17,7 @@ from protoloom.decode.lite import (
     decode_lite_finding,
 )
 from protoloom.extract.lite import LiteFinding, LiteObject
+from protoloom.model import Confidence
 
 
 def _field(*, oneof_index: int | None, raw_type: int) -> InfoField:
@@ -528,6 +529,9 @@ def test_unresolvable_enum_field_falls_back_to_int32() -> None:
 
     field = decoded.schema.messages[0].fields[0]
     assert field.type_name == "int32"
+    # We only recovered a lossy wire-compatible stand-in, not the field's
+    # real (named enum) type -- confidence must reflect that it's a guess.
+    assert field.confidence is not Confidence.HIGH
 
 
 def test_enum_verifier_fallback_resolves_when_no_getter_name_is_known() -> None:
