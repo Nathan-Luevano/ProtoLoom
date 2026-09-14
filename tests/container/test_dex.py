@@ -277,6 +277,21 @@ def test_reads_prototype_parameters_and_interfaces() -> None:
     assert dex.field_name(field) == "f"
 
 
+def test_rejects_out_of_range_prototype_return_type() -> None:
+    malformed = bytearray(_dex_with_method_and_interface())
+    struct.pack_into("<I", malformed, 152 + 4, 9)
+    with pytest.raises(DexError, match="prototype return type"):
+        DexFile(malformed)
+
+
+def test_rejects_out_of_range_prototype_parameter_type() -> None:
+    malformed = bytearray(_dex_with_method_and_interface())
+    (_, _, params_offset) = struct.unpack_from("<III", malformed, 152)
+    struct.pack_into("<H", malformed, params_offset + 4, 9)
+    with pytest.raises(DexError, match="prototype parameter type"):
+        DexFile(malformed)
+
+
 def test_rejects_out_of_range_method_identifier() -> None:
     malformed = bytearray(_dex_with_method_and_interface())
     struct.pack_into("<HHI", malformed, 172, 2, 0, 6)
@@ -438,6 +453,21 @@ def test_class_static_fields_and_values_empty_when_no_class_data() -> None:
     assert dex.static_field_values(owner) == ()
 
 
+def _dex_with_enclosing_class_and_item_offset() -> tuple[bytes, int]:
+    raw = _dex_with_enclosing_class()
+    # The annotation_item is the first data chunk placed after the 4 string
+    # entries: locate it the same way the fixture below builds it.
+    strings = (
+        b"Outer",
+        b"Outer$Inner",
+        b"Ldalvik/annotation/EnclosingClass;",
+        b"value",
+    )
+    data_offset = 112 + 4 * len(strings) + 4 * 3 + 32 * 2
+    item_offset = data_offset + sum(1 + len(value) + 1 for value in strings)
+    return raw, item_offset
+
+
 def _dex_with_enclosing_class() -> bytes:
     strings = (
         b"Outer",
@@ -527,6 +557,173 @@ def test_reads_enclosing_class_annotation() -> None:
     outer, inner = dex.classes
     assert dex.enclosing_class_index(outer) is None
     assert dex.enclosing_class_index(inner) == outer.class_index
+
+
+def test_rejects_out_of_range_annotation_type_index() -> None:
+    raw, item_offset = _dex_with_enclosing_class_and_item_offset()
+    malformed = bytearray(raw)
+    malformed[item_offset + 1] = 9
+    dex = DexFile(bytes(malformed))
+    _, inner = dex.classes
+    with pytest.raises(DexError, match="annotation type index"):
+        dex.class_annotations(inner)
+
+
+def test_rejects_out_of_range_annotation_element_name_index() -> None:
+    raw, item_offset = _dex_with_enclosing_class_and_item_offset()
+    malformed = bytearray(raw)
+    malformed[item_offset + 3] = 9
+    dex = DexFile(bytes(malformed))
+    _, inner = dex.classes
+    with pytest.raises(DexError, match="annotation element name"):
+        dex.class_annotations(inner)
+
+
+def _dex_with_class_and_field_annotations() -> bytes:
+    strings = (
+        b"Outer",
+        b"Outer$Inner",
+        b"Ldalvik/annotation/EnclosingClass;",
+        b"value",
+        b"Ljava/lang/Deprecated;",
+        b"f",
+    )
+    string_ids_offset = 112
+    type_ids_offset = string_ids_offset + 4 * len(strings)
+    field_ids_offset = type_ids_offset + 4 * 4
+    class_defs_offset = field_ids_offset + 8 * 1
+    data_offset = class_defs_offset + 32 * 2
+
+    data = bytearray()
+
+    def _place(chunk: bytes) -> int:
+        offset = data_offset + len(data)
+        data.extend(chunk)
+        return offset
+
+    string_offsets = [
+        _place(bytes((len(value),)) + value + b"\x00") for value in strings
+    ]
+    deprecated_item_offset = _place(bytes((2,)) + bytes((3,)) + bytes((0,)))
+    enclosing_item_offset = _place(
+        bytes((2,)) + bytes((2,)) + bytes((1,)) + bytes((3,)) + bytes((0x18, 0))
+    )
+    class_annotation_set_offset = _place(
+        struct.pack("<I", 2)
+        + struct.pack("<II", deprecated_item_offset, enclosing_item_offset)
+    )
+    field_annotation_set_offset = _place(
+        struct.pack("<I", 1) + struct.pack("<I", enclosing_item_offset)
+    )
+    inner_directory_offset = _place(
+        struct.pack("<IIII", class_annotation_set_offset, 1, 0, 0)
+        + struct.pack("<II", 0, field_annotation_set_offset)
+    )
+    outer_field_annotation_set_offset = _place(
+        struct.pack("<I", 1) + struct.pack("<I", deprecated_item_offset)
+    )
+    outer_directory_offset = _place(
+        struct.pack("<IIII", 0, 1, 0, 0)
+        + struct.pack("<II", 0, outer_field_annotation_set_offset)
+    )
+
+    type_ids = struct.pack("<4I", 0, 1, 2, 4)
+    field_ids = struct.pack("<HHI", 1, 0, 5)
+    class_defs = struct.pack(
+        "<8I", 0, 0, 0xFFFFFFFF, 0, 0xFFFFFFFF, outer_directory_offset, 0, 0
+    ) + struct.pack(
+        "<8I", 1, 0, 0xFFFFFFFF, 0, 0xFFFFFFFF, inner_directory_offset, 0, 0
+    )
+
+    file_size = data_offset + len(data)
+    header = bytearray(112)
+    header[:8] = b"dex\n039\x00"
+    values = [
+        file_size,
+        112,
+        0x12345678,
+        0,
+        0,
+        0,
+        len(strings),
+        string_ids_offset,
+        4,
+        type_ids_offset,
+        0,
+        0,
+        1,
+        field_ids_offset,
+        0,
+        0,
+        2,
+        class_defs_offset,
+        len(data),
+        data_offset,
+    ]
+    struct.pack_into("<20I", header, 32, *values)
+    string_id_table = struct.pack(f"<{len(string_offsets)}I", *string_offsets)
+    return (
+        bytes(header)
+        + string_id_table
+        + type_ids
+        + field_ids
+        + class_defs
+        + bytes(data)
+    )
+
+
+def test_field_annotations_empty_when_no_directory() -> None:
+    dex = DexFile(_dex_with_enclosing_class())
+    outer, _ = dex.classes
+    assert dex.field_annotations(outer) == ()
+
+
+def test_rejects_out_of_range_annotated_field_index() -> None:
+    raw = bytearray(_dex_with_class_and_field_annotations())
+    dex = DexFile(bytes(raw))
+    outer, _ = dex.classes
+    struct.pack_into("<I", raw, outer.annotations_offset + 16, 9)
+    malformed = DexFile(bytes(raw))
+    with pytest.raises(DexError, match="annotated field index"):
+        malformed.field_annotations(malformed.classes[0])
+
+
+def test_class_annotations_empty_when_directory_has_no_class_annotations() -> None:
+    dex = DexFile(_dex_with_class_and_field_annotations())
+    outer, _ = dex.classes
+    assert dex.class_annotations(outer) == ()
+
+
+def test_reads_field_annotations() -> None:
+    dex = DexFile(_dex_with_class_and_field_annotations())
+    outer, inner = dex.classes
+    (outer_entry,) = dex.field_annotations(outer)
+    field, annotations = outer_entry
+    assert dex.field_name(field) == "f"
+    assert dex.types[annotations[0].type_index] == "Ljava/lang/Deprecated;"
+
+    (inner_entry,) = dex.field_annotations(inner)
+    _, inner_annotations = inner_entry
+    assert dex.types[inner_annotations[0].type_index] == (
+        "Ldalvik/annotation/EnclosingClass;"
+    )
+
+
+def test_enclosing_class_index_skips_non_matching_annotations() -> None:
+    dex = DexFile(_dex_with_class_and_field_annotations())
+    _, inner = dex.classes
+    annotations = dex.class_annotations(inner)
+    assert len(annotations) == 2
+    assert dex.enclosing_class_index(inner) == 0
+
+
+def test_annotation_item_cache_returns_same_object_across_sets() -> None:
+    dex = DexFile(_dex_with_class_and_field_annotations())
+    _, inner = dex.classes
+    class_annotations = dex.class_annotations(inner)
+    (field_entry,) = dex.field_annotations(inner)
+    _, field_annotations = field_entry
+    assert class_annotations[1] is field_annotations[0]
 
 
 def test_caches_immutable_dex_metadata() -> None:
