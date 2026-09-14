@@ -928,3 +928,105 @@ fixed and verified against the full Signal APK re-extraction:
   Signal's own schemas never hit this shape (`diff -rq` against the prior
   commit's extraction is empty), so this closes a real gap with zero
   behavior change on the pinned corpus.
+
+## Adversarial black-box campaign ("/goal" testing loops)
+
+A subsequent multi-round campaign treated protoloom purely as a black-box
+CLI user would, deliberately hunting for false negatives/positives, crashes,
+silent data loss, and UX gaps across real APKs, real system binaries, real
+Go/JVM toolchains, and adversarial synthetic inputs — not unit tests written
+to prove existing behavior correct. Ran 7 rounds of parallel subagents, each
+independently choosing targets, reproducing anything surprising, root-causing
+it, and fixing generally rather than special-casing. 18 real bugs found and
+fixed, all verified with a full `uv run make check` and a byte-for-byte
+`diff -rq` against the pinned real-app corpus before merging (confidence-
+marking fixes intentionally changed specific `high`->`medium` markings on
+Bitwarden's known-affected fields; every other fix was a true no-op on the
+corpus, proving no regression). Test count: 1061 -> 1087.
+
+**Bugs found and fixed, by area:**
+- **Go struct-tag reflection** (`extract/gotags.py`): missing `int32`/`int64`
+  scalar-kind table entries (every plain int field failed); `float`/`double`
+  used the wrong Go `reflect.Kind` constants (off by one).
+- **Raw descriptor scanning** (`extract/descriptor.py`): a crash when `upb`
+  returns raw `bytes` instead of `str` for an invalid-UTF-8 name field (hit
+  on a real 219MB Electron binary); dedup keyed on name alone silently
+  dropped a second, genuinely different descriptor sharing a name (e.g. two
+  APK modules bundling different dependency versions) instead of surfacing
+  the conflict; a crash on real protobuf-*editions* syntax descriptors,
+  which the scanner accepted but the model layer didn't support.
+- **Gzip-embedded descriptors** (`extract/gozip.py`): only unwrapped one
+  level of nesting; a bundler wrapping an already-gzipped Go descriptor a
+  second time was silently missed entirely (0 findings, not an error).
+  Added bounded recursion sharing the existing inflation budget.
+- **CLI orchestration** (`cli.py`): plain `.jar` files with an embedded
+  `classes.dex` were never scanned for dex-based (lite/wire/grpc) recovery,
+  only for raw descriptors; `doctor` always exited 0 even with `protoc`
+  missing, defeating its use in scripts/CI; Go-compiled `.so` libraries
+  bundled *inside* an APK/AAB/JAR were never scanned at all (only a bare
+  standalone ELF input triggered Go-tag reflection) — real apps bundling a
+  Go-based SDK alongside Java/Kotlin code got zero native-side recovery;
+  "certain" (whole, byte-scanned) descriptors were never compile-validated,
+  so a descriptor referencing a type that was never actually found could be
+  written out as a "recovered" `.proto` that doesn't compile, presented as
+  success.
+- **Dex parsing performance** (`container/dex.py`): `iter_code_items()` fully
+  re-parsed the whole class/method/code-item table on every call, uncached;
+  enum-recovery helpers call it once per field lookup across hundreds of
+  schemas. Memoized — ~28% faster full extraction on signal-android
+  (27.3s -> 19.7s), byte-identical output.
+- **Decode layer** (`decode/descpb.py`): proto2 `TYPE_GROUP` fields were
+  silently decoded/emitted as ordinary message fields — wire-incompatible
+  with the original (group uses start/end-group framing, not
+  length-delimited) — now round-trips correctly; no size/depth budget of
+  its own, so a huge descriptor was fully decoded into Python objects
+  before the emit layer's budget ever got a chance to reject it cheaply,
+  and a descriptor with a field number in the reserved 19000-19999 range
+  crashed the CLI with a raw traceback instead of a clean bail-out;
+  `extension`/`extension_range` fields were silently dropped with no
+  diagnostic (confirmed no app in the pinned corpus is actually affected
+  today, by checking every pinned app's real upstream `.proto` source —
+  but the silent-loss gap was real and is now flagged as a bail-out).
+- **Confidence-marking honesty**: an unresolved enum field falling back to
+  a lossy `int32` substitution kept `Confidence.HIGH` instead of dropping
+  to MEDIUM, overselling confidence for what's really a guess (10 real
+  fields on Bitwarden Authenticator affected); the dashboard HTML silently
+  dropped the `kept_confidence`/`rejected_confidence` detail that
+  `reconcile()` already computed for each conflict, when rendering the
+  conflict list, making the dashboard less actionable than the underlying
+  data.
+- **Container detection** (`container/detect.py`): front-magic-only
+  detection meant a ZIP with bytes prepended (self-extracting stubs,
+  "reverse-signed"/polyglot APKs) was misclassified `UNKNOWN` even though
+  Python's own `zipfile` opens it fine via the trailing EOCD record; fixed
+  to fall back to a real zip-open attempt on `UNKNOWN`, while preserving
+  the existing safety property that front-magic still wins when a
+  non-zip file has a zip glued onto its end (a known malware-packer shape).
+
+**Confirmed clean (well-tested already, no exploitable gap found):**
+repeated/deterministic runs (byte-identical across 3-5x re-runs, CPU
+affinity changes, thread-pool ordering), SIGINT/interrupted-run atomicity
+(fully transactional publish with rollback), stale-artifact cleanup on
+output-dir reuse, exit-code consistency, real cross-version schema diffing
+(manual directory-diff workflow works well since output is deterministic),
+gRPC service recovery correctness (94/94 real RPCs on Mullvad, including
+streaming-direction detection), the interactive TUI live-driven via a real
+pty (extraction flow, bad-path handling, resize, Ctrl-C cancellation),
+reconcile's conflict-detail generation, emit-layer identifier sanitization
+against real obfuscated (R8/ProGuard) names and adversarial synthetic
+collisions, real bundletool-shaped `.aab` split-module dex discovery, and
+`--jadx`'s subprocess lifecycle (timeout/kill/cleanup) — though `--jadx`
+itself was found to never feed back into recovered schemas at all (a
+README wording fix, not a functional bug, since decompiled-source-only
+output is the documented/intended behavior once corrected).
+
+**Left intentionally unsupported / genuinely untestable here:** proto2
+`extend` blocks (flagged with an honest bail-out rather than full
+support — no real pinned app needs it today); JVM-bytecode (non-dex)
+protobuf-lite/Wire/gRPC decoding for plain `.jar`s (only the raw
+descriptor-bytes path recovers anything from JVM bytecode; a full
+JVM-bytecode decoder would be a new capability, not a bugfix); Flutter
+(`libapp.so`/Dart) and React Native artifact handling (no Flutter/RN
+toolchain available in this environment and no sample obtained — untested,
+not claimed to work); real jadx decompilation quality (jadx itself isn't
+installed here; only protoloom's side of the integration was verified).
