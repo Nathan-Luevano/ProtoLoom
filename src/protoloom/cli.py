@@ -21,8 +21,8 @@ from google.protobuf.descriptor_pb2 import FileDescriptorProto, FileDescriptorSe
 from protoloom import __version__
 from protoloom.bench.corpus import CorpusError, load_manifest
 from protoloom.bench.runner import render_report, run_corpus
-from protoloom.container.apk import AndroidArchive, ArchiveError
-from protoloom.container.detect import ContainerKind, detect
+from protoloom.container.apk import AndroidArchive, ArchiveError, ArchiveInventory
+from protoloom.container.detect import ContainerKind, Detection, detect
 from protoloom.container.dex import DexError, DexFile
 from protoloom.container.elf import ElfError, ElfFile
 from protoloom.container.macho import MachOError, MachOFile
@@ -113,14 +113,19 @@ def _scan_blob(data: bytes, source: str) -> list[DescriptorFinding]:
 
 
 def _find(
-    path: Path, *, dex_inputs: list[tuple[str, bytes]] | None = None
+    path: Path,
+    *,
+    dex_inputs: list[tuple[str, bytes]] | None = None,
+    detection: Detection | None = None,
+    inventory: ArchiveInventory | None = None,
 ) -> list[DescriptorFinding]:
-    detection = detect(path)
+    detection = detection if detection is not None else detect(path)
     findings: list[DescriptorFinding] = []
     cached = dict(dex_inputs or ())
     if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
         archive = AndroidArchive(path)
-        entries = archive.inventory().select({"dex", "native", "asset", "class"})
+        inv = inventory if inventory is not None else archive.inventory()
+        entries = inv.select({"dex", "native", "asset", "class"})
         for entry, payload in archive.iter_read(entries, cached=cached):
             findings.extend(_scan_blob(payload, entry.name))
     elif detection.kind is ContainerKind.ELF:
@@ -151,18 +156,27 @@ def _find(
     return sorted(deduped.values(), key=lambda item: item.descriptor.name)
 
 
-def _dex_inputs(path: Path) -> list[tuple[str, bytes]]:
-    detection = detect(path)
+def _dex_inputs(
+    path: Path,
+    *,
+    detection: Detection | None = None,
+    inventory: ArchiveInventory | None = None,
+) -> list[tuple[str, bytes]]:
+    detection = detection if detection is not None else detect(path)
     if detection.kind is ContainerKind.DEX:
         return [(path.name, read_limited(path))]
     if detection.kind not in {ContainerKind.APK, ContainerKind.AAB}:
         return []
     archive = AndroidArchive(path)
-    return [(entry.name, data) for entry, data in archive.iter_dex()]
+    inv = inventory if inventory is not None else archive.inventory()
+    return [
+        (entry.name, data) for entry, data in archive.iter_read(inv.select({"dex"}))
+    ]
 
 
-def _find_go_tags(path: Path) -> GoTagExtraction:
-    if detect(path).kind is not ContainerKind.ELF:
+def _find_go_tags(path: Path, *, detection: Detection | None = None) -> GoTagExtraction:
+    detection = detection if detection is not None else detect(path)
+    if detection.kind is not ContainerKind.ELF:
         return GoTagExtraction((), ())
     elf = ElfFile.from_path(path)
     if not elf.is_go_binary:
@@ -819,9 +833,23 @@ def extract(
         typer.echo(f"recovery failed: {error}", err=True)
         raise typer.Exit(2) from error
     previous_artifacts = _previous_artifacts(output)
-    dex_inputs = _dex_inputs(path)
-    findings = _find(path, dex_inputs=dex_inputs)
-    go_tags = _find_go_tags(path) if not findings else GoTagExtraction((), ())
+    # detect() and inventory() each re-open and re-parse the archive's
+    # central directory; computed once here instead of once per finder.
+    detection = detect(path)
+    inventory = (
+        AndroidArchive(path).inventory()
+        if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}
+        else None
+    )
+    dex_inputs = _dex_inputs(path, detection=detection, inventory=inventory)
+    findings = _find(
+        path, dex_inputs=dex_inputs, detection=detection, inventory=inventory
+    )
+    go_tags = (
+        _find_go_tags(path, detection=detection)
+        if not findings
+        else GoTagExtraction((), ())
+    )
     # Shared across the three finders below: each used to construct its own
     # DexFile(data) from the same bytes, so every input dex was parsed
     # three times over.
@@ -840,7 +868,7 @@ def extract(
     enum_lineage.update(wire_enum_lineage)
     bailouts.extend(f"{path.name}: {reason}" for reason in go_tags.bailouts)
     if jadx:
-        if detect(path).kind not in {
+        if detection.kind not in {
             ContainerKind.APK,
             ContainerKind.AAB,
             ContainerKind.DEX,

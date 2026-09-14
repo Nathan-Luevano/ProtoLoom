@@ -315,12 +315,14 @@ def test_extract_reuses_loaded_dex_inputs(
     dex_received: list[list[tuple[str, bytes]]] = []
     cache_received: list[object] = []
 
-    def load(path: Path) -> list[tuple[str, bytes]]:
+    def load(path: Path, **kwargs: object) -> list[tuple[str, bytes]]:
         nonlocal loads
         loads += 1
         return shared
 
-    def find(path: Path, *, dex_inputs: list[tuple[str, bytes]]) -> list[object]:
+    def find(
+        path: Path, *, dex_inputs: list[tuple[str, bytes]], **kwargs: object
+    ) -> list[object]:
         dex_received.append(dex_inputs)
         return []
 
@@ -409,7 +411,8 @@ def test_extract_emits_descriptor_free_go_schema(
     )
     monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: [])
     monkeypatch.setattr(
-        "protoloom.cli._find_go_tags", lambda path: GoTagExtraction((schema,), ())
+        "protoloom.cli._find_go_tags",
+        lambda path, **kwargs: GoTagExtraction((schema,), ()),
     )
     output = tmp_path / "output"
 
