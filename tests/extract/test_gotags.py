@@ -7,6 +7,7 @@ from protoloom.extract.gotags import (
     GoProtobufTag,
     _Memory,
     _protobuf_type,
+    _struct_schema,
     _tagged_field,
     parse_protobuf_tag,
     scan_go_struct_tags,
@@ -223,6 +224,77 @@ def test_protobuf_type_resolves_embedded_message_by_short_name() -> None:
 
     assert tag is not None
     assert _protobuf_type(memory, 0x1000, tag) == "Msg"
+
+
+def test_tagged_field_skips_entries_without_a_protobuf_tag() -> None:
+    data = bytearray(64)
+    name = b"X"
+    raw = b'json:"x"'
+    encoded = bytes((3, len(name))) + name + bytes((len(raw),)) + raw
+    data[32 : 32 + len(encoded)] = encoded
+    data[0:8] = (0x1000 + 32).to_bytes(8, "little")
+    memory = _Memory(FakeElf(bytes(data)))
+
+    field, bailout, proto3 = _tagged_field(memory, 0x1000, "src", "Owner")
+
+    assert (field, bailout, proto3) == (None, None, True)
+
+
+def test_tagged_field_bails_out_on_unresolvable_type() -> None:
+    data = bytearray(128)
+    name = b"X"
+    tag = b'protobuf:"varint,1,opt,name=x"'
+    encoded = bytes((3, len(name))) + name + bytes((len(tag),)) + tag
+    data[32 : 32 + len(encoded)] = encoded
+    data[0:8] = (0x1000 + 32).to_bytes(8, "little")
+    data[8:16] = (0x1000 + 96).to_bytes(8, "little")
+    data[96 + 23] = 99
+    memory = _Memory(FakeElf(bytes(data)))
+
+    field, bailout, proto3 = _tagged_field(memory, 0x1000, "src", "Owner")
+
+    assert field is None and proto3 is False
+    assert bailout == f"Owner.X: unsupported tag/type: {tag.decode()}"
+
+
+def test_struct_schema_rejects_implausible_field_count() -> None:
+    data = bytearray(256)
+    data[40:44] = (96).to_bytes(4, "little", signed=True)
+    data[96] = 1
+    name = b"pkg.Big"
+    data[97] = len(name)
+    data[98 : 98 + len(name)] = name
+    data[64:72] = (10_001).to_bytes(8, "little")
+    memory = _Memory(FakeElf(bytes(data)))
+
+    with pytest.raises(ValueError, match="implausible Go struct field count"):
+        _struct_schema(memory, 0x1000, "src")
+
+
+def test_struct_schema_returns_none_with_bailouts_when_a_field_fails() -> None:
+    data = bytearray(384)
+    data[40:44] = (200).to_bytes(4, "little", signed=True)
+    data[200] = 1
+    name = b"pkg.Big"
+    data[201] = len(name)
+    data[202 : 202 + len(name)] = name
+    data[56:64] = (0x1000 + 256).to_bytes(8, "little")
+    data[64:72] = (1).to_bytes(8, "little")
+    field_name = b"X"
+    field_tag = b'protobuf:"varint,1,opt,name=x"'
+    encoded = (
+        bytes((3, len(field_name))) + field_name + bytes((len(field_tag),)) + field_tag
+    )
+    data[96 : 96 + len(encoded)] = encoded
+    data[256:264] = (0x1000 + 96).to_bytes(8, "little")
+    data[264:272] = (0x1000 + 160).to_bytes(8, "little")
+    data[160 + 23] = 99
+    memory = _Memory(FakeElf(bytes(data)))
+
+    schema, bailouts = _struct_schema(memory, 0x1000, "src")
+
+    assert schema is None
+    assert bailouts == [f"pkg.Big.X: unsupported tag/type: {field_tag.decode()}"]
 
 
 def test_rejects_malformed_go_type_links() -> None:
