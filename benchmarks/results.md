@@ -780,3 +780,20 @@ reproduce their documented file counts and zero bail-outs unchanged. This is
 a pure concurrency change — no extraction, decoding, or emission logic was
 touched — verified by the fact that the one app measured both before and
 after did not move by a single byte.
+
+A second, independent redundancy in the same command: `_find_lite`,
+`_find_wire`, and `_find_grpc` each built their own `DexFile(data)` from the
+same raw dex bytes, so every input dex in an APK was fully parsed three
+times over — real work, not a subprocess wait, so it doesn't overlap with
+the thread-pool fix above. `_cached_dex` now shares one `dict[str, DexFile]`
+across all three finders (populated lazily by whichever finder runs first),
+so each dex is parsed exactly once per extraction.
+
+| APK | Wall time (thread pool only) | Wall time (+ shared DexFile parse) |
+|---|---:|---:|
+| Signal 8.22.2 | 30.4s | 27.2s |
+
+Signal's output stayed byte-for-byte identical after this change too, and
+Mullvad (130 files), Molly (589 files), and Smartspacer (70 files) all
+reproduced their documented counts unchanged, each verified with `diff -rq`
+against their own prior output.
