@@ -5,7 +5,12 @@ from google.protobuf.descriptor_pb2 import FileDescriptorProto
 
 from protoloom.decode.descpb import decode_file_descriptor
 from protoloom.emit.proto import emit_proto
-from protoloom.extract.descriptor import _field_ends, scan_descriptors
+from protoloom.extract.descriptor import (
+    _candidate_name,
+    _field_ends,
+    _valid,
+    scan_descriptors,
+)
 from protoloom.extract.gozip import scan_gzip_descriptors
 from protoloom.validate.compile import compile_proto
 
@@ -48,6 +53,92 @@ def test_descriptor_scan_bounds_wire_boundaries() -> None:
 
     assert len(_field_ends(data, 0, len(data), 3)) == 3
     assert len(_field_ends(data, 0, len(data), 20)) == 10
+
+
+def test_field_ends_advances_past_fixed64_and_fixed32_fields() -> None:
+    # tag 0x09 = field 1, wire type 1 (fixed64); tag 0x0D = field 1, wire 5 (fixed32).
+    fixed64 = b"\x09" + b"\x00" * 8
+    fixed32 = b"\x0d" + b"\x00" * 4
+
+    assert _field_ends(fixed64, 0, len(fixed64), 10) == [9]
+    assert _field_ends(fixed32, 0, len(fixed32), 10) == [5]
+
+
+def test_field_ends_stops_on_zero_tag_and_truncated_tag_byte() -> None:
+    assert _field_ends(b"\x00", 0, 1, 10) == []
+    # a lone continuation-bit byte never terminates as a varint tag.
+    assert _field_ends(b"\xff", 0, 1, 10) == []
+
+
+def test_field_ends_stops_on_missing_varint_and_length_values() -> None:
+    # wire type 0 (varint) with no following byte.
+    assert _field_ends(b"\x08", 0, 1, 10) == []
+    # wire type 2 (length-delimited) whose length varint is itself truncated.
+    assert _field_ends(b"\x0a\xff", 0, 2, 10) == []
+
+
+def test_candidate_name_rejects_unterminated_length_varint() -> None:
+    # offset+1 onward is a run of continuation-bit bytes with no terminator.
+    assert _candidate_name(b"\x0a" + b"\xff" * 10, 0) is False
+
+
+def test_candidate_name_rejects_out_of_range_length_and_truncated_name() -> None:
+    # length 0 is rejected (must be 1..4096).
+    assert _candidate_name(b"\x0a\x00", 0) is False
+    # declared length longer than the remaining buffer.
+    assert _candidate_name(b"\x0a\x05ab", 0) is False
+
+
+def test_valid_rejects_missing_name_unprintable_name_and_bad_syntax() -> None:
+    from google.protobuf.descriptor_pb2 import FileDescriptorProto
+
+    no_name = FileDescriptorProto()
+    assert _valid(no_name) is False
+
+    wrong_suffix = FileDescriptorProto(name="not-a-schema.txt")
+    assert _valid(wrong_suffix) is False
+
+    unprintable = FileDescriptorProto(name="bad\x00.proto")
+    assert _valid(unprintable) is False
+
+    bad_syntax = _descriptor()
+    bad_syntax.syntax = "proto4"
+    assert _valid(bad_syntax) is False
+
+
+def test_field_ends_stops_when_a_valid_value_overruns_the_boundary() -> None:
+    # tag + value together read cleanly but exceed the caller's own limit.
+    data = b"\x08\x01"
+    assert _field_ends(data, 0, 1, 10) == []
+
+
+def test_scan_descriptors_stops_trying_further_boundaries_once_attempts_exhausted() -> (
+    None
+):
+    name_field = b"\x0a\x07" + b"a.proto"
+    malformed_message_type = b"\x22\x03" + b"\x0a\x02\x41"
+    data = name_field + malformed_message_type
+
+    # Only one MergeFromString attempt is allowed; the first (longest)
+    # boundary raises DecodeError, and the budget runs out before the
+    # second (shorter, valid-but-empty) boundary is even tried.
+    assert scan_descriptors(data, max_parse_attempts=1) == []
+
+
+def test_scan_descriptors_recovers_from_decode_error_on_malformed_boundary() -> None:
+    # Outer boundaries (per _field_ends) are wire-format-complete but the
+    # nested message_type submessage is internally truncated -- its own
+    # inner field declares a length longer than what's left inside it, so
+    # protobuf's own parser raises DecodeError on the full-length attempt;
+    # scan_descriptors must fall back to the next shorter boundary rather
+    # than propagating that error.
+    name_field = b"\x0a\x07" + b"a.proto"
+    # message_type (field 4, wire 2), length 3, containing a "name" field
+    # (tag 0x0a) declaring length 2 but only 1 byte follows it.
+    malformed_message_type = b"\x22\x03" + b"\x0a\x02\x41"
+    data = name_field + malformed_message_type
+
+    assert scan_descriptors(data) == []
 
 
 def test_descriptor_scan_rejects_nonpositive_limits() -> None:
