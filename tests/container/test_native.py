@@ -153,6 +153,151 @@ def test_minimal_elf_has_no_sections_or_segments() -> None:
     assert elf.is_go_binary is False
 
 
+def _section64(
+    *,
+    name: int = 0,
+    type_: int = 0,
+    flags: int = 0,
+    addr: int = 0,
+    offset: int = 0,
+    size: int = 0,
+    link: int = 0,
+    info: int = 0,
+    align: int = 0,
+    entsize: int = 0,
+) -> bytes:
+    return struct.pack(
+        "<IIQQQQIIQQ",
+        name,
+        type_,
+        flags,
+        addr,
+        offset,
+        size,
+        link,
+        info,
+        align,
+        entsize,
+    )
+
+
+def test_is_go_binary_detects_buildinfo_section() -> None:
+    strtab = b"\x00.go.buildinfo\x00"
+    header = _elf64_header(
+        shoff=64, shnum=1, shentsize=64, shstrndx=0, phoff=0, phnum=0, phentsize=0
+    )
+    section = _section64(name=1, type_=1, offset=128, size=len(strtab))
+    elf = ElfFile(header + section + strtab)
+
+    assert elf.is_go_binary is True
+    assert elf.get_section(".go.buildinfo").name == ".go.buildinfo"
+    with pytest.raises(KeyError):
+        elf.get_section(".missing")
+
+
+def test_rejects_section_name_table_index_out_of_range() -> None:
+    header = _elf64_header(
+        shoff=64, shnum=1, shentsize=64, shstrndx=5, phoff=0, phnum=0, phentsize=0
+    )
+    with pytest.raises(ElfError, match="section name table index"):
+        ElfFile(header + _section64())
+
+
+def test_rejects_invalid_section_header_size() -> None:
+    header = _elf64_header(
+        shoff=0, shnum=1, shentsize=8, shstrndx=0, phoff=0, phnum=0, phentsize=0
+    )
+    with pytest.raises(ElfError, match="invalid section header size"):
+        ElfFile(header)
+
+
+def test_rejects_invalid_program_header_size() -> None:
+    header = _elf64_header(
+        shoff=0, shnum=0, shentsize=0, shstrndx=0, phoff=0, phnum=1, phentsize=8
+    )
+    with pytest.raises(ElfError, match="invalid program header size"):
+        ElfFile(header)
+
+
+def test_rejects_extended_phnum_without_section_table() -> None:
+    header = _elf64_header(
+        shoff=0, shnum=0, shentsize=0, shstrndx=0, phoff=0, phnum=0xFFFF, phentsize=0
+    )
+    with pytest.raises(ElfError, match="extended program header count"):
+        ElfFile(header)
+
+
+def test_reads_extended_phnum_from_first_section() -> None:
+    seg_size = struct.calcsize("<IIQQQQQQ")
+    ph_off = 64 + 64
+    header = _elf64_header(
+        shoff=64,
+        shnum=1,
+        shentsize=64,
+        shstrndx=0,
+        phoff=ph_off,
+        phnum=0xFFFF,
+        phentsize=seg_size,
+    )
+    section = _section64(name=0, info=1)
+    segment = struct.pack("<IIQQQQQQ", 0, 0, 0, 0, 0, 0, 0, 0)
+    elf = ElfFile(header + section + segment)
+
+    assert len(elf.segments) == 1
+
+
+def test_empty_string_table_yields_empty_section_name() -> None:
+    header = _elf64_header(
+        shoff=64, shnum=1, shentsize=64, shstrndx=0, phoff=0, phnum=0, phentsize=0
+    )
+    section = _section64(name=0, type_=3, offset=0, size=0)
+    elf = ElfFile(header + section)
+
+    assert elf.sections[0].name == ""
+
+
+def test_rejects_unterminated_section_name() -> None:
+    header = _elf64_header(
+        shoff=64, shnum=1, shentsize=64, shstrndx=0, phoff=0, phnum=0, phentsize=0
+    )
+    section = _section64(name=0, type_=3, offset=128, size=3)
+    with pytest.raises(ElfError, match="unterminated ELF section name"):
+        ElfFile(header + section + b"abc")
+
+
+def test_segment_data_reads_program_header_bytes() -> None:
+    seg_size = struct.calcsize("<IIQQQQQQ")
+    ph_off = 64
+    header = _elf64_header(
+        shoff=0,
+        shnum=0,
+        shentsize=0,
+        shstrndx=0,
+        phoff=ph_off,
+        phnum=1,
+        phentsize=seg_size,
+    )
+    segment = struct.pack("<IIQQQQQQ", 1, 0, ph_off + seg_size, 0, 0, 4, 4, 0)
+    elf = ElfFile(header + segment + b"data")
+
+    assert bytes(elf.segment_data(elf.segments[0])) == b"data"
+
+
+def test_parses_32_bit_segment_fields() -> None:
+    ident = bytes([0x7F, 0x45, 0x4C, 0x46, 1, 1]) + b"\x00" * 10
+    ph_size = struct.calcsize("<IIIIIIII")
+    ph_off = 52
+    body = struct.pack(
+        "<HHIIIIIHHHHHH", 0, 0, 0, 0, ph_off, 0, 0, 52, ph_size, 1, 0, 0, 0
+    )
+    segment = struct.pack("<IIIIIIII", 7, 0, 0, 0, 0, 0, 5, 0)
+    elf = ElfFile(ident + body + segment)
+
+    assert elf.bits == 32
+    assert elf.segments[0].segment_type == 7
+    assert elf.segments[0].flags == 5
+
+
 def _macho_with_const_section() -> bytes:
     header_size = struct.calcsize("<IiiIIIII")
     segment_size = struct.calcsize("<II16sQQQQiiII")
