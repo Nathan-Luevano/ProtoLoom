@@ -133,9 +133,9 @@ def _protobuf_type(memory: _Memory, address: int, tag: GoProtobufTag) -> str | N
         ("zigzag32", 5): "sint32",
         ("zigzag64", 6): "sint64",
         ("fixed32", 10): "fixed32",
-        ("fixed32", 14): "float",
+        ("fixed32", 13): "float",
         ("fixed64", 11): "fixed64",
-        ("fixed64", 15): "double",
+        ("fixed64", 14): "double",
     }.get((tag.encoding, kind))
     if scalar is not None:
         return scalar

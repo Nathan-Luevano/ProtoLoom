@@ -96,6 +96,21 @@ def test_resolves_plain_varint_int32_and_int64_field_types() -> None:
     assert _protobuf_type(memory, 0x1040, tag) == "int64"
 
 
+def test_resolves_fixed32_float_and_fixed64_double_field_types() -> None:
+    data = bytearray(128)
+    data[64 + 23] = 13
+    memory = _Memory(FakeElf(bytes(data)))
+    tag = parse_protobuf_tag('protobuf:"fixed32,1,opt,name=value,proto3"')
+    assert tag is not None
+    assert _protobuf_type(memory, 0x1040, tag) == "float"
+
+    data[64 + 23] = 14
+    memory = _Memory(FakeElf(bytes(data)))
+    tag = parse_protobuf_tag('protobuf:"fixed64,1,opt,name=value,proto3"')
+    assert tag is not None
+    assert _protobuf_type(memory, 0x1040, tag) == "double"
+
+
 def test_builds_field_from_linked_go_metadata() -> None:
     data = bytearray(256)
     name = b"Id"
