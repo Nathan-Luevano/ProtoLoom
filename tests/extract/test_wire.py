@@ -355,6 +355,83 @@ def test_tracks_constructor_masks() -> None:
     assert registers[1] == 4
 
 
+def test_constructor_move_clears_destination_on_unknown_source() -> None:
+    # dest=9 (reg bits 8-11), source=2 (reg bits 12-15) which has no known value.
+    registers: dict[int, object] = {9: "stale"}
+    assert _constructor_move(registers, _Instruction(0, 0x01, (0x2900,)))
+    assert 9 not in registers
+
+
+def test_constructor_move_handles_wide_16bit_form() -> None:
+    registers: dict[int, object] = {2: 11}
+    instruction = _Instruction(0, 0x03, (0, 1, 2))
+    assert _constructor_move(registers, instruction)
+    assert registers[1] == 11
+
+
+def test_constructor_and_reads_register_operands() -> None:
+    registers: dict[int, object] = {0: 6, 1: 3}
+    instruction = _Instruction(0, 0x95, (0x0200, 0x0100))
+    assert _constructor_and(registers, instruction)
+    assert registers[2] == 2
+
+
+def test_constructor_and_clears_destination_on_non_int_operand() -> None:
+    registers: dict[int, object] = {2: 5, 3: 4}
+    instruction = _Instruction(0, 0x95, (0x0500, 0x0302))
+    del registers[2]
+    assert _constructor_and(registers, instruction)
+    assert 5 not in registers
+
+
+def test_constructor_value_marks_non_null_string_and_type_loads() -> None:
+    registers: dict[int, object] = {}
+    assert _constructor_value(registers, _Instruction(0, 0x1A, (0x0100, 0)))
+    assert registers[1] is not None
+
+
+def test_constructor_arguments_rejects_out_of_range_and_default_delegate() -> None:
+    target = object()
+    default_target = object()
+    dex: Any = SimpleNamespace(
+        methods=(target, default_target),
+        method_name=lambda m: "<init>",
+        method_parameter_types=(
+            lambda m: ("I",) if m is target else ("I", _DEFAULT_MARKER)
+        ),
+    )
+    out_of_range = _Instruction(0, 0x70, (0x1070, 5, 0))
+    to_default = _Instruction(0, 0x70, (0x1070, 1, 0))
+
+    assert _constructor_arguments(dex, out_of_range, {}) is None
+    assert _constructor_arguments(dex, to_default, {}) is None
+
+
+def test_constructor_arguments_rejects_too_few_argument_registers() -> None:
+    target = object()
+    dex: Any = SimpleNamespace(
+        methods=(target,),
+        method_name=lambda m: "<init>",
+        method_parameter_types=lambda m: ("Ljava/lang/String;", "I"),
+    )
+    # a single-argument invoke can't satisfy two constructor parameters.
+    invoke = _Instruction(0, 0x70, (0x1070, 0, 0))
+
+    assert _constructor_arguments(dex, invoke, {}) is None
+
+
+def test_default_constructor_state_requires_marker_suffix() -> None:
+    method: Any = SimpleNamespace(code_offset=1)
+    dex: Any = SimpleNamespace(
+        method_parameter_types=lambda _: ("I",),
+        code_item=lambda _: SimpleNamespace(
+            registers_size=4, ins_size=3, instructions=()
+        ),
+    )
+
+    assert _default_constructor_state(dex, method) is None
+
+
 def test_tracks_constructor_constants() -> None:
     registers: dict[int, object] = {}
     assert _constructor_value(registers, _Instruction(0, 0x12, (0x0012,)))
@@ -525,6 +602,35 @@ def test_default_constructor_nulls_falls_through_populated_default() -> None:
     method: Any = SimpleNamespace(code_offset=1, method_index=0)
 
     assert _default_constructor_nulls(dex, method) == (0,)
+
+
+def test_default_constructor_nulls_returns_empty_without_marker_suffix() -> None:
+    dex: Any = SimpleNamespace(
+        methods=(object(),),
+        method_name=lambda m: "<init>",
+        method_parameter_types=lambda m: ("Ljava/lang/String;",),
+        code_item=lambda off: SimpleNamespace(
+            registers_size=1, ins_size=1, instructions=()
+        ),
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=0)
+
+    assert _default_constructor_nulls(dex, method) == ()
+
+
+def test_default_constructor_nulls_gives_up_after_budget_exhausted() -> None:
+    # a self-targeting goto keeps the scan looping until its budget runs out.
+    dex: Any = SimpleNamespace(
+        methods=(object(),),
+        method_name=lambda m: "<init>",
+        method_parameter_types=lambda m: (_DEFAULT_MARKER,),
+        code_item=lambda off: SimpleNamespace(
+            registers_size=1, ins_size=1, instructions=(0x0028,)
+        ),
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=0)
+
+    assert _default_constructor_nulls(dex, method) == ()
 
 
 def test_default_constructor_nulls_stops_on_non_int_mask() -> None:
