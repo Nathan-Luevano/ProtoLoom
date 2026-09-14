@@ -1,4 +1,5 @@
 import asyncio
+import signal
 import sys
 from pathlib import Path
 from typing import Any
@@ -230,6 +231,122 @@ def test_cancels_long_running_process(
 
     assert cancelled is True
     assert lines == ["ready"]
+
+
+def test_cancel_is_a_noop_when_not_running() -> None:
+    job = ExtractionJob()
+    asyncio.run(job.cancel())
+    assert job.running is False
+
+
+def test_stop_is_a_noop_without_a_process() -> None:
+    job = ExtractionJob()
+    asyncio.run(job._stop())
+
+
+def test_drain_output_is_a_noop_without_a_process() -> None:
+    job = ExtractionJob()
+    asyncio.run(job._drain_output())
+
+
+def test_stop_escalates_to_sigkill_after_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    script = "import time; print('ready', flush=True); time.sleep(30)"
+    monkeypatch.setattr(
+        ExtractionRequest,
+        "command",
+        lambda self: (sys.executable, "-c", script),
+    )
+    signals: list[signal.Signals] = []
+
+    async def exercise() -> list[signal.Signals]:
+        job = ExtractionJob()
+        lines: list[str] = []
+        task = asyncio.create_task(
+            job.run(ExtractionRequest(tmp_path, tmp_path), lines.append)
+        )
+        while not lines:
+            await asyncio.sleep(0.01)
+
+        real_signal = ExtractionJob._signal
+
+        def record_signal(
+            process: asyncio.subprocess.Process, value: signal.Signals
+        ) -> None:
+            signals.append(value)
+            real_signal(process, value)
+
+        monkeypatch.setattr(ExtractionJob, "_signal", staticmethod(record_signal))
+
+        async def immediate_timeout(
+            awaitable: Any, timeout: float | None = None
+        ) -> None:
+            close = getattr(awaitable, "close", None)
+            if close is not None:
+                close()
+            raise TimeoutError
+
+        monkeypatch.setattr("protoloom.tui.jobs.asyncio.wait_for", immediate_timeout)
+        await job.cancel()
+        await task
+        return signals
+
+    observed = asyncio.run(exercise())
+    assert observed == [signal.SIGTERM, signal.SIGKILL]
+
+
+def test_signal_uses_process_group_on_posix(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[int, signal.Signals]] = []
+    monkeypatch.setattr("protoloom.tui.jobs.os.name", "posix")
+    monkeypatch.setattr(
+        "protoloom.tui.jobs.os.killpg", lambda pid, value: calls.append((pid, value))
+    )
+
+    class FakeProcess:
+        pid = 99
+
+    ExtractionJob._signal(FakeProcess(), signal.SIGTERM)  # type: ignore[arg-type]
+
+    assert calls == [(99, signal.SIGTERM)]
+
+
+def test_signal_suppresses_missing_process_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("protoloom.tui.jobs.os.name", "posix")
+
+    def raise_lookup(pid: int, value: object) -> None:
+        raise ProcessLookupError
+
+    monkeypatch.setattr("protoloom.tui.jobs.os.killpg", raise_lookup)
+
+    class FakeProcess:
+        pid = 99
+
+    ExtractionJob._signal(FakeProcess(), signal.SIGTERM)  # type: ignore[arg-type]
+
+
+def test_signal_uses_process_methods_off_posix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("protoloom.tui.jobs.os.name", "nt")
+    calls: list[str] = []
+
+    class FakeProcess:
+        pid = 99
+
+        def terminate(self) -> None:
+            calls.append("terminate")
+
+        def kill(self) -> None:
+            calls.append("kill")
+
+    process = FakeProcess()
+    ExtractionJob._signal(process, signal.SIGTERM)  # type: ignore[arg-type]
+    ExtractionJob._signal(process, signal.SIGKILL)  # type: ignore[arg-type]
+
+    assert calls == ["terminate", "kill"]
 
 
 def test_task_cancellation_stops_process(
