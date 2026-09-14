@@ -995,3 +995,72 @@ def test_impossible_invoke_register_count_is_a_bailout() -> None:
     assert result.findings == ()
     assert result.bailout_count == 1
     assert "0 registers, expected 3" in result.bailouts[0].reason
+
+
+def test_raw_info_wrapper_rejects_out_of_range_constructor_index() -> None:
+    dex = FakeDex(
+        complete_instructions(), ("owner", "newMessageInfo", info_string(), "name_")
+    )
+    dex.methods = (DexMethod(0, 0, 0), DexMethod(0, 0, 1))
+    wrapper = CodeItem(200, 4, 3, 4, 0, 0, (0x22, 0, 0x4070, 2, 0x3210, 0x11))
+    dex._items = (*dex._items, (EncodedMethod(1, 0, 200), wrapper))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+
+
+def test_raw_info_wrapper_rejects_out_of_range_constructor_class() -> None:
+    dex = FakeDex(
+        complete_instructions(), ("owner", "newMessageInfo", info_string(), "name_")
+    )
+    dex.methods = (DexMethod(0, 0, 0), DexMethod(0, 0, 1), DexMethod(99, 0, 1))
+    wrapper = CodeItem(200, 4, 3, 4, 0, 0, (0x22, 0, 0x4070, 2, 0x3210, 0x11))
+    dex._items = (*dex._items, (EncodedMethod(1, 0, 200), wrapper))
+
+    result = extract_lite(dex)  # type: ignore[arg-type]
+
+    assert len(result.findings) == 1
+
+
+def test_enum_descriptor_rejects_empty_nested_class_segment() -> None:
+    dex = EnumFakeDex()
+    dex.types = (
+        "Lmatrix/MatrixProto$Everything;",
+        "Lmatrix/MatrixProto$$Mode;",
+    )
+
+    evidence = recover_enum_evidence(
+        dex,  # type: ignore[arg-type]
+        "Lmatrix/MatrixProto$Everything;",
+        "mode_",
+    )
+
+    assert evidence is None
+
+
+def test_enum_recovery_rejects_ambiguous_getter_return_types() -> None:
+    # method0 (class_index 0, name "getMode") already qualifies as a getter;
+    # a second qualifying getter with a different declared return type makes
+    # the accessor evidence genuinely ambiguous.
+    dex = EnumFakeDex()
+    dex.methods = (*dex.methods, DexMethod(0, 1, 0))
+
+    def method_return_type(method: DexMethod) -> str:
+        return dex.types[1] if method.prototype_index == 0 else dex.types[0]
+
+    dex.method_return_type = method_return_type  # type: ignore[method-assign]
+
+    evidence = recover_enum_evidence(
+        dex,  # type: ignore[arg-type]
+        "Lmatrix/MatrixProto$Everything;",
+        "mode_",
+    )
+
+    assert evidence is None
+
+
+def test_enum_accessor_from_field_rejects_out_of_range_index() -> None:
+    dex = EnumFakeDex()
+    assert recover_enum_evidence_from_field(dex, -1) is None  # type: ignore[arg-type]
+    assert recover_enum_evidence_from_field(dex, 99) is None  # type: ignore[arg-type]
