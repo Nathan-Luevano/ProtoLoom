@@ -38,5 +38,12 @@ def test_doctor_accepts_bundled_protoc_without_system_executable() -> None:
     compiler = next(item for item in report.dependencies if item.name == "protoc")
     assert report.healthy
     assert compiler.available
-    assert compiler.location == "python"
-    assert "[ok] protoc — required (python)" in format_report(report)
+    assert (
+        compiler.location
+        == "python -m grpc_tools.protoc (not the pinned protoc binary)"
+    )
+    assert (
+        "[ok] protoc — required "
+        "(python -m grpc_tools.protoc (not the pinned protoc binary))"
+        in format_report(report)
+    )

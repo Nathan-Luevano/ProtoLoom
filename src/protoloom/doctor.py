@@ -58,8 +58,16 @@ def _compiler(
             "protoc", True, True, location, "compile recovered schemas"
         )
     found = available("grpc_tools.protoc")
+    # No `protoc` binary on PATH falls back to the bundled grpc_tools
+    # module, which is not the version pinned for benchmark reproduction
+    # (see .protoc/) -- say so plainly rather than the bare "python" this
+    # used to report, which gave no hint a different protoc was in play.
     return DependencyStatus(
-        "protoc", found, True, "python" if found else None, "compile recovered schemas"
+        "protoc",
+        found,
+        True,
+        "python -m grpc_tools.protoc (not the pinned protoc binary)" if found else None,
+        "compile recovered schemas",
     )
 
 
