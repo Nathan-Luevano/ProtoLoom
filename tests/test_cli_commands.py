@@ -558,9 +558,12 @@ def test_extract_reports_reconciliation_limit_before_writing(
         ("input.desc", "safe.proto"),
     ],
 )
-def test_extract_rejects_output_name_collisions_before_writing(
+def test_extract_disambiguates_output_name_collisions(
     tmp_path: Path, monkeypatch: MonkeyPatch, names: tuple[str, str]
 ) -> None:
+    # Two distinct classes with no distinguishing package can still share a
+    # bare file name -- this must not hard-fail an otherwise fully
+    # recovered extraction; the second file gets a deterministic new name.
     binary = tmp_path / "input.bin"
     binary.write_bytes(b"input")
     schemas = [
@@ -577,9 +580,34 @@ def test_extract_rejects_output_name_collisions_before_writing(
 
     result = runner.invoke(app, ["extract", str(binary), "-o", str(output)])
 
-    assert result.exit_code == 2
-    assert "recovery failed: output name collision" in result.output
-    assert not output.exists()
+    assert result.exit_code == 0
+    reserved = {"dashboard", "recovery.json", "report.md", "input.desc"}
+    written = {
+        path.name.casefold()
+        for path in output.iterdir()
+        if path.is_file() and path.name.casefold() not in reserved
+    }
+    assert len(written) == 2
+
+
+def test_output_names_disambiguate_by_package() -> None:
+    first = RecoveredSchema(name="Relay.proto", package="pkg.a")
+    second = RecoveredSchema(name="Relay.proto", package="pkg.b")
+
+    names = _output_names([first, second], "input.desc")
+
+    assert names == ["Relay.proto", "pkg.b.Relay.proto"]
+
+
+def test_output_names_fall_back_to_numeric_suffix_without_package() -> None:
+    first = RecoveredSchema(name="Relay.proto")
+    second = RecoveredSchema(name="Relay.proto")
+    third = RecoveredSchema(name="Relay.proto")
+
+    names = _output_names([first, second, third], "input.desc")
+
+    assert names == ["Relay.proto", "Relay_2.proto", "Relay_3.proto"]
+    assert len(set(names)) == 3
 
 
 @pytest.mark.parametrize(

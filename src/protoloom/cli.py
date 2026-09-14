@@ -4,7 +4,7 @@ import re
 import secrets
 import tempfile
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict
@@ -304,6 +304,15 @@ def _walk_messages(messages: list[Message]) -> list[Message]:
     return result
 
 
+def _safe_output_name(name: str) -> None:
+    if (
+        name in {"", ".", ".."}
+        or len(os.fsencode(name)) > MAX_OUTPUT_NAME_BYTES
+        or any(unicodedata.category(character).startswith("C") for character in name)
+    ):
+        raise ValueError("unsafe schema output name")
+
+
 def _output_names(schemas: list[RecoveredSchema], descriptor_name: str) -> list[str]:
     reserved = {
         "dashboard",
@@ -315,20 +324,41 @@ def _output_names(schemas: list[RecoveredSchema], descriptor_name: str) -> list[
     seen: set[str] = set()
     for schema in schemas:
         name = Path(schema.name).name
-        if (
-            name in {"", ".", ".."}
-            or len(os.fsencode(name)) > MAX_OUTPUT_NAME_BYTES
-            or any(
-                unicodedata.category(character).startswith("C") for character in name
-            )
-        ):
-            raise ValueError("unsafe schema output name")
+        _safe_output_name(name)
         key = name.casefold()
         if key in reserved or key in seen:
-            raise ValueError(f"output name collision: {name}")
+            # Two distinct classes in different packages can share a bare
+            # file name (e.g. two unrelated "Relay" messages) -- reconcile()
+            # deliberately keeps them separate by (package, name), so the
+            # output step disambiguates the file name instead of failing
+            # a real, otherwise-fully-recovered extraction.
+            name = _disambiguated_output_name(schema, reserved, seen)
+            key = name.casefold()
         names.append(name)
         seen.add(key)
     return names
+
+
+def _disambiguated_output_name(
+    schema: RecoveredSchema, reserved: set[str], seen: set[str]
+) -> str:
+    base = Path(schema.name).name
+    stem, dot, extension = base.partition(".")
+    if schema.package:
+        package = re.sub(r"[^A-Za-z0-9_.]", "_", schema.package)
+        candidate = f"{package}.{stem}{dot}{extension}"
+        _safe_output_name(candidate)
+        key = candidate.casefold()
+        if key not in reserved and key not in seen:
+            return candidate
+        stem = f"{package}.{stem}"
+    suffix = 2
+    while True:
+        candidate = f"{stem}_{suffix}{dot}{extension}"
+        _safe_output_name(candidate)
+        if candidate.casefold() not in reserved and candidate.casefold() not in seen:
+            return candidate
+        suffix += 1
 
 
 def _validate_output(output: Path) -> None:
@@ -649,12 +679,18 @@ def _combined_lite_descriptors(
     lineage: dict[tuple[str, str], tuple[str, str | None]],
     enum_lineage: dict[tuple[str, str], dict[str, str | None]],
 ) -> list[FileDescriptorProto]:
-    groups: dict[tuple[str, str], list[RecoveredSchema]] = defaultdict(list)
+    # A real .proto file declares exactly one syntax; grouping by
+    # (package, syntax) instead of package alone let a single mistakenly
+    # syntax-flagged class split its own package into two files, each
+    # missing the other's real declarations and synthesizing a hollow
+    # placeholder for what the sibling group already declared correctly.
+    groups: dict[str, list[RecoveredSchema]] = defaultdict(list)
     for schema in schemas:
         if schema.name not in certain_names:
-            groups[(schema.package, schema.syntax)].append(schema)
+            groups[schema.package].append(schema)
     descriptors: list[FileDescriptorProto] = []
-    for index, ((package, syntax), items) in enumerate(sorted(groups.items())):
+    for index, (package, items) in enumerate(sorted(groups.items())):
+        syntax = Counter(item.syntax for item in items).most_common(1)[0][0]
         by_descriptor, enclosing_of = _lite_message_index(items, lineage)
         messages = _nested_lite_messages(items, by_descriptor, enclosing_of)
         top_level_enums, enum_renames = _nested_lite_enums(
@@ -667,6 +703,7 @@ def _combined_lite_descriptors(
             syntax=syntax,
             messages=messages,
             enums=top_level_enums,
+            services=[service for item in items for service in item.services],
             dependencies=list(
                 dict.fromkeys(
                     dependency for item in items for dependency in item.dependencies
