@@ -35,6 +35,7 @@ from protoloom.container.dex import (
     EncodedMethod,
 )
 from protoloom.doctor import DependencyStatus, DoctorReport
+from protoloom.extract.descriptor import DescriptorFinding
 from protoloom.extract.gotags import GoTagExtraction
 from protoloom.extract.jadx import JadxError, JadxResult
 from protoloom.model import Confidence, Field, Message, RecoveredSchema
@@ -309,6 +310,48 @@ def test_archive_scanning_finds_and_deduplicates_descriptors(tmp_path: Path) -> 
     assert [finding.descriptor.name for finding in findings] == ["embedded.proto"]
     assert findings[0].source in {"classes.dex", "assets/schema.pb"}
     assert _dex_inputs(apk) == [("classes.dex", dex)]
+
+
+def test_extract_reconciles_conflicting_same_named_descriptors(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    # Two findings sharing a .proto name with genuinely different field 1
+    # content (e.g. two bundled modules carrying different schema versions)
+    # must merge with a reported conflict, not hard-fail descriptor-set
+    # assembly and not silently drop one version.
+    old = FileDescriptorSet().file.add(name="shared.proto", package="shared")
+    old.syntax = "proto3"
+    old_message = old.message_type.add(name="M")
+    old_field = old_message.field.add(name="old_name", number=1)
+    old_field.label = old_field.LABEL_OPTIONAL
+    old_field.type = old_field.TYPE_INT32
+
+    new = FileDescriptorSet().file.add(name="shared.proto", package="shared")
+    new.syntax = "proto3"
+    new_message = new.message_type.add(name="M")
+    new_field = new_message.field.add(name="new_name", number=1)
+    new_field.label = new_field.LABEL_OPTIONAL
+    new_field.type = new_field.TYPE_INT32
+
+    binary = tmp_path / "conflict.bin"
+    binary.write_bytes(b"noise")
+    monkeypatch.setattr(
+        "protoloom.cli._find",
+        lambda path, **kwargs: [
+            DescriptorFinding(old, 0, len(old.SerializeToString()), "a"),
+            DescriptorFinding(new, 0, len(new.SerializeToString()), "b"),
+        ],
+    )
+    output = tmp_path / "output"
+
+    result = runner.invoke(app, ["extract", str(binary), "-o", str(output)])
+
+    assert result.exit_code == 0, result.output
+    proto_text = (output / "shared.proto").read_text()
+    assert "old_name" in proto_text or "new_name" in proto_text
+    recovery = json.loads((output / "recovery.json").read_text())
+    assert recovery["conflicts"]
+    assert recovery["conflicts"][0]["path"] == "shared.proto.M.1"
 
 
 def test_dex_inputs_ignore_non_android_container(tmp_path: Path) -> None:

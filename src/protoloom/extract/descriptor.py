@@ -90,7 +90,13 @@ def scan_descriptors(
 ) -> list[DescriptorFinding]:
     if min(max_candidates, max_boundaries, max_parse_attempts) <= 0:
         raise ValueError("descriptor scan limits must be positive")
-    findings: dict[str, DescriptorFinding] = {}
+    # Keyed by (name, canonical bytes) rather than name alone: two offsets
+    # that serialize to the same bytes are the same redundant copy, but two
+    # differently-shaped descriptors sharing a .proto name (e.g. old/new
+    # schema for the same shared dependency bundled twice) are genuinely
+    # different content and must both survive to reach reconcile(), which
+    # is where such conflicts get reported instead of silently vanishing.
+    findings: dict[tuple[str, bytes], DescriptorFinding] = {}
     candidates = 0
     attempts = 0
     for offset, byte in enumerate(data):
@@ -119,7 +125,6 @@ def scan_descriptors(
             best = DescriptorFinding(candidate, offset, len(canonical), source)
             break
         if best is not None:
-            prior = findings.get(best.descriptor.name)
-            if prior is None or best.length > prior.length:
-                findings[best.descriptor.name] = best
+            key = (best.descriptor.name, best.descriptor.SerializeToString())
+            findings.setdefault(key, best)
     return sorted(findings.values(), key=lambda item: (item.source, item.offset))

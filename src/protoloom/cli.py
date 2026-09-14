@@ -148,11 +148,16 @@ def _find(
                 raw_data if raw_data is not None else read_limited(path), path.name
             )
         )
-    deduped: dict[str, DescriptorFinding] = {}
+    # Dedupe by (name, canonical bytes), not name alone: two sources that
+    # embed byte-identical copies of the same .proto are one redundant
+    # finding, but differing content under the same name (e.g. two APK
+    # modules bundling different versions of a shared dependency) must
+    # stay distinct so reconcile() sees both and reports the conflict
+    # instead of one version silently vanishing here.
+    deduped: dict[tuple[str, bytes], DescriptorFinding] = {}
     for finding in findings:
-        current = deduped.get(finding.descriptor.name)
-        if current is None or finding.length > current.length:
-            deduped[finding.descriptor.name] = finding
+        key = (finding.descriptor.name, finding.descriptor.SerializeToString())
+        deduped.setdefault(key, finding)
     return sorted(deduped.values(), key=lambda item: item.descriptor.name)
 
 
@@ -922,8 +927,22 @@ def extract(
     except ValueError as error:
         typer.echo(f"recovery failed: {error}", err=True)
         raise typer.Exit(2) from error
-    descriptors = [finding.descriptor for finding in findings]
-    certain_names = {finding.descriptor.name for finding in findings}
+    # Two findings can now legitimately share a .proto name with different
+    # content (e.g. two APK modules bundling different versions of a shared
+    # dependency): feeding both raw descriptors into the same descriptor
+    # set would hard-fail on the name collision, so a conflicting name is
+    # routed through reconcile's merge/recompile path below instead of the
+    # verbatim "certain" fast path, same as any other reported conflict.
+    name_counts = Counter(finding.descriptor.name for finding in findings)
+    conflicting_names = {name for name, count in name_counts.items() if count > 1}
+    descriptors = [
+        finding.descriptor
+        for finding in findings
+        if finding.descriptor.name not in conflicting_names
+    ]
+    certain_names = {
+        finding.descriptor.name for finding in findings
+    } - conflicting_names
     prepared: list[tuple[RecoveredSchema, str]] = []
     to_validate: list[RecoveredSchema] = []
     for schema in reconciled.schemas:

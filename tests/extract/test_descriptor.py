@@ -40,6 +40,38 @@ def test_scan_rejects_proto_name_without_schema() -> None:
     assert scan_descriptors(descriptor.SerializeToString()) == []
 
 
+def test_scan_keeps_both_versions_of_a_same_named_descriptor() -> None:
+    # Two genuinely different descriptors sharing a .proto name (e.g. two
+    # APK modules bundling different versions of a shared dependency) must
+    # both survive so reconcile() can report the conflict, rather than one
+    # silently losing to whichever happened to serialize longer.
+    old = _descriptor()
+    new = FileDescriptorProto(name=old.name, package=old.package)
+    new.syntax = "proto3"
+    message = new.message_type.add(name="Greeting")
+    field = message.field.add(name="text", number=1)
+    field.label = field.LABEL_OPTIONAL
+    field.type = field.TYPE_STRING
+    extra = message.field.add(name="extra_field", number=2)
+    extra.label = extra.LABEL_OPTIONAL
+    extra.type = extra.TYPE_INT32
+
+    old_bytes = old.SerializeToString()
+    new_bytes = new.SerializeToString()
+    assert old_bytes != new_bytes
+    findings = scan_descriptors(old_bytes + b"\x00\x00\x00" + new_bytes, "fixture")
+
+    assert len(findings) == 2
+    field_counts = sorted(len(f.descriptor.message_type[0].field) for f in findings)
+    assert field_counts == [1, 2]
+
+
+def test_scan_dedupes_byte_identical_descriptor_copies() -> None:
+    payload = _descriptor().SerializeToString()
+    findings = scan_descriptors(payload + b"\x00\x00\x00" + payload, "fixture")
+    assert len(findings) == 1
+
+
 def test_descriptor_scan_bounds_candidates_before_valid_schema() -> None:
     decoy = FileDescriptorProto(name="decoy.proto").SerializeToString()
     expected = _descriptor().SerializeToString()
