@@ -22,16 +22,20 @@ from protoloom.extract.wire import (
     _constructor_arguments,
     _constructor_move,
     _constructor_value,
+    _default_constructor_nulls,
     _default_constructor_state,
     _parameter_registers,
     _wire_enum_method,
     extract_wire_annotations,
     extract_wire_messages,
     extract_wire_names,
+    extract_wire_null_defaults,
     extract_wire_oneofs,
     extract_wire_syntaxes,
     wire_adapter_type,
 )
+
+_DEFAULT_MARKER = "Lkotlin/jvm/internal/DefaultConstructorMarker;"
 
 
 def _wire_dex() -> Any:
@@ -352,6 +356,115 @@ def test_decodes_nested_wire_enum_uses_parent_syntax() -> None:
 
     assert schemas[0].syntax == "proto3"
     assert lineage[("example", "Outer_Mode.proto")] == {"Outer_Mode": "Lexample/Outer;"}
+
+
+def test_default_constructor_nulls_falls_through_populated_default() -> None:
+    # -1 mask (all defaults requested) plus a real invoke passed a null string arg.
+    real_ctor = object()
+    code = (0x0438, 0x0002, 0x0212, 0x2070, 0, 0x0023)
+    dex: Any = SimpleNamespace(
+        methods=(real_ctor,),
+        method_name=lambda m: "<init>",
+        method_parameter_types=(
+            lambda m: (
+                ("Ljava/lang/String;", "I", _DEFAULT_MARKER)
+                if m is not real_ctor
+                else ("Ljava/lang/String;",)
+            )
+        ),
+        code_item=lambda off: SimpleNamespace(
+            registers_size=6, ins_size=4, instructions=code
+        ),
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=0)
+
+    assert _default_constructor_nulls(dex, method) == (0,)
+
+
+def test_default_constructor_nulls_stops_on_non_int_mask() -> None:
+    dex: Any = SimpleNamespace(
+        methods=(object(),),
+        method_name=lambda m: "<init>",
+        method_parameter_types=lambda m: (_DEFAULT_MARKER,),
+        code_item=lambda off: SimpleNamespace(
+            registers_size=1, ins_size=1, instructions=(0x0038, 0x0000)
+        ),
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=0)
+
+    assert _default_constructor_nulls(dex, method) == ()
+
+
+def test_default_constructor_nulls_follows_branch_and_goto() -> None:
+    real_ctor = object()
+    code = (0x04DD, 0x0004, 0x0438, 0x0002, 0x0128, 0x0212, 0x2070, 0, 0x0023)
+    dex: Any = SimpleNamespace(
+        methods=(real_ctor,),
+        method_name=lambda m: "<init>",
+        method_parameter_types=(
+            lambda m: (
+                ("Ljava/lang/String;", "I", _DEFAULT_MARKER)
+                if m is not real_ctor
+                else ("Ljava/lang/String;",)
+            )
+        ),
+        code_item=lambda off: SimpleNamespace(
+            registers_size=6, ins_size=4, instructions=code
+        ),
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=0)
+
+    assert _default_constructor_nulls(dex, method) == (0,)
+
+
+def test_default_constructor_nulls_exhausts_without_a_match() -> None:
+    dex: Any = SimpleNamespace(
+        methods=(object(),),
+        method_name=lambda m: "<init>",
+        method_parameter_types=lambda m: (_DEFAULT_MARKER,),
+        code_item=lambda off: SimpleNamespace(
+            registers_size=1, ins_size=1, instructions=(0x000A,)
+        ),
+    )
+    method: Any = SimpleNamespace(code_offset=1, method_index=0)
+
+    assert _default_constructor_nulls(dex, method) == ()
+
+
+def test_extract_wire_null_defaults_filters_by_owner_and_marker() -> None:
+    real_ctor = object()
+    code = (0x0438, 0x0002, 0x0212, 0x2070, 0, 0x0023)
+    default_ctor: Any = SimpleNamespace(code_offset=1, method_index=0)
+    plain_ctor: Any = SimpleNamespace(code_offset=2, method_index=1)
+    owner = DexClass(0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    other = DexClass(1, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+
+    def code_item(offset: int) -> Any:
+        if offset == 1:
+            return SimpleNamespace(registers_size=6, ins_size=4, instructions=code)
+        return SimpleNamespace(registers_size=1, ins_size=1, instructions=())
+
+    dex: Any = SimpleNamespace(
+        types=("Lexample/Record;", "Lexample/Other;"),
+        classes=(owner, other),
+        methods=(real_ctor,),
+        class_methods=(
+            lambda item: (default_ctor,) if item is owner else (plain_ctor,)
+        ),
+        method_name=lambda m: "<init>",
+        method_parameter_types=(
+            lambda m: (
+                ("Ljava/lang/String;", "I", _DEFAULT_MARKER)
+                if m is default_ctor
+                else ("Ljava/lang/String;",)
+            )
+        ),
+        code_item=code_item,
+    )
+
+    result = extract_wire_null_defaults(dex, {"Lexample/Record;"})
+
+    assert result == {"Lexample/Record;": frozenset({0})}
 
 
 def test_decodes_boxed_adapter_presence() -> None:
