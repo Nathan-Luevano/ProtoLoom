@@ -383,6 +383,87 @@ def test_emits_escaped_proto2_string_default() -> None:
     assert 'default = "line \\"one\\"\\nline two"' in emitted
 
 
+def test_map_field_type_resolves_both_key_and_value() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        package="demo",
+        messages=[
+            Message(
+                "Holder",
+                fields=[
+                    Field("items", 1, "map<string, .demo.Entry>", Confidence.CERTAIN),
+                ],
+            ),
+            Message("Entry"),
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "map<string, .demo.Entry> items = 1;" in emitted
+    assert compile_proto(emitted).success
+
+
+def test_duplicate_enum_numbers_require_allow_alias() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto2",
+        enums=[EnumType("Mode", [EnumValue("A", 1), EnumValue("B", 1)])],
+    )
+    emitted = emit_proto(schema)
+    assert "option allow_alias = true;" in emitted
+    assert compile_proto(emitted).success
+
+
+def test_proto3_plain_optional_without_presence_is_dropped() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto3",
+        messages=[
+            Message(
+                "Record",
+                fields=[
+                    Field(
+                        "value",
+                        1,
+                        "int32",
+                        Confidence.CERTAIN,
+                        label="optional",
+                        proto3_optional=False,
+                    )
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "optional" not in emitted
+    assert "int32 value = 1;" in emitted
+    assert compile_proto(emitted).success
+
+
+def test_repeated_field_emits_packed_option() -> None:
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto2",
+        messages=[
+            Message(
+                "Record",
+                fields=[
+                    Field(
+                        "values",
+                        1,
+                        "int32",
+                        Confidence.CERTAIN,
+                        label="repeated",
+                        packed=True,
+                    )
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "packed = true" in emitted
+    assert compile_proto(emitted).success
+
+
 def test_sanitizes_field_type_references() -> None:
     schema = RecoveredSchema(
         name="fixture",
