@@ -24,7 +24,9 @@ from protoloom.extract.wire import (
     _constructor_value,
     _default_constructor_nulls,
     _default_constructor_state,
+    _label,
     _parameter_registers,
+    _string,
     _wire_enum_method,
     extract_wire_annotations,
     extract_wire_messages,
@@ -91,6 +93,39 @@ def test_extracts_retained_wire_field_annotation() -> None:
     )
     assert (finding.label, finding.oneof) == ("repeated", "choice")
     assert finding.schema_index == 2
+
+
+def test_extract_wire_annotations_skips_non_message_and_unannotated_fields() -> None:
+    no_super = DexClass(0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    wrong_super = DexClass(1, 0, 2, 0, 0, 0, 0, 0)
+    message_owner = DexClass(2, 0, 1, 0, 0, 3, 0, 0)
+    field = DexField(0, 2, 1)
+    unannotated = DexField(0, 2, 4)
+    other_annotation = AnnotationItem(1, 4, ())
+    bad_tag_annotation = AnnotationItem(
+        1,
+        3,
+        ((0, "not-an-int"), (1, 5)),
+    )
+    dex: Any = SimpleNamespace(
+        NO_INDEX=0xFFFFFFFF,
+        types=(
+            "Lexample/Other;",
+            "Lcom/squareup/wire/Message;",
+            "Lexample/Record;",
+            "Lcom/squareup/wire/WireField;",
+            "Lcom/squareup/wire/OtherAnnotation;",
+        ),
+        classes=(no_super, wrong_super, message_owner),
+        strings=("tag", "adapter"),
+        field_annotations=lambda item: (
+            ((unannotated, (other_annotation,)), (field, (bad_tag_annotation,)))
+            if item is message_owner
+            else ()
+        ),
+    )
+
+    assert extract_wire_annotations(dex) == ()
 
 
 def test_extracts_empty_wire_message() -> None:
@@ -250,6 +285,7 @@ def test_extract_wire_oneofs_requires_more_than_one_field() -> None:
 def test_extract_wire_names_finds_nearest_preceding_field_read() -> None:
     owner = DexClass(0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
     method = SimpleNamespace(code_offset=1, method_index=0)
+    other = SimpleNamespace(code_offset=2, method_index=1)
     field = DexField(0, 0, 0)
     code = (0x001A, 0, 0x0054, 0, 0x031A, 1)
     dex: Any = SimpleNamespace(
@@ -258,8 +294,8 @@ def test_extract_wire_names_finds_nearest_preceding_field_read() -> None:
         strings=("Record{", "title="),
         fields=(field,),
         methods=(),
-        class_methods=lambda _: (method,),
-        method_name=lambda _: "toString",
+        class_methods=lambda _: (other, method),
+        method_name=lambda m: "toString" if m is method else "equals",
         code_item=lambda _: SimpleNamespace(instructions=code),
     )
 
@@ -276,6 +312,21 @@ def test_resolves_wire_adapter_types() -> None:
     assert wire_adapter_type("com.squareup.wire.ProtoAdapter#SINT64") == "sint64"
     assert wire_adapter_type("example.Outer$Inner#ADAPTER") == ".example.Outer.Inner"
     assert wire_adapter_type("example.Custom#OTHER") is None
+    assert wire_adapter_type("no-separator") is None
+
+
+def test_string_rejects_non_index_and_out_of_range_values() -> None:
+    dex: Any = SimpleNamespace(strings=("only",))
+    assert _string(dex, "not-an-index") is None
+    assert _string(dex, 5) is None
+    assert _string(dex, 0) == "only"
+
+
+def test_label_falls_back_to_optional_for_unknown_values() -> None:
+    dex: Any = _wire_dex()
+    assert _label(dex, "not-an-index") == "optional"
+    assert _label(dex, 99) == "optional"
+    assert _label(dex, 0) == "optional"  # dex.fields[0] is named "title"
 
 
 def test_wire_dex_type_rejects_out_of_range_fields() -> None:
@@ -331,6 +382,8 @@ def test_decodes_wire_constants() -> None:
     assert _constant(_Instruction(0, 0x12, (0xE312,))) == (3, -2)
     assert _constant(_Instruction(0, 0x13, (0x0213, 0xFFFE))) == (2, -2)
     assert _constant(_Instruction(0, 0x15, (0x0215, 0x0080))) == (2, 0x800000)
+    assert _constant(_Instruction(0, 0x14, (0x0114, 1, 0))) == (1, 1)
+    assert _constant(_Instruction(0, 0x14, (0x0214, 0xFFFF, 0xFFFF))) == (2, -1)
 
 
 def test_maps_wide_constructor_parameters_to_registers() -> None:
