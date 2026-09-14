@@ -797,3 +797,17 @@ Signal's output stayed byte-for-byte identical after this change too, and
 Mullvad (130 files), Molly (589 files), and Smartspacer (70 files) all
 reproduced their documented counts unchanged, each verified with `diff -rq`
 against their own prior output.
+
+A third redundancy of the same shape: `detect(path)` and, for archive
+inputs, `AndroidArchive(path).inventory()` were each still being called
+multiple times per single `extract` invocation, once inside `_dex_inputs`,
+once inside `_find`, once inside `_find_go_tags`, and once more for the
+`--jadx` flag check — each call re-opens the file and, for a zip-shaped
+container, re-parses the entire central directory. `extract()` now computes
+`detection` and (when relevant) `inventory` exactly once and threads them
+through all four call sites. This one measured near the noise floor on
+Signal (27.2s before and after, i.e. under ~1s), confirming this redundancy
+was real but small next to the two fixes above; still worth fixing, since
+it's the same bug shape and the file no longer carries dead re-parsing.
+Verified byte-identical against Signal, Mullvad, Molly, and Smartspacer's
+prior outputs.
