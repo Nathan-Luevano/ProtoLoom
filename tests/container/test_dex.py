@@ -72,6 +72,14 @@ def test_rejects_excessive_table_entries(monkeypatch: pytest.MonkeyPatch) -> Non
         DexFile(_minimal_dex((b"first", b"second")))
 
 
+def test_rejects_excessive_total_table_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("protoloom.container.dex.MAX_DEX_TOTAL_TABLE_ENTRIES", 3)
+    with pytest.raises(DexError, match="too many entries"):
+        DexFile(_minimal_dex((b"a", b"b", b"c", b"d")))
+
+
 def test_rejects_invalid_populated_table_offset() -> None:
     malformed = bytearray(_minimal_dex(()))
     struct.pack_into("<II", malformed, 56, 1, 0)
@@ -133,6 +141,39 @@ def test_rejects_excessive_code_units(monkeypatch: pytest.MonkeyPatch) -> None:
     dex = DexFile(raw)
     with pytest.raises(DexError, match="too many entries"):
         dex.code_item(offset)
+
+
+def test_uleb128_rejects_truncated_value() -> None:
+    raw = bytearray(_minimal_dex(()))
+    offset = len(raw)
+    raw.extend(bytes((0x80,)))
+    struct.pack_into("<I", raw, 32, len(raw))
+    struct.pack_into("<I", raw, 104, len(raw) - 112)
+    dex = DexFile(raw)
+    with pytest.raises(DexError, match="truncated"):
+        dex._uleb128(offset)
+
+
+def test_uleb128_rejects_value_exceeding_32_bits() -> None:
+    raw = bytearray(_minimal_dex(()))
+    offset = len(raw)
+    raw.extend(bytes((0x80, 0x80, 0x80, 0x80, 0x10)))
+    struct.pack_into("<I", raw, 32, len(raw))
+    struct.pack_into("<I", raw, 104, len(raw) - 112)
+    dex = DexFile(raw)
+    with pytest.raises(DexError, match="exceeds 32 bits"):
+        dex._uleb128(offset)
+
+
+def test_uleb128_rejects_value_without_terminating_byte() -> None:
+    raw = bytearray(_minimal_dex(()))
+    offset = len(raw)
+    raw.extend(bytes((0x80, 0x80, 0x80, 0x80, 0x80)))
+    struct.pack_into("<I", raw, 32, len(raw))
+    struct.pack_into("<I", raw, 104, len(raw) - 112)
+    dex = DexFile(raw)
+    with pytest.raises(DexError, match="invalid ULEB128"):
+        dex._uleb128(offset)
 
 
 def _dex_with_enclosing_class() -> bytes:
