@@ -86,6 +86,28 @@ def test_rejects_data_section_outside_file() -> None:
         DexFile(malformed)
 
 
+def test_rejects_unterminated_string_data() -> None:
+    raw = bytearray(_minimal_dex((b"ab",)))[:-1]
+    struct.pack_into("<I", raw, 32, len(raw))
+    struct.pack_into("<I", raw, 104, len(raw) - 116)
+    with pytest.raises(DexError, match="unterminated"):
+        DexFile(bytes(raw))
+
+
+def test_rejects_string_utf16_length_mismatch() -> None:
+    raw = bytearray(_minimal_dex((b"ab",)))
+    raw[116] = 99
+    with pytest.raises(DexError, match="UTF-16 length mismatch"):
+        DexFile(bytes(raw))
+
+
+def test_rejects_misaligned_data_section_offset() -> None:
+    raw = bytearray(_minimal_dex(()))
+    struct.pack_into("<II", raw, 104, 1, 113)
+    with pytest.raises(DexError, match="invalid offset"):
+        DexFile(bytes(raw))
+
+
 def test_rejects_excessive_string_decode_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
