@@ -85,6 +85,31 @@ def test_detect_treats_corrupt_zip_magic_as_unknown(tmp_path: Path) -> None:
     assert detect(path).kind is ContainerKind.UNKNOWN
 
 
+def test_detect_finds_zip_behind_a_prepended_stub(tmp_path: Path) -> None:
+    # Self-extracting archives and "reverse signed" polyglots prepend bytes
+    # before the local file headers; the ZIP's real directory lives in the
+    # trailing EOCD record, which ZipFile finds regardless of what precedes it.
+    path = tmp_path / "sfx.bin"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+        archive.writestr("classes.dex", b"dex\n039\x00" + b"\x00" * 20)
+    stub = b"NOT A ZIP MAGIC AT ALL" * 4
+    path.write_bytes(stub + path.read_bytes())
+    assert detect(path).kind is ContainerKind.APK
+
+
+def test_detect_front_magic_wins_over_appended_zip(tmp_path: Path) -> None:
+    # An ELF (or DEX/Mach-O) binary with a ZIP appended at the end must stay
+    # classified by its real front format, not get reclassified as the zip.
+    path = tmp_path / "elf_with_zip_tail.bin"
+    zip_path = tmp_path / "tail.zip"
+    with ZipFile(zip_path, "w") as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+        archive.writestr("classes.dex", b"dex\n039\x00" + b"\x00" * 20)
+    path.write_bytes(b"\x7fELF" + b"\x00" * 32 + zip_path.read_bytes())
+    assert detect(path).kind is ContainerKind.ELF
+
+
 def test_classify_zip_detects_bundle_and_jar_and_plain_zip(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle.zip"
     with ZipFile(bundle, "w") as archive:

@@ -79,8 +79,13 @@ def detect(path: str | Path) -> Detection:
         result = detect_bytes(prefix)
         if result.kind is ContainerKind.UNKNOWN and prefix[:2] == b"MZ":
             result = _detect_pe(stream, prefix, file_size)
-        if result.kind is not ContainerKind.ZIP:
+        if result.kind not in (ContainerKind.ZIP, ContainerKind.UNKNOWN):
             return result
+        # A ZIP's authoritative directory lives in its trailing end-of-central-
+        # directory record, not at offset 0 -- self-extracting stubs, "reverse
+        # signed" APKs, and other polyglots routinely prepend bytes ZipFile
+        # happily skips over. Front-magic misses on those must not read as
+        # UNKNOWN when the file is, in fact, a perfectly good archive.
         stream.seek(0)
         try:
             with ZipFile(stream) as archive:
