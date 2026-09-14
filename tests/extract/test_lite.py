@@ -1064,3 +1064,158 @@ def test_enum_accessor_from_field_rejects_out_of_range_index() -> None:
     dex = EnumFakeDex()
     assert recover_enum_evidence_from_field(dex, -1) is None  # type: ignore[arg-type]
     assert recover_enum_evidence_from_field(dex, 99) is None  # type: ignore[arg-type]
+
+
+def _real_getter_dex() -> Any:
+    dex = EnumFakeDex()
+    dex.types += ("I",)
+    dex.strings += ("mode", "forNumber")
+    dex.fields += (DexField(0, 2, 5),)
+    dex.methods += (DexMethod(0, 0, 5), DexMethod(1, 0, 6))
+    original_parameters = dex.method_parameter_types
+    dex.method_parameter_types = lambda method: (  # type: ignore[method-assign]
+        ()
+        if method.name_index == 5
+        else ("I",)
+        if method.name_index == 6
+        else original_parameters(method)
+    )
+    return dex
+
+
+def test_enum_accessor_skips_malformed_instruction_stream() -> None:
+    dex = _real_getter_dex()
+    dex._items += ((EncodedMethod(3, 0, 300), CodeItem(300, 1, 0, 0, 0, 0, (0x0100,))),)
+
+    assert recover_enum_evidence_from_field(dex, 2) is None
+
+
+def test_enum_accessor_rejects_mismatched_field_operand() -> None:
+    dex = _real_getter_dex()
+    accessor = (0x0052, 3, 0x1071, 4, 0, 0x0C, 0x11)
+    dex._items += ((EncodedMethod(3, 0, 300), CodeItem(300, 2, 0, 1, 0, 0, accessor)),)
+
+    assert recover_enum_evidence_from_field(dex, 2) is None
+
+
+def test_enum_accessor_rejects_out_of_range_invoked_method_index() -> None:
+    dex = _real_getter_dex()
+    accessor = (0x0052, 2, 0x1071, 99, 0, 0x0C, 0x11)
+    dex._items += ((EncodedMethod(3, 0, 300), CodeItem(300, 2, 0, 1, 0, 0, accessor)),)
+
+    assert recover_enum_evidence_from_field(dex, 2) is None
+
+
+def test_enum_accessor_rejects_converter_with_wrong_signature() -> None:
+    dex = _real_getter_dex()
+
+    def method_parameter_types(method: DexMethod) -> tuple[str, ...]:
+        if method.name_index == 5:
+            return ()
+        if method.name_index == 6:
+            return ("J",)
+        return ()
+
+    dex.method_parameter_types = method_parameter_types
+    accessor = (0x0052, 2, 0x1071, 4, 0, 0x0C, 0x11)
+    dex._items += ((EncodedMethod(3, 0, 300), CodeItem(300, 2, 0, 1, 0, 0, accessor)),)
+
+    assert recover_enum_evidence_from_field(dex, 2) is None
+
+
+_EVERYTHING = "Lmatrix/MatrixProto$Everything;"
+
+
+def test_enum_owner_recovery_skips_malformed_instruction_stream() -> None:
+    dex: Any = EnumFakeDex()
+    dex._items += ((EncodedMethod(0, 0, 400), CodeItem(400, 1, 0, 0, 0, 0, (0x0100,))),)
+
+    assert recover_enum_evidence_from_owner(dex, _EVERYTHING) is None
+
+
+def test_enum_owner_recovery_skips_short_or_non_iget_stream() -> None:
+    dex: Any = EnumFakeDex()
+    dex._items += ((EncodedMethod(0, 0, 400), CodeItem(400, 1, 0, 0, 0, 0, (0x0E,))),)
+
+    assert recover_enum_evidence_from_owner(dex, _EVERYTHING) is None
+
+
+def test_enum_values_decode_const16_const_and_skip_bad_invoke_arity() -> None:
+    # const/16 (0x13) and const (0x14) are the widths real R8-optimized
+    # clinits use once an enum's ordinal/number no longer fits const/4; a
+    # stray invoke-direct with the wrong register arity (not the (name,
+    # ordinal, number) constructor call) must be skipped, not misread.
+    dex = EnumFakeDex()
+    constructor_index = 1
+    instructions = (
+        0x1070,
+        constructor_index,
+        0,
+        0x22,
+        1,
+        0x011A,
+        3,
+        0x0213,
+        0,
+        0x4070,
+        constructor_index,
+        0x2210,
+        0x69,
+        0,
+        0x22,
+        1,
+        0x011A,
+        4,
+        0x0214,
+        1,
+        0,
+        0x4070,
+        constructor_index,
+        0x2210,
+        0x69,
+        1,
+        0x0E,
+    )
+    dex._items = (
+        (EncodedMethod(2, 0, 200), CodeItem(200, 3, 0, 4, 0, 0, instructions)),
+    )
+
+    evidence = recover_enum_evidence(
+        dex,  # type: ignore[arg-type]
+        "Lmatrix/MatrixProto$Everything;",
+        "mode_",
+    )
+
+    assert evidence is not None
+    assert evidence.values == (("MODE_UNSPECIFIED", 0), ("MODE_ACTIVE", 1))
+
+
+def test_enum_values_sign_extends_negative_const16() -> None:
+    dex = EnumFakeDex()
+    constructor_index = 1
+    instructions = (
+        0x22,
+        1,
+        0x011A,
+        3,
+        0x0213,
+        0xFFFF,
+        0x4070,
+        constructor_index,
+        0x2210,
+        0x69,
+        0,
+        0x0E,
+    )
+    dex._items = (
+        (EncodedMethod(2, 0, 200), CodeItem(200, 3, 0, 4, 0, 0, instructions)),
+    )
+
+    evidence = recover_enum_evidence(
+        dex,  # type: ignore[arg-type]
+        "Lmatrix/MatrixProto$Everything;",
+        "mode_",
+    )
+
+    assert evidence is not None
+    assert evidence.values == (("MODE_UNSPECIFIED", -1),)
