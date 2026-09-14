@@ -120,6 +120,53 @@ def test_report_bounds_aggregate_bailout_bytes() -> None:
         emit_report([], ["1234", "5678"], max_bytes=10)
 
 
+def test_report_bounds_bailout_after_rendering_prefix_overhead() -> None:
+    # The raw value alone fits the remaining budget, but the "- " prefix
+    # and trailing newline this renders with push it over.
+    with pytest.raises(ValueError, match="exceeds 6 bytes"):
+        emit_report([], ["12345"], max_bytes=6)
+
+
+def test_report_raises_when_a_single_schema_exceeds_the_message_budget() -> None:
+    schema = RecoveredSchema("a.proto", messages=[Message("A"), Message("B")])
+    with pytest.raises(ValueError, match="exceeds 1 messages"):
+        emit_report([schema], [], max_items=1)
+
+
+def test_report_bounds_field_count() -> None:
+    schema = RecoveredSchema(
+        "a.proto",
+        messages=[
+            Message(
+                "A",
+                fields=[
+                    Field("x", 1, "int32", Confidence.HIGH),
+                    Field("y", 2, "int32", Confidence.HIGH),
+                ],
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="exceeds 1 fields"):
+        emit_report([schema], [], max_items=1)
+
+
+def test_report_bounds_service_or_method_count() -> None:
+    schema = RecoveredSchema(
+        "a.proto",
+        services=[
+            Service(
+                "Foo",
+                [
+                    ServiceMethod("A", "Req", "Res", Confidence.HIGH),
+                    ServiceMethod("B", "Req", "Res", Confidence.HIGH),
+                ],
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="exceeds 1 services"):
+        emit_report([schema], [], max_items=1)
+
+
 def test_report_bounds_message_depth() -> None:
     root = Message("Outer")
     root.messages.append(Message("Inner"))
