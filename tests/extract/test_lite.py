@@ -1219,3 +1219,111 @@ def test_enum_values_sign_extends_negative_const16() -> None:
 
     assert evidence is not None
     assert evidence.values == (("MODE_UNSPECIFIED", -1),)
+
+
+def test_map_recovery_skips_unrelated_clinit_methods() -> None:
+    dex = MapFakeDex()
+    method, code = dex._items[0]
+    unrelated = CodeItem(310, 1, 0, 0, 0, 0, (0x0E,))
+    dex._items = ((EncodedMethod(2, 0, 310), unrelated), (method, code))
+
+    evidence = recover_map_evidence(dex, 2)  # type: ignore[arg-type]
+
+    assert evidence == LiteMapEvidence("string", "int32")
+
+
+def test_map_types_reject_field_type_mismatch_in_inline_factory() -> None:
+    dex = MapFakeDex()
+    dex.types = ("LHolder;", "LEntry;", "LFieldType;")
+    dex.strings += ("<init>", "STRING", "INT32", "key", "value")
+    dex.methods = (
+        DexMethod(0, 0, 0),
+        DexMethod(1, 0, 6),
+        DexMethod(2, 0, 0),
+        DexMethod(2, 0, 6),
+    )
+    # field0's declared type (LEntry;) doesn't match the constructor's
+    # (LFieldType;, LFieldType;) parameters.
+    dex.fields = (DexField(2, 1, 9), DexField(2, 2, 10), DexField(0, 1, 4))
+    holder = (0x0062, 0, 0x0162, 1, 0x0222, 1, 0x3070, 1, 0x0102, 0x0269, 2, 0x0E)
+    dex._items = ((EncodedMethod(0, 0, 300), CodeItem(300, 3, 0, 4, 0, 0, holder)),)
+
+    assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
+
+
+def test_map_recovery_rejects_out_of_range_new_default_instance_call() -> None:
+    dex = MapFakeDex()
+    method, _ = dex._items[0]
+    instructions = (0x0062, 0, 0x0162, 1, 0x4071, 99, 0x2120, 0x020C, 0x0269, 2, 0x0E)
+    dex._items = ((method, CodeItem(300, 3, 0, 4, 0, 0, instructions)),)
+
+    assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
+
+
+def test_map_recovery_skips_malformed_field_name_clinit() -> None:
+    dex = MapFakeDex()
+    dex.types = ("LHolder;", "LEntry;", "LFieldType;")
+    dex.strings += ("<init>", "STRING", "INT32", "key", "value")
+    dex.methods = (
+        DexMethod(0, 0, 0),
+        DexMethod(1, 0, 6),
+        DexMethod(2, 0, 0),
+        DexMethod(2, 0, 6),
+        DexMethod(2, 0, 0),
+    )
+    dex.fields = (DexField(2, 2, 9), DexField(2, 2, 10), DexField(0, 1, 4))
+    holder = (0x0062, 0, 0x0162, 1, 0x0222, 1, 0x3070, 1, 0x0102, 0x0269, 2, 0x0E)
+    constants = (
+        0x0022,
+        2,
+        0x011A,
+        7,
+        0x2070,
+        3,
+        0x0010,
+        0x0069,
+        0,
+        0x0022,
+        2,
+        0x011A,
+        8,
+        0x2070,
+        3,
+        0x0010,
+        0x0069,
+        1,
+        0x0E,
+    )
+    malformed = CodeItem(500, 1, 0, 0, 0, 0, (0x0100,))
+    dex._items = (
+        (EncodedMethod(4, 0, 500), malformed),
+        (EncodedMethod(0, 0, 300), CodeItem(300, 3, 0, 4, 0, 0, holder)),
+        (EncodedMethod(2, 0, 400), CodeItem(400, 2, 0, 2, 0, 0, constants)),
+    )
+
+    evidence = recover_map_evidence(dex, 2)  # type: ignore[arg-type]
+
+    assert evidence == LiteMapEvidence("string", "int32")
+
+
+def test_map_field_name_lookup_exhausts_without_a_matching_store() -> None:
+    dex = MapFakeDex()
+    dex.types = ("LHolder;", "LEntry;", "LFieldType;")
+    dex.strings += ("<init>", "STRING", "INT32", "key", "value")
+    dex.methods = (
+        DexMethod(0, 0, 0),
+        DexMethod(1, 0, 6),
+        DexMethod(2, 0, 0),
+        DexMethod(2, 0, 6),
+    )
+    dex.fields = (DexField(2, 2, 9), DexField(2, 2, 10), DexField(0, 1, 4))
+    holder = (0x0062, 0, 0x0162, 1, 0x0222, 1, 0x3070, 1, 0x0102, 0x0269, 2, 0x0E)
+    # only stores field 1 ("value"/INT32); field 0's own name lookup never
+    # finds a matching sput and exhausts its search.
+    constants = (0x0022, 2, 0x011A, 8, 0x2070, 3, 0x0010, 0x0069, 1, 0x0E)
+    dex._items = (
+        (EncodedMethod(0, 0, 300), CodeItem(300, 3, 0, 4, 0, 0, holder)),
+        (EncodedMethod(2, 0, 400), CodeItem(400, 2, 0, 2, 0, 0, constants)),
+    )
+
+    assert recover_map_evidence(dex, 2) is None  # type: ignore[arg-type]
