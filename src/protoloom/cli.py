@@ -179,14 +179,41 @@ def _dex_inputs(
     ]
 
 
-def _find_go_tags(path: Path, *, detection: Detection | None = None) -> GoTagExtraction:
+def _find_go_tags(
+    path: Path,
+    *,
+    detection: Detection | None = None,
+    inventory: ArchiveInventory | None = None,
+) -> GoTagExtraction:
     detection = detection if detection is not None else detect(path)
-    if detection.kind is not ContainerKind.ELF:
-        return GoTagExtraction((), ())
-    elf = ElfFile.from_path(path)
-    if not elf.is_go_binary:
-        return GoTagExtraction((), ())
-    return scan_go_struct_tags(elf, path.name)
+    if detection.kind is ContainerKind.ELF:
+        elf = ElfFile.from_path(path)
+        if not elf.is_go_binary:
+            return GoTagExtraction((), ())
+        return scan_go_struct_tags(elf, path.name)
+    if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
+        # Real APKs bundle Go-compiled .so libraries (VPN/analytics SDKs)
+        # alongside dex bytecode; each native library is its own ELF and
+        # needs its own reflection scan, not just the archive's dex members.
+        archive = AndroidArchive(path)
+        inv = inventory if inventory is not None else archive.inventory()
+        natives = inv.select({"native"})
+        if not natives:
+            return GoTagExtraction((), ())
+        schemas: list[RecoveredSchema] = []
+        bailouts: list[str] = []
+        for entry, data in archive.iter_read(natives):
+            try:
+                elf = ElfFile(data)
+            except ElfError:
+                continue
+            if not elf.is_go_binary:
+                continue
+            extraction = scan_go_struct_tags(elf, entry.name)
+            schemas.extend(extraction.schemas)
+            bailouts.extend(extraction.bailouts)
+        return GoTagExtraction(tuple(schemas), tuple(bailouts))
+    return GoTagExtraction((), ())
 
 
 def _wire_parent(owner: str) -> str | None:
@@ -857,10 +884,13 @@ def extract(
     findings = _find(
         path, dex_inputs=dex_inputs, detection=detection, inventory=inventory
     )
+    # Only skip the reflection-based scan when the whole input *is* the ELF
+    # already covered by `findings` (a raw-section scan of that same file);
+    # dex/native findings inside an archive say nothing about its .so files.
     go_tags = (
-        _find_go_tags(path, detection=detection)
-        if not findings
-        else GoTagExtraction((), ())
+        GoTagExtraction((), ())
+        if findings and detection.kind is ContainerKind.ELF
+        else _find_go_tags(path, detection=detection, inventory=inventory)
     )
     # Shared across the three finders below: each used to construct its own
     # DexFile(data) from the same bytes, so every input dex was parsed

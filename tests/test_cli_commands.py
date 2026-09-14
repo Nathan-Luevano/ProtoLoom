@@ -34,6 +34,7 @@ from protoloom.container.dex import (
     DexPrototype,
     EncodedMethod,
 )
+from protoloom.container.elf import ElfError
 from protoloom.doctor import DependencyStatus, DoctorReport
 from protoloom.extract.descriptor import DescriptorFinding
 from protoloom.extract.gotags import GoTagExtraction
@@ -806,6 +807,72 @@ def test_extract_emits_descriptor_free_go_schema(
 
     assert result.exit_code == 0, result.output
     assert "uint64 id = 1;" in (output / "Record.proto").read_text()
+
+
+def test_find_go_tags_scans_every_native_library_in_an_apk(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    # Real APKs bundle Go SDKs (VPN/analytics) as per-architecture .so files
+    # alongside dex; every native library needs its own reflection scan.
+    apk = tmp_path / "app.apk"
+    with ZipFile(apk, "w") as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+        archive.writestr("classes.dex", b"dex\n039\x00")
+        archive.writestr("lib/arm64-v8a/libsdk.so", b"\x7fELF-arm64")
+        archive.writestr("lib/armeabi-v7a/libsdk.so", b"\x7fELF-armv7")
+        archive.writestr("lib/x86_64/libother.so", b"not-an-elf")
+
+    class FakeGoElf:
+        def __init__(self, data: bytes) -> None:
+            if not data.startswith(b"\x7fELF"):
+                raise ElfError("not an ELF file")
+            self.data = data
+
+        @property
+        def is_go_binary(self) -> bool:
+            return True
+
+    calls: list[str] = []
+
+    def fake_scan(elf: object, source: str) -> GoTagExtraction:
+        calls.append(source)
+        schema = RecoveredSchema(name=f"{source}.proto", syntax="proto3", messages=[])
+        return GoTagExtraction((schema,), ())
+
+    monkeypatch.setattr("protoloom.cli.ElfFile", FakeGoElf)
+    monkeypatch.setattr("protoloom.cli.scan_go_struct_tags", fake_scan)
+
+    from protoloom.cli import _find_go_tags
+
+    result = _find_go_tags(apk)
+
+    assert set(calls) == {"lib/arm64-v8a/libsdk.so", "lib/armeabi-v7a/libsdk.so"}
+    assert len(result.schemas) == 2
+
+
+def test_extract_runs_go_tag_scan_alongside_dex_findings_in_an_apk(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    # A single archive can mix dex-derived findings with a Go native SDK;
+    # the presence of dex findings must not suppress the native .so scan.
+    apk = tmp_path / "app.apk"
+    with ZipFile(apk, "w") as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+        archive.writestr("classes.dex", b"dex\n039\x00")
+        archive.writestr("lib/arm64-v8a/libsdk.so", b"\x7fELF")
+
+    monkeypatch.setattr("protoloom.cli._find", lambda path, **kwargs: [object()])
+    calls: list[Path] = []
+
+    def fake_find_go_tags(path: Path, **kwargs: object) -> GoTagExtraction:
+        calls.append(path)
+        return GoTagExtraction((), ())
+
+    monkeypatch.setattr("protoloom.cli._find_go_tags", fake_find_go_tags)
+
+    runner.invoke(app, ["extract", str(apk), "-o", str(tmp_path / "out")])
+
+    assert calls == [apk]
 
 
 def test_doctor_reports_required_and_optional_tools() -> None:
