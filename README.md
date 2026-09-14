@@ -85,7 +85,10 @@ Open `out/dashboard/index.html` for the visual report, or use the generated
 `.proto` files directly. The output also includes a descriptor set,
 `recovery.json`, and a Markdown report.
 
-For difficult Android apps, jadx can be enabled as an optional fallback:
+For difficult Android apps, jadx can be run alongside the normal recovery to
+keep decompiled Java sources and a protobuf-metadata candidate index next to
+the output for manual follow-up. It does not feed back into the recovered
+`.proto` files or change the recovered schema count:
 
 ```console
 protoloom extract app.apk --jadx --output out

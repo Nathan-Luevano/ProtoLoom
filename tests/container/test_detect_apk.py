@@ -127,6 +127,31 @@ def test_classify_zip_detects_bundle_and_jar_and_plain_zip(tmp_path: Path) -> No
     assert detect(plain).kind is ContainerKind.ZIP
 
 
+def test_bundle_shaped_aab_finds_dex_across_every_split_module(tmp_path: Path) -> None:
+    # A real bundletool .aab has one dex/manifest pair per module (base,
+    # feature1, an install-time feature, ...) rather than one flat set of
+    # classes*.dex at the archive root like an APK. Detection and dex
+    # selection must not assume the APK's flat layout.
+    aab = tmp_path / "real_shaped.aab"
+    with ZipFile(aab, "w") as archive:
+        archive.writestr("BundleConfig.pb", b"cfg")
+        archive.writestr("base/manifest/AndroidManifest.xml", b"stub")
+        archive.writestr("base/dex/classes.dex", b"base-dex-1")
+        archive.writestr("base/dex/classes2.dex", b"base-dex-2")
+        archive.writestr("feature1/manifest/AndroidManifest.xml", b"stub")
+        archive.writestr("feature1/dex/classes.dex", b"feature1-dex")
+        archive.writestr("install_time_feature/manifest/AndroidManifest.xml", b"stub")
+
+    assert detect(aab).kind is ContainerKind.AAB
+    inventory = AndroidArchive(aab).inventory()
+    dex_names = {entry.name for entry in inventory.dex_files}
+    assert dex_names == {
+        "base/dex/classes.dex",
+        "base/dex/classes2.dex",
+        "feature1/dex/classes.dex",
+    }
+
+
 def test_detection_rejects_special_and_oversized_inputs(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

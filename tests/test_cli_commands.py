@@ -337,6 +337,49 @@ def test_archive_scanning_finds_and_deduplicates_descriptors(tmp_path: Path) -> 
     assert _dex_inputs(apk) == [("classes.dex", dex)]
 
 
+def test_bundle_shaped_aab_recovers_descriptors_from_every_split_module(
+    tmp_path: Path,
+) -> None:
+    # Real .aab files nest each module's dex under "<module>/dex/", unlike
+    # an APK's flat "classes*.dex" at the archive root; a scanner that only
+    # looks for dex at the root would silently miss every non-base module.
+    base_descriptor = FileDescriptorSet()
+    base_file = base_descriptor.file.add(
+        name="base.proto", package="base", syntax="proto3"
+    )
+    base_file.message_type.add(name="Base")
+    feature_descriptor = FileDescriptorSet()
+    feature_file = feature_descriptor.file.add(
+        name="feature.proto", package="feature", syntax="proto3"
+    )
+    feature_file.message_type.add(name="Feature")
+
+    base_payload = base_file.SerializeToString()
+    feature_payload = feature_file.SerializeToString()
+    base_dex = b"dex\n039\x00" + base_payload
+    feature_dex = b"dex\n039\x00" + feature_payload
+
+    aab = tmp_path / "bundle.aab"
+    with ZipFile(aab, "w") as archive:
+        archive.writestr("BundleConfig.pb", b"cfg")
+        archive.writestr("base/manifest/AndroidManifest.xml", b"stub")
+        archive.writestr("base/dex/classes.dex", base_dex)
+        archive.writestr("feature1/manifest/AndroidManifest.xml", b"stub")
+        archive.writestr("feature1/dex/classes.dex", feature_dex)
+
+    findings = _find(aab)
+
+    assert sorted(finding.descriptor.name for finding in findings) == [
+        "base.proto",
+        "feature.proto",
+    ]
+    dex_inputs = dict(_dex_inputs(aab))
+    assert dex_inputs == {
+        "base/dex/classes.dex": base_dex,
+        "feature1/dex/classes.dex": feature_dex,
+    }
+
+
 def test_extract_reconciles_conflicting_same_named_descriptors(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
