@@ -485,6 +485,147 @@ def test_upstream_hash_rejects_special_and_oversized_files(tmp_path: Path) -> No
         sha256(source, max_size=4)
 
 
+def test_upstream_hash_rejects_non_positive_max_size(tmp_path: Path) -> None:
+    source = tmp_path / "artifact"
+    source.write_bytes(b"data")
+    with pytest.raises(ValueError, match="hash size limit must be positive"):
+        sha256(source, max_size=0)
+
+
+def test_upstream_hash_enforces_bound_during_streaming(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "artifact.bin"
+    path.write_bytes(b"x" * 10)
+    real_fstat = os.fstat
+
+    class FakeStat:
+        def __init__(self, real: os.stat_result) -> None:
+            self._real = real
+            self.st_size = 5
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._real, name)
+
+    monkeypatch.setattr(
+        "protoloom.bench.upstream.os.fstat", lambda fd: FakeStat(real_fstat(fd))
+    )
+    with pytest.raises(ValueError, match="source exceeds 5 bytes"):
+        sha256(path, max_size=5)
+
+
+def test_manifest_bounds_file_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    manifest = _manifest()
+    manifest["sources"][0]["files"] = [
+        {
+            "path": "proto/one.proto",
+            "url": "https://example.test/one",
+            "sha256": "a" * 64,
+            "size": 1,
+        }
+    ]
+    monkeypatch.setattr("protoloom.bench.upstream.MAX_UPSTREAM_FILES", 0)
+    with pytest.raises(ValueError, match="exceeds 0 files"):
+        validate_source_manifest(manifest)
+
+
+def test_manifest_bounds_include_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    manifest = _manifest()
+    monkeypatch.setattr("protoloom.bench.upstream.MAX_UPSTREAM_INCLUDES", 1)
+    with pytest.raises(ValueError, match="exceeds 1 includes"):
+        validate_source_manifest(manifest)
+
+
+def test_manifest_refuses_non_proto_target_extension() -> None:
+    manifest = _manifest()
+    manifest["sources"][0]["targets"][0]["proto"] = "sample.txt"
+    with pytest.raises(ValueError, match="unsafe target proto"):
+        validate_source_manifest(manifest)
+
+
+def test_extract_rejects_non_positive_limits(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="extraction limits must be positive"):
+        extract(tmp_path / "missing.tar.gz", tmp_path / "out", max_members=0)
+    with pytest.raises(ValueError, match="extraction limits must be positive"):
+        extract(tmp_path / "missing.tar.gz", tmp_path / "out2", max_size=0)
+
+
+def test_copy_member_rejects_oversized_chunk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        member = tarfile.TarInfo("root/item")
+        member.size = 1
+        bundle.addfile(member, io.BytesIO(b"x"))
+    real_extractfile = tarfile.TarFile.extractfile
+
+    def lying_extractfile(self: tarfile.TarFile, member: tarfile.TarInfo) -> object:
+        source = real_extractfile(self, member)
+        assert source is not None
+        return io.BytesIO(source.read() + b"extra")
+
+    monkeypatch.setattr(tarfile.TarFile, "extractfile", lying_extractfile)
+    with pytest.raises(ValueError, match="exceeds its declared size"):
+        extract(archive, tmp_path / "output")
+
+
+def test_copy_member_rejects_short_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        member = tarfile.TarInfo("root/item")
+        member.size = 5
+        bundle.addfile(member, io.BytesIO(b"x" * 5))
+    real_extractfile = tarfile.TarFile.extractfile
+
+    def truncating_extractfile(
+        self: tarfile.TarFile, member: tarfile.TarInfo
+    ) -> object:
+        source = real_extractfile(self, member)
+        assert source is not None
+        return io.BytesIO(source.read()[:2])
+
+    monkeypatch.setattr(tarfile.TarFile, "extractfile", truncating_extractfile)
+    with pytest.raises(ValueError, match="shorter than its declared size"):
+        extract(archive, tmp_path / "output")
+
+
+def test_materialize_source_refuses_symlinked_destination(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.symlink_to(tmp_path / "victim", target_is_directory=True)
+    source = {
+        "files": [
+            {
+                "path": "proto/one.proto",
+                "url": "https://example.test/one",
+                "sha256": "a" * 64,
+                "size": 1,
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="materialization path is a symlink"):
+        materialize_source(source, tmp_path / "cache", root)
+
+
+def test_materialize_source_refuses_existing_destination(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    source = {
+        "files": [
+            {
+                "path": "proto/one.proto",
+                "url": "https://example.test/one",
+                "sha256": "a" * 64,
+                "size": 1,
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="materialization path already exists"):
+        materialize_source(source, tmp_path / "cache", root)
+
+
 def test_download_refuses_invalid_size(tmp_path: Path) -> None:
     destination = tmp_path / "archive.tar.gz"
     with pytest.raises(ValueError, match="128 MiB limit"):
