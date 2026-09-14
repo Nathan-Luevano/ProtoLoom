@@ -628,3 +628,43 @@ def test_service_reference_to_missing_type_gets_a_placeholder() -> None:
     emitted = emit_proto(schema)
     assert "message Missing {}" in emitted
     assert compile_proto(emitted).success
+
+
+def test_group_field_emits_inline_group_syntax() -> None:
+    # TYPE_GROUP is wire-incompatible with a plain message field: emitting it
+    # as `repeated .Outer.ResultGroup result = 2;` would silently change the
+    # recompiled wire format from group markers to length-delimited bytes.
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto2",
+        messages=[
+            Message(
+                "Outer",
+                fields=[
+                    Field(
+                        "result",
+                        2,
+                        ".Outer.ResultGroup",
+                        Confidence.CERTAIN,
+                        label="repeated",
+                        is_group=True,
+                    )
+                ],
+                messages=[
+                    Message(
+                        "ResultGroup",
+                        fields=[
+                            Field(
+                                "url", 1, "string", Confidence.CERTAIN, label="optional"
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "repeated group ResultGroup = 2 {" in emitted
+    assert "message ResultGroup {" not in emitted
+    result = compile_proto(emitted)
+    assert result.success, result.stderr

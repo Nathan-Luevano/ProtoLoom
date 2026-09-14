@@ -26,6 +26,32 @@ def _descriptor() -> FileDescriptorProto:
     return descriptor
 
 
+def test_scan_recovers_legacy_proto2_group_field() -> None:
+    # TYPE_GROUP is dead wire format but still legal; a raw embedded
+    # FileDescriptorProto using it must round-trip through scan/decode/emit
+    # without silently downgrading it to a wire-incompatible message field.
+    descriptor = FileDescriptorProto(name="example/legacy.proto", package="demo")
+    descriptor.syntax = "proto2"
+    message = descriptor.message_type.add(name="Outer")
+    nested = message.nested_type.add(name="ResultGroup")
+    inner = nested.field.add(name="url", number=1)
+    inner.label = inner.LABEL_OPTIONAL
+    inner.type = inner.TYPE_STRING
+    group_field = message.field.add(name="result", number=2)
+    group_field.label = group_field.LABEL_REPEATED
+    group_field.type = group_field.TYPE_GROUP
+    group_field.type_name = ".demo.Outer.ResultGroup"
+    payload = descriptor.SerializeToString()
+
+    findings = scan_descriptors(payload, "fixture")
+    assert len(findings) == 1
+    schema = decode_file_descriptor(findings[0].descriptor, "fixture", "fixture@0x0")
+    emitted = emit_proto(schema)
+    assert "group ResultGroup = 2 {" in emitted
+    result = compile_proto(emitted)
+    assert result.success, result.stderr
+
+
 def test_scan_recovers_exact_descriptor_from_noise() -> None:
     expected = _descriptor()
     payload = expected.SerializeToString()

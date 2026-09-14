@@ -47,6 +47,10 @@ def _field(raw: FieldDescriptorProto, oneofs: list[str], evidence: Evidence) -> 
         default_value=raw.default_value or None,
         packed=raw.options.packed if raw.options.HasField("packed") else None,
         proto3_optional=raw.proto3_optional,
+        # TYPE_GROUP is wire-incompatible with a plain message field on
+        # recompile (start/end-group markers vs length-delimited); keep the
+        # distinction so emit can round-trip the group syntax.
+        is_group=raw.type == FieldDescriptorProto.TYPE_GROUP,
         confidence=Confidence.CERTAIN,
         evidence=[evidence],
     )

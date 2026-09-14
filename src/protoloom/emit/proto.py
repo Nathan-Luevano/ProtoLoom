@@ -228,26 +228,59 @@ def _field(
     return f"{indent}{prefix}{field_type} {name} = {item.number}{suffix};"
 
 
-def _message(
+def _group_message_target(item: Message, field: Field) -> Message | None:
+    # protoc always declares a TYPE_GROUP field's message as a direct nested
+    # type of its owner, named after the field's type_name's last segment.
+    local = field.type_name.removeprefix(".").rsplit(".", 1)[-1]
+    candidates = [nested for nested in item.messages if nested.name == local]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _group_field(
+    item: Message,
+    field: Field,
+    target: Message,
+    syntax: str,
+    indent: str,
+    name: str,
+    renames: dict[str, str],
+    package: str,
+) -> list[str]:
+    label = "" if syntax == "proto3" and field.label != "repeated" else field.label
+    prefix = f"{label} " if label else ""
+    group_name = _name(target.name, "RecoveredGroup")
+    lines = [f"{indent}{prefix}group {group_name} = {field.number} {{"]
+    lines.extend(_message_body(target, syntax, renames, package, f"{indent}  "))
+    lines.append(f"{indent}}}")
+    return lines
+
+
+def _message_body(
     item: Message,
     syntax: str,
     renames: dict[str, str],
     package: str,
-    indent: str = "",
-    name: str | None = None,
+    child_indent: str,
 ) -> list[str]:
-    message_name = name or _name(item.name, "RecoveredMessage")
-    lines = [f"{indent}message {message_name} {{"]
-    child_indent = f"{indent}  "
+    lines: list[str] = []
     message_names, enum_names = _declaration_names(item.messages, item.enums)
+    fields = _deduplicated_fields(item.fields)
+    inlined_groups: dict[int, Message] = {}
+    for candidate in fields:
+        if not candidate.is_group:
+            continue
+        target = _group_message_target(item, candidate)
+        if target is not None:
+            inlined_groups[id(target)] = target
     for nested, nested_name in zip(item.messages, message_names, strict=True):
+        if id(nested) in inlined_groups:
+            continue
         lines.extend(
             _message(nested, syntax, renames, package, child_indent, nested_name)
         )
     enum_scope = {*message_names, *enum_names}
     for enum, enum_name in zip(item.enums, enum_names, strict=True):
         lines.extend(_enum(enum, syntax, child_indent, enum_scope, enum_name))
-    fields = _deduplicated_fields(item.fields)
     field_names = _unique_names([field.name for field in fields], "recovered_field")
     standalone: list[tuple[Field, str]] = []
     grouped_fields: dict[str, list[tuple[Field, str]]] = {}
@@ -265,7 +298,24 @@ def _message(
         )
     )
     for field, field_name in standalone:
-        lines.append(_field(field, syntax, child_indent, field_name, renames, package))
+        target = _group_message_target(item, field) if field.is_group else None
+        if target is not None:
+            lines.extend(
+                _group_field(
+                    item,
+                    field,
+                    target,
+                    syntax,
+                    child_indent,
+                    field_name,
+                    renames,
+                    package,
+                )
+            )
+        else:
+            lines.append(
+                _field(field, syntax, child_indent, field_name, renames, package)
+            )
     for group in grouped:
         lines.append(f"{child_indent}oneof {group_names[group]} {{")
         for field, field_name in grouped_fields[group]:
@@ -280,6 +330,21 @@ def _message(
                 )
             )
         lines.append(f"{child_indent}}}")
+    return lines
+
+
+def _message(
+    item: Message,
+    syntax: str,
+    renames: dict[str, str],
+    package: str,
+    indent: str = "",
+    name: str | None = None,
+) -> list[str]:
+    message_name = name or _name(item.name, "RecoveredMessage")
+    lines = [f"{indent}message {message_name} {{"]
+    child_indent = f"{indent}  "
+    lines.extend(_message_body(item, syntax, renames, package, child_indent))
     lines.append(f"{indent}}}")
     return lines
 

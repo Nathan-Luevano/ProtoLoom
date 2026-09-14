@@ -47,6 +47,7 @@ class Field:
     default_value: str | None = None
     packed: bool | None = None
     proto3_optional: bool = False
+    is_group: bool = False
 
     def __post_init__(self) -> None:
         if not 1 <= self.number < 2**29:
