@@ -312,7 +312,8 @@ def test_extract_reuses_loaded_dex_inputs(
     binary.write_bytes(b"input")
     shared = [("classes.dex", b"dex")]
     loads = 0
-    received: list[list[tuple[str, bytes]]] = []
+    dex_received: list[list[tuple[str, bytes]]] = []
+    cache_received: list[object] = []
 
     def load(path: Path) -> list[tuple[str, bytes]]:
         nonlocal loads
@@ -320,19 +321,22 @@ def test_extract_reuses_loaded_dex_inputs(
         return shared
 
     def find(path: Path, *, dex_inputs: list[tuple[str, bytes]]) -> list[object]:
-        received.append(dex_inputs)
+        dex_received.append(dex_inputs)
         return []
 
     def find_lite(path: Path, **kwargs: object) -> tuple[object, ...]:
-        received.append(cast(list[tuple[str, bytes]], kwargs["dex_inputs"]))
+        dex_received.append(cast(list[tuple[str, bytes]], kwargs["dex_inputs"]))
+        cache_received.append(kwargs["dex_cache"])
         return [], [], {}, {}
 
     def find_wire(path: Path, **kwargs: object) -> tuple[object, ...]:
-        received.append(cast(list[tuple[str, bytes]], kwargs["dex_inputs"]))
+        dex_received.append(cast(list[tuple[str, bytes]], kwargs["dex_inputs"]))
+        cache_received.append(kwargs["dex_cache"])
         return [], {}, {}
 
     def find_grpc(path: Path, **kwargs: object) -> list[object]:
-        received.append(cast(list[tuple[str, bytes]], kwargs["dex_inputs"]))
+        dex_received.append(cast(list[tuple[str, bytes]], kwargs["dex_inputs"]))
+        cache_received.append(kwargs["dex_cache"])
         return []
 
     monkeypatch.setattr("protoloom.cli._dex_inputs", load)
@@ -345,7 +349,9 @@ def test_extract_reuses_loaded_dex_inputs(
 
     assert result.exit_code == 2
     assert loads == 1
-    assert all(item is shared for item in received)
+    assert all(item is shared for item in dex_received)
+    assert len(cache_received) == 3
+    assert all(item is cache_received[0] for item in cache_received)
 
 
 def test_extract_compiles_lite_schema_and_honors_heuristic_flag(

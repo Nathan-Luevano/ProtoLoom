@@ -176,10 +176,27 @@ def _wire_parent(owner: str) -> str | None:
     return f"{owner.rsplit('$', 1)[0]};"
 
 
+def _cached_dex(
+    inputs: list[tuple[str, bytes]], cache: dict[str, DexFile]
+) -> list[tuple[str, DexFile]]:
+    # _find_lite/_find_wire/_find_grpc each need a parsed DexFile for every
+    # input; without a shared cache they'd each parse the same bytes from
+    # scratch, so every dex in an APK got parsed three times over.
+    result = []
+    for source, data in inputs:
+        dex = cache.get(source)
+        if dex is None:
+            dex = DexFile(data)
+            cache[source] = dex
+        result.append((source, dex))
+    return result
+
+
 def _find_wire(
     path: Path,
     *,
     dex_inputs: list[tuple[str, bytes]] | None = None,
+    dex_cache: dict[str, DexFile] | None = None,
 ) -> tuple[
     list[RecoveredSchema],
     dict[tuple[str, str], tuple[str, str | None]],
@@ -188,9 +205,9 @@ def _find_wire(
     schemas = []
     lineage = {}
     enum_lineage = {}
-    inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
-    for source, data in inputs:
-        dex = DexFile(data)
+    raw_inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
+    cache = dex_cache if dex_cache is not None else {}
+    for source, dex in _cached_dex(raw_inputs, cache):
         message_types = set(extract_wire_messages(dex))
         annotations = extract_wire_annotations(dex)
         writes: tuple[WireAdapterFinding, ...] = ()
@@ -238,11 +255,12 @@ def _find_grpc(
     path: Path,
     *,
     dex_inputs: list[tuple[str, bytes]] | None = None,
+    dex_cache: dict[str, DexFile] | None = None,
 ) -> list[RecoveredSchema]:
     schemas: list[RecoveredSchema] = []
-    inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
-    for source, data in inputs:
-        dex = DexFile(data)
+    raw_inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
+    cache = dex_cache if dex_cache is not None else {}
+    for source, dex in _cached_dex(raw_inputs, cache):
         for evidence in scan_grpc_services(dex):
             schemas.append(decode_grpc_service(dex, evidence, source))
     return schemas
@@ -253,6 +271,7 @@ def _find_lite(
     *,
     allow_heuristic: bool = False,
     dex_inputs: list[tuple[str, bytes]] | None = None,
+    dex_cache: dict[str, DexFile] | None = None,
 ) -> tuple[
     list[RecoveredSchema],
     list[str],
@@ -265,9 +284,9 @@ def _find_lite(
     # name across different packages (e.g. two distinct "Relay" classes).
     lineage: dict[tuple[str, str], tuple[str, str | None]] = {}
     enum_lineage: dict[tuple[str, str], dict[str, str | None]] = {}
-    inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
-    for source, data in inputs:
-        dex = DexFile(data)
+    raw_inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
+    cache = dex_cache if dex_cache is not None else {}
+    for source, dex in _cached_dex(raw_inputs, cache):
         extraction = extract_lite(dex, allow_heuristic=allow_heuristic)
         for finding in extraction.findings:
             try:
@@ -803,13 +822,20 @@ def extract(
     dex_inputs = _dex_inputs(path)
     findings = _find(path, dex_inputs=dex_inputs)
     go_tags = _find_go_tags(path) if not findings else GoTagExtraction((), ())
+    # Shared across the three finders below: each used to construct its own
+    # DexFile(data) from the same bytes, so every input dex was parsed
+    # three times over.
+    dex_cache: dict[str, DexFile] = {}
     lite_schemas, bailouts, lineage, enum_lineage = _find_lite(
-        path, allow_heuristic=allow_heuristic_lite, dex_inputs=dex_inputs
+        path,
+        allow_heuristic=allow_heuristic_lite,
+        dex_inputs=dex_inputs,
+        dex_cache=dex_cache,
     )
     wire_schemas, wire_lineage, wire_enum_lineage = _find_wire(
-        path, dex_inputs=dex_inputs
+        path, dex_inputs=dex_inputs, dex_cache=dex_cache
     )
-    grpc_schemas = _find_grpc(path, dex_inputs=dex_inputs)
+    grpc_schemas = _find_grpc(path, dex_inputs=dex_inputs, dex_cache=dex_cache)
     lineage.update(wire_lineage)
     enum_lineage.update(wire_enum_lineage)
     bailouts.extend(f"{path.name}: {reason}" for reason in go_tags.bailouts)
