@@ -1,4 +1,5 @@
 import gzip
+import zlib
 
 import pytest
 from google.protobuf.descriptor_pb2 import FileDescriptorProto
@@ -161,6 +162,41 @@ def test_gzip_scan_ignores_false_magic_and_limits_inflation() -> None:
     assert scan_gzip_descriptors(b"prefix\x1f\x8bnot-gzip") == []
     compressed = gzip.compress(b"x" * 1024)
     assert scan_gzip_descriptors(compressed, max_inflated_size=100) == []
+
+
+def test_gzip_scan_resumes_past_a_member_that_never_reaches_eof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A member whose declared/actual length never completes a stream (as
+    # opposed to raising zlib.error outright) must still be skipped rather
+    # than treated as a found descriptor or an infinite loop.
+    class _NeverDoneDecompressor:
+        eof = False
+
+        def decompress(self, data: bytes, limit: int) -> bytes:
+            return b"partial"
+
+    calls = []
+    real_decompressobj = zlib.decompressobj
+
+    def fake_decompressobj(wbits: int) -> object:
+        calls.append(1)
+        if len(calls) == 1:
+            return _NeverDoneDecompressor()
+        return real_decompressobj(wbits=wbits)
+
+    monkeypatch.setattr(
+        "protoloom.extract.gozip.zlib.decompressobj", fake_decompressobj
+    )
+    expected = _descriptor().SerializeToString()
+    real = gzip.compress(expected)
+    data = b"\x1f\x8b" + real
+
+    findings = scan_gzip_descriptors(data)
+
+    assert len(findings) == 1
+    assert findings[0].descriptor.SerializeToString() == expected
+    assert len(calls) == 2
 
 
 def test_gzip_scan_applies_inflation_budget_across_members() -> None:

@@ -43,6 +43,13 @@ def test_json_output_bounds_encoded_bytes() -> None:
         emit_json([], [], [], max_bytes=8)
 
 
+def test_json_output_bounds_schema_level_items_before_message_walk() -> None:
+    schema = RecoveredSchema("a.proto", dependencies=["x.proto", "y.proto"])
+
+    with pytest.raises(ValueError, match="exceeds 1 schema items"):
+        emit_json([schema], [], [], max_items=1)
+
+
 def test_json_output_bounds_schema_items() -> None:
     schema = RecoveredSchema(
         "deep.proto",
