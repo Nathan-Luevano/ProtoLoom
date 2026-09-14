@@ -1,5 +1,7 @@
 from typing import Literal
 
+import pytest
+
 from protoloom.container.elf import ElfSection
 from protoloom.extract.gotags import (
     GoProtobufTag,
@@ -143,6 +145,29 @@ def test_rejects_unsupported_go_metadata_version() -> None:
     result = scan_go_struct_tags(elf, "fixture")
 
     assert result.bailouts == ("unsupported Go metadata version",)
+
+
+def test_memory_bytes_rejects_address_outside_sections() -> None:
+    memory = _Memory(FakeElf(b"1234"))
+    with pytest.raises(ValueError, match="outside file sections"):
+        memory.bytes(0x5000, 1)
+
+
+def test_type_name_unstripped_without_pointer_flag() -> None:
+    data = bytearray(128)
+    name = b"main.Record"
+    data[32 : 34 + len(name)] = bytes((1, len(name))) + name
+    data[64 + 20] = 0
+    data[64 + 40 : 64 + 44] = (32).to_bytes(4, "little", signed=True)
+    memory = _Memory(FakeElf(bytes(data)))
+
+    assert memory.type_name(0x1040) == "main.Record"
+
+
+def test_varint_rejects_oversized_encoding() -> None:
+    memory = _Memory(FakeElf(bytes([0x80] * 5)))
+    with pytest.raises(ValueError, match="oversized Go name length"):
+        memory.varint(0x1000)
 
 
 def test_rejects_malformed_go_type_links() -> None:
