@@ -4,7 +4,7 @@ import zlib
 import pytest
 from google.protobuf.descriptor_pb2 import FileDescriptorProto
 
-from protoloom.decode.descpb import decode_file_descriptor
+from protoloom.decode.descpb import decode_file_descriptor, extension_diagnostics
 from protoloom.emit.proto import emit_proto
 from protoloom.extract.descriptor import (
     _candidate_name,
@@ -68,6 +68,30 @@ def test_scan_recovers_legacy_proto2_group_field() -> None:
     assert "group ResultGroup = 2 {" in emitted
     result = compile_proto(emitted)
     assert result.success, result.stderr
+
+
+def test_extension_diagnostics_reports_dropped_extension_range() -> None:
+    descriptor = _descriptor()
+    descriptor.syntax = "proto2"
+    message = descriptor.message_type[0]
+    message.extension_range.add(start=100, end=200)
+    field = message.extension.add(name="ext_field", number=100)
+    field.label = field.LABEL_OPTIONAL
+    field.type = field.TYPE_STRING
+    field.extendee = ".demo.Greeting"
+    lines = extension_diagnostics(descriptor)
+    assert len(lines) == 1
+    assert "Greeting" in lines[0]
+    assert "1 extension field" in lines[0]
+    assert "1 extension range" in lines[0]
+    # decode_file_descriptor still succeeds; the extension content is what's
+    # silently missing, which is exactly what extension_diagnostics flags.
+    schema = decode_file_descriptor(descriptor, "fixture", "0x0")
+    assert len(schema.messages[0].fields) == 1
+
+
+def test_extension_diagnostics_empty_for_ordinary_descriptor() -> None:
+    assert extension_diagnostics(_descriptor()) == []
 
 
 def test_scan_recovers_exact_descriptor_from_noise() -> None:

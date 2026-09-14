@@ -84,6 +84,34 @@ def _field(raw: FieldDescriptorProto, oneofs: list[str], evidence: Evidence) -> 
     )
 
 
+def _extension_lines(raw: DescriptorProto, prefix: str) -> list[str]:
+    name = f"{prefix}{raw.name}"
+    lines = []
+    if raw.extension or raw.extension_range:
+        lines.append(
+            f"message {name}: {len(raw.extension)} extension field(s), "
+            f"{len(raw.extension_range)} extension range(s) not modeled and dropped"
+        )
+    for nested in raw.nested_type:
+        lines.extend(_extension_lines(nested, f"{name}."))
+    return lines
+
+
+def extension_diagnostics(raw: FileDescriptorProto) -> list[str]:
+    # proto2 `extend` blocks/extension ranges are not modeled anywhere in this
+    # decoder; surfacing them here lets callers warn instead of silently
+    # emitting a schema that looks complete but has dropped real content.
+    lines = [
+        line for message in raw.message_type for line in _extension_lines(message, "")
+    ]
+    if raw.extension:
+        lines.append(
+            f"file {raw.name}: {len(raw.extension)} top-level extension field(s) "
+            "not modeled and dropped"
+        )
+    return [f"{raw.name}: {line}" for line in lines]
+
+
 def _message(raw: DescriptorProto, evidence: Evidence) -> Message:
     oneofs = [item.name for item in raw.oneof_decl]
     return Message(

@@ -27,7 +27,7 @@ from protoloom.container.dex import DexError, DexFile
 from protoloom.container.elf import ElfError, ElfFile
 from protoloom.container.macho import MachOError, MachOFile
 from protoloom.container.read import read_limited
-from protoloom.decode.descpb import decode_file_descriptor
+from protoloom.decode.descpb import decode_file_descriptor, extension_diagnostics
 from protoloom.decode.grpc import decode_grpc_service
 from protoloom.decode.lite import decode_lite_finding
 from protoloom.decode.wire import (
@@ -949,6 +949,7 @@ def extract(
             bailouts.append(f"{finding.source}@0x{finding.offset:x}: {error}")
             continue
         schemas.append(schema)
+        bailouts.extend(extension_diagnostics(finding.descriptor))
     schemas.extend(go_tags.schemas)
     schemas.extend(lite_schemas)
     schemas.extend(wire_schemas)
