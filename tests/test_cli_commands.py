@@ -229,6 +229,7 @@ def test_extract_reports_jadx_failure(tmp_path: Path, monkeypatch: MonkeyPatch) 
         lambda path, allow_heuristic, **kwargs: ([], [], {}, {}),
     )
     monkeypatch.setattr("protoloom.cli._find_wire", lambda path, **kwargs: ([], {}, {}))
+    monkeypatch.setattr("protoloom.cli._find_grpc", lambda path, **kwargs: [])
     monkeypatch.setattr(
         "protoloom.cli.detect", lambda path: Detection(ContainerKind.DEX)
     )
@@ -254,6 +255,7 @@ def test_extract_reports_retained_jadx_context(
         lambda path, allow_heuristic, **kwargs: ([], [], {}, {}),
     )
     monkeypatch.setattr("protoloom.cli._find_wire", lambda path, **kwargs: ([], {}, {}))
+    monkeypatch.setattr("protoloom.cli._find_grpc", lambda path, **kwargs: [])
     monkeypatch.setattr(
         "protoloom.cli.detect", lambda path: Detection(ContainerKind.DEX)
     )
@@ -328,10 +330,15 @@ def test_extract_reuses_loaded_dex_inputs(
         received.append(cast(list[tuple[str, bytes]], kwargs["dex_inputs"]))
         return [], {}, {}
 
+    def find_grpc(path: Path, **kwargs: object) -> list[object]:
+        received.append(cast(list[tuple[str, bytes]], kwargs["dex_inputs"]))
+        return []
+
     monkeypatch.setattr("protoloom.cli._dex_inputs", load)
     monkeypatch.setattr("protoloom.cli._find", find)
     monkeypatch.setattr("protoloom.cli._find_lite", find_lite)
     monkeypatch.setattr("protoloom.cli._find_wire", find_wire)
+    monkeypatch.setattr("protoloom.cli._find_grpc", find_grpc)
 
     result = runner.invoke(app, ["extract", str(binary)])
 
@@ -565,6 +572,7 @@ def test_extract_rejects_output_name_collisions_before_writing(
         lambda path, allow_heuristic, **kwargs: (schemas, [], {}, {}),
     )
     monkeypatch.setattr("protoloom.cli._find_wire", lambda path, **kwargs: ([], {}, {}))
+    monkeypatch.setattr("protoloom.cli._find_grpc", lambda path, **kwargs: [])
     output = tmp_path / "output"
 
     result = runner.invoke(app, ["extract", str(binary), "-o", str(output)])

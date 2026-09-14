@@ -11,6 +11,7 @@ from protoloom.model import (
     Field,
     Message,
     RecoveredSchema,
+    Service,
 )
 
 
@@ -111,6 +112,13 @@ def _validate_budget(
         sum(1 + len(enum.values) + len(enum.evidence) for enum in schema.enums)
         for schema in schemas
     )
+    count += sum(
+        1
+        + len(service.evidence)
+        + sum(1 + len(method.evidence) for method in service.methods)
+        for schema in schemas
+        for service in schema.services
+    )
     if count > max_items:
         raise ValueError(f"reconciliation exceeds {max_items} items")
 
@@ -130,6 +138,7 @@ def _merge_schema(
     _merge_unique(target.evidence, source.evidence, seen_lists)
     _merge_named_messages(target.messages, source.messages, path, conflicts, seen_lists)
     _merge_named_enums(target.enums, source.enums, path, conflicts, seen_lists)
+    _merge_named_services(target.services, source.services, path, conflicts, seen_lists)
 
 
 def _merge_named_messages(
@@ -243,6 +252,49 @@ def _merge_named_enums(
                     incoming.confidence,
                 )
         current.values = values
+
+
+def _merge_named_services(
+    target: list[Service],
+    source: list[Service],
+    parent: str,
+    conflicts: list[Conflict],
+    seen_lists: dict[int, set[object]],
+) -> None:
+    by_name = {item.name: item for item in target}
+    for incoming in source:
+        current = by_name.get(incoming.name)
+        if current is None:
+            copied = deepcopy(incoming)
+            target.append(copied)
+            by_name[copied.name] = copied
+            continue
+        path = f"{parent}.{current.name}"
+        _merge_unique(current.evidence, incoming.evidence, seen_lists)
+        current.confidence = _best(current.confidence, incoming.confidence)
+        by_method = {method.name: method for method in current.methods}
+        for method in incoming.methods:
+            known = by_method.get(method.name)
+            if known is None:
+                copied_method = deepcopy(method)
+                current.methods.append(copied_method)
+                by_method[copied_method.name] = copied_method
+                continue
+            if (
+                known.input_type != method.input_type
+                or known.output_type != method.output_type
+            ):
+                _record(
+                    conflicts,
+                    f"{path}.{method.name}",
+                    "rpc signature",
+                    f"{known.input_type}->{known.output_type}",
+                    f"{method.input_type}->{method.output_type}",
+                    known.confidence,
+                    method.confidence,
+                )
+            _merge_unique(known.evidence, method.evidence, seen_lists)
+            known.confidence = _best(known.confidence, method.confidence)
 
 
 def _ordered(first: Field, second: Field) -> tuple[Field, Field]:

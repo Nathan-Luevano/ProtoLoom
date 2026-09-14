@@ -51,6 +51,9 @@ def emit_dashboard(
     conflict_rows = list(islice(conflicts, max_items + 1))
     if len(conflict_rows) > max_items:
         raise ValueError(f"dashboard exceeds {max_items} conflicts")
+    service_count = sum(len(schema.services) for schema in schemas)
+    if service_count > max_items:
+        raise ValueError(f"dashboard exceeds {max_items} services")
     parts = [
         "<!doctype html>",
         '<html lang="en"><head><meta charset="utf-8">',
@@ -63,6 +66,7 @@ def emit_dashboard(
         _metric("Schemas", len(schemas)),
         _metric("Messages", len(messages)),
         _metric("Fields", len(fields)),
+        _metric("Services", service_count),
         _metric("Conflicts", len(conflict_rows)),
         "</section>",
         "<section><h2>Confidence</h2><div class=confidence>",

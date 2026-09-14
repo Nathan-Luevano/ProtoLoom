@@ -10,6 +10,8 @@ from protoloom.model import (
     Field,
     Message,
     RecoveredSchema,
+    Service,
+    ServiceMethod,
 )
 from protoloom.reconcile import (
     Conflict,
@@ -252,3 +254,60 @@ def test_reconcile_bounds_generated_conflicts() -> None:
 def test_reconcile_rejects_nonpositive_limits(limits: dict[str, int]) -> None:
     with pytest.raises(ValueError, match="limits must be positive"):
         reconcile([], **limits)
+
+
+def test_reconcile_merges_service_methods_across_dex_files() -> None:
+    first_evidence = Evidence("classes.dex", "0x1")
+    second_evidence = Evidence("classes2.dex", "0x2")
+    first = RecoveredSchema(
+        "Foo.proto",
+        package="svc",
+        services=[
+            Service(
+                "Foo",
+                [
+                    ServiceMethod(
+                        "Call",
+                        "Req",
+                        "Res",
+                        Confidence.MEDIUM,
+                        [first_evidence],
+                    )
+                ],
+            )
+        ],
+    )
+    second = RecoveredSchema(
+        "Foo.proto",
+        package="svc",
+        services=[
+            Service(
+                "Foo",
+                [
+                    ServiceMethod(
+                        "Call",
+                        "Req",
+                        "Res",
+                        Confidence.HIGH,
+                        [second_evidence],
+                    ),
+                    ServiceMethod(
+                        "Stream",
+                        "Req",
+                        "Res",
+                        Confidence.HIGH,
+                        server_streaming=True,
+                    ),
+                ],
+            )
+        ],
+    )
+
+    result = reconcile([first, second])
+
+    service = result.schemas[0].services[0]
+    assert {method.name for method in service.methods} == {"Call", "Stream"}
+    call = next(method for method in service.methods if method.name == "Call")
+    assert call.confidence == Confidence.HIGH
+    assert {item.source for item in call.evidence} == {"classes.dex", "classes2.dex"}
+    assert not result.conflicts

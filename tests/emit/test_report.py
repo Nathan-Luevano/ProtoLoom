@@ -1,7 +1,14 @@
 import pytest
 
 from protoloom.emit.report import emit_report
-from protoloom.model import Confidence, Field, Message, RecoveredSchema
+from protoloom.model import (
+    Confidence,
+    Field,
+    Message,
+    RecoveredSchema,
+    Service,
+    ServiceMethod,
+)
 
 
 def test_report_counts_nested_messages_confidence_and_bailouts() -> None:
@@ -29,6 +36,30 @@ def test_report_counts_nested_messages_confidence_and_bailouts() -> None:
     assert "- medium: 0" in report
     assert "- speculative: 0" in report
     assert "Bail-outs: 1\n- classes.dex: incomplete info string\n" in report
+
+
+def test_report_counts_services_and_rpcs() -> None:
+    schema = RecoveredSchema(
+        name="svc.proto",
+        services=[
+            Service(
+                "Foo",
+                [
+                    ServiceMethod("A", "Req", "Res", Confidence.HIGH),
+                    ServiceMethod("B", "Req", "Res", Confidence.HIGH),
+                ],
+            )
+        ],
+    )
+
+    report = emit_report([schema], [])
+
+    assert "Recovered 1 services and 2 RPCs." in report
+
+
+def test_report_omits_service_line_when_none_recovered() -> None:
+    report = emit_report([RecoveredSchema("plain.proto")], [])
+    assert "services" not in report
 
 
 def test_report_flattens_multiline_bailouts() -> None:

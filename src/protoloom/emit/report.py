@@ -37,6 +37,8 @@ def emit_report(
     field_counts = {confidence: 0 for confidence in Confidence}
     message_count = 0
     field_count = 0
+    service_count = 0
+    method_count = 0
     for schema in schemas:
         messages = _messages(schema, max_items - message_count, max_depth)
         message_count += len(messages)
@@ -48,8 +50,14 @@ def emit_report(
                 field_count += 1
                 if field_count > max_items:
                     raise ValueError(f"report exceeds {max_items} fields")
+        service_count += len(schema.services)
+        method_count += sum(len(service.methods) for service in schema.services)
+        if service_count > max_items or method_count > max_items:
+            raise ValueError(f"report exceeds {max_items} services")
     lines = ["# PROTOLOOM recovery report", ""]
     lines.append(f"Recovered {len(schemas)} files and {message_count} messages.")
+    if service_count:
+        lines.append(f"Recovered {service_count} services and {method_count} RPCs.")
     lines.extend(("", "## Field confidence", ""))
     for confidence in Confidence:
         lines.append(f"- {confidence.value}: {field_counts[confidence]}")

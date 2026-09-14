@@ -3,7 +3,14 @@ from typing import Any
 import pytest
 
 from protoloom.emit.dashboard import emit_dashboard
-from protoloom.model import Confidence, Field, Message, RecoveredSchema
+from protoloom.model import (
+    Confidence,
+    Field,
+    Message,
+    RecoveredSchema,
+    Service,
+    ServiceMethod,
+)
 from protoloom.reconcile import Conflict
 
 
@@ -28,6 +35,17 @@ def test_dashboard_is_self_contained_and_escapes_recovered_data() -> None:
     assert "https://" not in page
     assert "<script" not in page
     assert "Recovery dashboard" in page
+
+
+def test_dashboard_reports_recovered_service_count() -> None:
+    schema = RecoveredSchema(
+        "svc.proto",
+        services=[
+            Service("Foo", [ServiceMethod("Call", "Req", "Res", Confidence.HIGH)])
+        ],
+    )
+    page = emit_dashboard([schema])
+    assert "<strong>1</strong><span>Services</span>" in page
 
 
 def test_empty_dashboard_has_clear_empty_states() -> None:

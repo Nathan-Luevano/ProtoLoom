@@ -77,6 +77,12 @@ def _validate_schema_budget(
         + len(schema.evidence)
         + len(schema.enums)
         + sum(len(enum.values) + len(enum.evidence) for enum in schema.enums)
+        + len(schema.services)
+        + sum(
+            1 + len(method.evidence)
+            for service in schema.services
+            for method in service.methods
+        )
         for schema in schemas
     )
     if count > max_items:

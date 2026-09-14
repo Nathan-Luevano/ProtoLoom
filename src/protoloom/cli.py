@@ -27,6 +27,7 @@ from protoloom.container.elf import ElfError, ElfFile
 from protoloom.container.macho import MachOError, MachOFile
 from protoloom.container.read import read_limited
 from protoloom.decode.descpb import decode_file_descriptor
+from protoloom.decode.grpc import decode_grpc_service
 from protoloom.decode.lite import decode_lite_finding
 from protoloom.decode.wire import (
     decode_wire_adapters,
@@ -43,6 +44,7 @@ from protoloom.emit.report import emit_report
 from protoloom.extract.descriptor import DescriptorFinding, scan_descriptors
 from protoloom.extract.gotags import GoTagExtraction, scan_go_struct_tags
 from protoloom.extract.gozip import scan_gzip_descriptors
+from protoloom.extract.grpc import scan_grpc_services
 from protoloom.extract.jadx import JadxError, decompile_with_jadx
 from protoloom.extract.lite import extract_lite
 from protoloom.extract.wire import (
@@ -229,6 +231,20 @@ def _find_wire(
             lineage[(schema.package, schema.name)] = (owner, _wire_parent(owner))
         schemas.extend(decoded)
     return schemas, lineage, enum_lineage
+
+
+def _find_grpc(
+    path: Path,
+    *,
+    dex_inputs: list[tuple[str, bytes]] | None = None,
+) -> list[RecoveredSchema]:
+    schemas: list[RecoveredSchema] = []
+    inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
+    for source, data in inputs:
+        dex = DexFile(data)
+        for evidence in scan_grpc_services(dex):
+            schemas.append(decode_grpc_service(dex, evidence, source))
+    return schemas
 
 
 def _find_lite(
@@ -736,6 +752,7 @@ def extract(
     wire_schemas, wire_lineage, wire_enum_lineage = _find_wire(
         path, dex_inputs=dex_inputs
     )
+    grpc_schemas = _find_grpc(path, dex_inputs=dex_inputs)
     lineage.update(wire_lineage)
     enum_lineage.update(wire_enum_lineage)
     bailouts.extend(f"{path.name}: {reason}" for reason in go_tags.bailouts)
@@ -758,7 +775,13 @@ def extract(
             f"and indexed {result.candidate_sites} protobuf metadata sites "
             f"-> {result.output}"
         )
-    if not findings and not lite_schemas and not go_tags.schemas and not wire_schemas:
+    if (
+        not findings
+        and not lite_schemas
+        and not go_tags.schemas
+        and not wire_schemas
+        and not grpc_schemas
+    ):
         typer.echo("no recoverable schema evidence found", err=True)
         for reason in bailouts:
             typer.echo(f"bail-out: {reason}", err=True)
@@ -772,6 +795,7 @@ def extract(
     schemas.extend(go_tags.schemas)
     schemas.extend(lite_schemas)
     schemas.extend(wire_schemas)
+    schemas.extend(grpc_schemas)
     try:
         reconciled = reconcile(schemas)
     except ValueError as error:
