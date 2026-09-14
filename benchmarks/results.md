@@ -233,9 +233,9 @@ change; their rows below contain those newer results.
 
 | App | Output schemas | Bail-outs | Strict-default result |
 |---|---:|---:|---|
-| Signal 8.22.2 | 787 | 0 | selected Wire schemas recovered |
+| Signal 8.22.2 | 789 | 0 | selected Wire schemas recovered; 2 gRPC services |
 | Molly 8.19.2-4 | 589 | 0 | selected Wire schemas recovered |
-| Mullvad 2026.8 | 129 | 0 | recovered |
+| Mullvad 2026.8 | 130 | 0 | recovered; 1 gRPC service (94 RPCs) |
 | Bitwarden Authenticator 2026.7.1 | 104 | 0 | recovered |
 | Meshtastic 2.8.1 | 289 | 0 | selected Wire schemas partially recovered |
 | Flipper 1.8.1.1890 | 61 | 0 | selected Wire `Settings` recovered |
@@ -614,6 +614,78 @@ whether each target's optimizer retains field strings, class references,
 oneof metadata, and enclosing-class identity. Their measured scores remain
 the honest numbers until the evidence model records those per-field
 observability facts.
+
+## gRPC service recovery
+
+ProtoLoom recovers `service`/`rpc` definitions from compiled `protoc-gen-
+grpc-java` stubs, not just message and enum shapes. The generated `<Service>
+Grpc` holder class gives each RPC a static `get<Name>Method()` building and
+caching a `MethodDescriptor`; that method's bytecode carries the RPC name
+(a `const-string`, cross-validated against the one shared `SERVICE_NAME`
+string repeated across every method in the class), the request and response
+types (the first two `getDefaultInstance()` targets invoked, in the fixed
+order protoc's own template always uses), and — even when the enum class and
+its field names are renamed by R8 — the streaming kind, read from
+`io.grpc.MethodDescriptor.MethodType`'s own compiler-embedded constructor
+name argument (`"SERVER_STREAMING"`, etc.), which survives independently of
+whatever the enum's class or field names become.
+
+Verified against Mullvad's real, pinned `ManagementService` (94 RPCs,
+including one server-streaming method, `EventsListen`): all 94 methods
+recovered, request/response types and streaming kind exactly matching the
+real source for 93/94; the one remaining "mismatch" is a naming-convention
+difference, not a wrong recovery — the real nested type `Shadowsocks.
+Ciphers` is referenced under this project's existing flattened-nesting
+convention (`Shadowsocks_Ciphers`), the same convention every other nested
+message reference in this codebase already uses. `ConnectTunnel`,
+`DisconnectTunnel`, `GetTunnelState`, `SetRelaySettings`, and `EventsListen`
+were spot-checked directly against the pinned source and match exactly,
+streaming kind included.
+
+| Metric | Result |
+|---|---:|
+| RPC methods recovered | 100.00% (94/94) |
+| Exact request/response/streaming signature | 98.94% (93/94) |
+
+The mechanism generalizes beyond the one app it was built against: rerunning
+against Signal recovered two additional real gRPC services (`fog_view.
+FogViewAPI`, `fog_key_image.FogKeyImageAPI`, MobileCoin/payments-related)
+that no prior extraction path here surfaced at all.
+
+Recovering this surfaced two real, separate bugs in the existing pipeline
+that had nothing to do with gRPC itself, both now fixed:
+
+- **Output file names could hard-fail a fully-recovered extraction.**
+  Mullvad has two distinct DEX classes both named `Relay` in different
+  packages (`mullvad_daemon.management_interface` and `mullvad_daemon.
+  relay_selector`) — `reconcile()` has kept them correctly separate by
+  `(package, name)` since an earlier session, but the output-writing step
+  only ever checked the bare file name, so writing this app failed outright
+  with `output name collision: Relay.proto`. This is not a rare corner
+  case: the same collision was already latent in Molly's recovered output
+  too, just not yet hit. The output step now disambiguates a colliding name
+  by prefixing the owning package (`mullvad_daemon.relay_selector.Relay.
+  proto`) and falls back to a numeric suffix when no package distinguishes
+  it, rather than failing.
+- **A single mis-flagged class could split its own package's file in two.**
+  `newMessageInfo`'s per-class syntax bit occasionally disagrees with the
+  real file-level syntax for one class in an otherwise-uniform package;
+  combining recovered classes by `(package, syntax)` let that one
+  disagreement split the package into two separate emitted files, each
+  missing the other's real declarations and silently synthesizing an empty
+  placeholder for what its sibling had already declared correctly. This
+  degraded Mullvad's field recall from the documented 100% (297/297) to
+  68.35% (203/297) and structural fidelity to 85.45% (47/55) — a real
+  regression that had been sitting undetected because the file-name
+  collision above had been failing the same extraction outright before
+  reaching this step. Grouping by package alone (majority-voting the
+  group's overall syntax) restores the documented 100% across every
+  metric, confirmed by rerunning the full pbtk differential below.
+
+Bitwarden (104 files), Smartspacer (70 files), and Molly (589 files) were
+rerun after both fixes and are byte-for-byte unchanged in output count from
+their previously published numbers; Signal gained the two gRPC service
+files described above and is otherwise unchanged.
 
 ## Tier C captured payload
 
