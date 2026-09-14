@@ -13,14 +13,6 @@ files—with clear confidence and evidence for every result.
 
 </div>
 
-<div align="center">
-  <img
-    src="docs/assets/protoloom-demo.gif"
-    alt="ProtoLoom recovering protobuf schemas from Bitwarden Authenticator"
-    width="900"
-  />
-</div>
-
 ## What it does
 
 ProtoLoom finds protobuf information that remains inside compiled software and
@@ -128,9 +120,13 @@ generator loses the exact source spelling of some field names, and a build
 optimizer can strip the last signal distinguishing some merged enum types on
 Smartspacer, so a minority of names and enum values in those apps stay
 unresolved rather than invented. Apps built with Square Wire instead of
-protobuf-lite (Signal, Molly, Meshtastic) aren't a supported schema source
-yet. Detailed measurements, methodology, and every known limitation are
-published in [`benchmarks/results.md`](benchmarks/results.md).
+protobuf-lite are also a supported schema source: Signal and Molly both
+recover every selected field exactly (551/551 and 546/546) at 100% wire,
+type, label, and enum accuracy. ProtoLoom also recovers `service`/`rpc`
+definitions straight from compiled gRPC stubs — verified against Mullvad's
+real management API at 94/94 methods, with request/response types and
+streaming kind included. Detailed measurements, methodology, and every known
+limitation are published in [`benchmarks/results.md`](benchmarks/results.md).
 
 ## Development
 
