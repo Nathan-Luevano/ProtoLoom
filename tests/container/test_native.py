@@ -97,6 +97,62 @@ def test_rejects_elf_section_name_outside_string_table() -> None:
         ElfFile(malformed)
 
 
+def _elf64_header(
+    *,
+    shoff: int,
+    shnum: int,
+    shentsize: int,
+    shstrndx: int,
+    phoff: int,
+    phnum: int,
+    phentsize: int,
+) -> bytes:
+    ident = bytes([0x7F, 0x45, 0x4C, 0x46, 2, 1]) + b"\x00" * 10
+    body = struct.pack(
+        "<HHIQQQIHHHHHH",
+        0,
+        0,
+        0,
+        0,
+        phoff,
+        shoff,
+        0,
+        64,
+        phentsize,
+        phnum,
+        shentsize,
+        shnum,
+        shstrndx,
+    )
+    return ident + body
+
+
+def test_rejects_elf_with_bad_magic() -> None:
+    with pytest.raises(ElfError, match="not an ELF file"):
+        ElfFile(b"not-elf-data")
+
+
+def test_rejects_elf_with_unsupported_identification() -> None:
+    ident = bytes([0x7F, 0x45, 0x4C, 0x46, 9, 1]) + b"\x00" * 10
+    with pytest.raises(ElfError, match="unsupported ELF identification"):
+        ElfFile(ident)
+
+
+def test_rejects_truncated_elf_header() -> None:
+    with pytest.raises(ElfError, match="truncated ELF structure"):
+        ElfFile(bytes([0x7F, 0x45, 0x4C, 0x46, 2, 1]) + b"\x00" * 10)
+
+
+def test_minimal_elf_has_no_sections_or_segments() -> None:
+    elf = ElfFile(
+        _elf64_header(
+            shoff=0, shnum=0, shentsize=0, shstrndx=0, phoff=0, phnum=0, phentsize=0
+        )
+    )
+    assert elf.sections == () and elf.segments == ()
+    assert elf.is_go_binary is False
+
+
 def _macho_with_const_section() -> bytes:
     header_size = struct.calcsize("<IiiIIIII")
     segment_size = struct.calcsize("<II16sQQQQiiII")
