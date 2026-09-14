@@ -2,7 +2,8 @@ import importlib
 import os
 import struct
 from pathlib import Path
-from zipfile import ZipFile
+from typing import IO
+from zipfile import ZipFile, ZipInfo
 
 import pytest
 from pytest import MonkeyPatch
@@ -43,6 +44,22 @@ def test_detects_pe_signature_beyond_initial_probe(tmp_path: Path) -> None:
     assert detect(path).kind is ContainerKind.PE
 
 
+def test_detect_pe_rejects_file_shorter_than_header(tmp_path: Path) -> None:
+    path = tmp_path / "tiny.exe"
+    path.write_bytes(b"MZ" + b"\x00" * 8)
+    assert detect(path).kind is ContainerKind.UNKNOWN
+
+
+def test_detect_pe_rejects_mismatched_signature_beyond_probe(tmp_path: Path) -> None:
+    path = tmp_path / "mismatch.exe"
+    payload = bytearray(5004)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 5000)
+    payload[5000:] = b"XX\x00\x00"
+    path.write_bytes(payload)
+    assert detect(path).kind is ContainerKind.UNKNOWN
+
+
 def test_rejects_truncated_pe_signature_offset(tmp_path: Path) -> None:
     path = tmp_path / "truncated.exe"
     payload = bytearray(64)
@@ -50,6 +67,39 @@ def test_rejects_truncated_pe_signature_offset(tmp_path: Path) -> None:
     struct.pack_into("<I", payload, 0x3C, 64)
     path.write_bytes(payload)
     assert detect(path).kind is ContainerKind.UNKNOWN
+
+
+def test_detects_pe_signature_within_initial_probe(tmp_path: Path) -> None:
+    path = tmp_path / "small-stub.exe"
+    payload = bytearray(200)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 100)
+    payload[100:104] = b"PE\x00\x00"
+    path.write_bytes(payload)
+    assert detect(path).kind is ContainerKind.PE
+
+
+def test_detect_treats_corrupt_zip_magic_as_unknown(tmp_path: Path) -> None:
+    path = tmp_path / "corrupt.zip"
+    path.write_bytes(b"PK\x03\x04" + b"\x00" * 20)
+    assert detect(path).kind is ContainerKind.UNKNOWN
+
+
+def test_classify_zip_detects_bundle_and_jar_and_plain_zip(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle.zip"
+    with ZipFile(bundle, "w") as archive:
+        archive.writestr("BundleConfig.pb", b"cfg")
+    assert detect(bundle).kind is ContainerKind.AAB
+
+    jar = tmp_path / "jar.zip"
+    with ZipFile(jar, "w") as archive:
+        archive.writestr("com/example/Main.class", b"class")
+    assert detect(jar).kind is ContainerKind.JAR
+
+    plain = tmp_path / "plain.zip"
+    with ZipFile(plain, "w") as archive:
+        archive.writestr("readme.txt", b"hi")
+    assert detect(plain).kind is ContainerKind.ZIP
 
 
 def test_detection_rejects_special_and_oversized_inputs(
@@ -267,3 +317,100 @@ def test_archive_inventory_rejects_unsafe_members(tmp_path: Path, name: str) -> 
 
     with pytest.raises(ArchiveError, match="unsafe archive member"):
         AndroidArchive(path).inventory()
+
+
+def test_archive_inventory_skips_directory_entries_and_detects_class_kind(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "sample.apk"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("assets/", b"")
+        archive.writestr("Sample.class", b"class")
+
+    inventory = AndroidArchive(path).inventory()
+
+    assert {(entry.name, entry.kind) for entry in inventory.entries} == {
+        ("Sample.class", "class")
+    }
+
+
+def test_archive_read_reports_missing_member(tmp_path: Path) -> None:
+    path = tmp_path / "sample.apk"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("classes.dex", b"dex")
+
+    with pytest.raises(ArchiveError, match="archive member not found"):
+        AndroidArchive(path).read("missing.dex")
+
+
+def test_archive_read_rejects_member_larger_than_declared_after_reading(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    path = tmp_path / "sample.apk"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("classes.dex", b"dex")
+
+    real_open = ZipFile.open
+
+    class _OverReadingStream:
+        def __init__(self, real: IO[bytes]) -> None:
+            self._real = real
+
+        def read(self, size: int) -> bytes:
+            return b"x" * (size + 1)
+
+        def __enter__(self) -> "_OverReadingStream":
+            return self
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            traceback: object,
+        ) -> None:
+            self._real.__exit__(exc_type, exc, traceback)  # type: ignore[arg-type]
+
+    def fake_open(self: ZipFile, info: str | ZipInfo) -> object:
+        return _OverReadingStream(real_open(self, info))
+
+    monkeypatch.setattr(ZipFile, "open", fake_open)
+    with pytest.raises(ArchiveError, match="exceeds"):
+        AndroidArchive(path).read("classes.dex", max_size=3)
+
+
+def test_iter_dex_selects_only_dex_entries(tmp_path: Path) -> None:
+    path = tmp_path / "sample.apk"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("classes.dex", b"dex\n039\x00")
+        archive.writestr("classes2.dex", b"dex\n039\x00")
+        archive.writestr("assets/schema.pb", b"proto")
+
+    names = {entry.name for entry, _ in AndroidArchive(path).iter_dex()}
+
+    assert names == {"classes.dex", "classes2.dex"}
+
+
+def test_iter_read_never_opens_archive_when_all_entries_cached(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    entry = ArchiveEntry("classes.dex", 4, 4, "dex")
+
+    def fail_open(*args: object, **kwargs: object) -> ZipFile:
+        raise AssertionError("should not open the archive")
+
+    monkeypatch.setattr("protoloom.container.apk.open_limited", fail_open)
+    source = AndroidArchive(tmp_path / "unused.zip")
+
+    values = list(source.iter_read((entry,), cached={entry.name: b"dex\n"}))
+
+    assert values == [(entry, b"dex\n")]
+
+
+def test_module_level_inventory_delegates_to_android_archive(tmp_path: Path) -> None:
+    path = tmp_path / "sample.apk"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("classes.dex", b"dex")
+
+    assert (
+        apk_module.inventory(path).entries == AndroidArchive(path).inventory().entries
+    )
