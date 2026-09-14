@@ -16,6 +16,7 @@ from protoloom.cli import (
     _compiled_descriptors_many,
     _dex_inputs,
     _find,
+    _find_wire,
     _output_names,
     _previous_artifacts,
     _publish_outputs,
@@ -23,6 +24,7 @@ from protoloom.cli import (
     app,
 )
 from protoloom.container.detect import ContainerKind, Detection
+from protoloom.container.dex import AnnotationItem, DexClass, DexField
 from protoloom.extract.gotags import GoTagExtraction
 from protoloom.extract.jadx import JadxError, JadxResult
 from protoloom.model import Confidence, Field, Message, RecoveredSchema
@@ -303,6 +305,58 @@ def test_dex_inputs_ignore_non_android_container(tmp_path: Path) -> None:
     binary = tmp_path / "unknown.bin"
     binary.write_bytes(b"unknown")
     assert _dex_inputs(binary) == []
+
+
+def test_find_wire_decodes_annotated_message_end_to_end(tmp_path: Path) -> None:
+    owner = DexClass(0, 0, 1, 0, 0, 1, 0, 0)
+    field = DexField(0, 2, 1)
+    label = DexField(3, 3, 2)
+    annotation = AnnotationItem(1, 3, ((3, 7), (4, 5), (6, 1), (8, 9), (10, 2)))
+    dex: object = SimpleNamespace(
+        NO_INDEX=0xFFFFFFFF,
+        types=(
+            "Lexample/Record;",
+            "Lcom/squareup/wire/Message;",
+            "Ljava/lang/String;",
+            "Lcom/squareup/wire/WireField;",
+        ),
+        classes=(owner,),
+        fields=(field, label),
+        strings=(
+            "Record",
+            "title",
+            "REPEATED",
+            "tag",
+            "adapter",
+            "x#STRING",
+            "label",
+            "unused",
+            "oneofName",
+            "choice",
+            "schemaIndex",
+        ),
+        field_annotations=lambda _: ((field, (annotation,)),),
+        field_name=lambda item: "REPEATED" if item is label else "title",
+        class_methods=lambda _: (),
+    )
+
+    schemas, lineage, enum_lineage = _find_wire(
+        tmp_path / "input.bin",
+        dex_inputs=[("classes.dex", b"")],
+        dex_cache={"classes.dex": dex},  # type: ignore[dict-item]
+    )
+
+    assert [(item.package, item.name) for item in schemas] == [
+        ("example", "Record.proto")
+    ]
+    field_out = schemas[0].messages[0].fields[0]
+    assert (field_out.name, field_out.number, field_out.type_name) == (
+        "title",
+        7,
+        "string",
+    )
+    assert lineage == {("example", "Record.proto"): ("Lexample/Record;", None)}
+    assert enum_lineage == {}
 
 
 def test_extract_reuses_loaded_dex_inputs(
