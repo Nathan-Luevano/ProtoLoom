@@ -941,9 +941,13 @@ def extract(
         raise typer.Exit(2)
     schemas: list[RecoveredSchema] = []
     for finding in findings:
-        schema = decode_file_descriptor(
-            finding.descriptor, finding.source, f"0x{finding.offset:x}"
-        )
+        try:
+            schema = decode_file_descriptor(
+                finding.descriptor, finding.source, f"0x{finding.offset:x}"
+            )
+        except ValueError as error:
+            bailouts.append(f"{finding.source}@0x{finding.offset:x}: {error}")
+            continue
         schemas.append(schema)
     schemas.extend(go_tags.schemas)
     schemas.extend(lite_schemas)

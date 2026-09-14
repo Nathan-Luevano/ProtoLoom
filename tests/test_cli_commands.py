@@ -108,6 +108,30 @@ def test_extract_reports_absent_schema_evidence(tmp_path: Path) -> None:
     assert "no recoverable schema evidence found" in result.output
 
 
+def test_extract_bails_out_instead_of_crashing_on_reserved_field_number(
+    tmp_path: Path,
+) -> None:
+    # A raw embedded FileDescriptorProto is attacker/producer-controlled
+    # data: a field number in the 19000-19999 reserved range must become a
+    # bail-out, not an unhandled crash out of decode_file_descriptor.
+    from google.protobuf.descriptor_pb2 import FieldDescriptorProto, FileDescriptorProto
+
+    descriptor = FileDescriptorProto(name="reserved.proto")
+    descriptor.syntax = "proto3"
+    message = descriptor.message_type.add(name="Bad")
+    field = message.field.add(name="oops", number=19_500)
+    field.label = FieldDescriptorProto.LABEL_OPTIONAL
+    field.type = FieldDescriptorProto.TYPE_INT32
+    blob = tmp_path / "reserved.bin"
+    blob.write_bytes(b"noise" + descriptor.SerializeToString() + b"trailer")
+
+    result = runner.invoke(app, ["extract", str(blob)], color=False)
+
+    assert result.exit_code == 0
+    assert "Traceback" not in result.output
+    assert "bail-outs: 1; recovered files: 0" in result.output
+
+
 def test_demo_uses_temporary_output_by_default(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

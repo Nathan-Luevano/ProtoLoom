@@ -23,6 +23,34 @@ _LABELS = {
     value.number: value.name.removeprefix("LABEL_").lower()
     for value in FieldDescriptorProto.Label.DESCRIPTOR.values
 }
+# matches emit_proto's own MAX_PROTO_ITEMS/MAX_PROTO_DEPTH: a descriptor too
+# big to ever emit should be rejected here, before building Field/Message
+# objects for it, not after (that "decode everything, reject at emit" path
+# let a several-million-field descriptor spend seconds building objects
+# doomed to be thrown away).
+MAX_DECODE_ITEMS = 1_000_000
+MAX_DECODE_DEPTH = 100
+
+
+def _validate_descriptor_budget(
+    raw: FileDescriptorProto, max_items: int, max_depth: int
+) -> None:
+    if max_items <= 0 or max_depth <= 0:
+        raise ValueError("descriptor decode limits must be positive")
+    count = len(raw.dependency) + len(raw.enum_type)
+    count += sum(len(item.value) for item in raw.enum_type)
+    if count > max_items:
+        raise ValueError(f"descriptor decode exceeds {max_items} items")
+    pending = [(item, 1) for item in raw.message_type]
+    while pending:
+        message, depth = pending.pop()
+        if depth > max_depth:
+            raise ValueError(f"descriptor decode exceeds message depth {max_depth}")
+        count += 1 + len(message.field) + len(message.enum_type)
+        count += sum(len(item.value) for item in message.enum_type)
+        if count > max_items:
+            raise ValueError(f"descriptor decode exceeds {max_items} items")
+        pending.extend((child, depth + 1) for child in message.nested_type)
 
 
 def _enum(raw: EnumDescriptorProto, evidence: Evidence) -> EnumType:
@@ -69,8 +97,14 @@ def _message(raw: DescriptorProto, evidence: Evidence) -> Message:
 
 
 def decode_file_descriptor(
-    raw: FileDescriptorProto, source: str, location: str
+    raw: FileDescriptorProto,
+    source: str,
+    location: str,
+    *,
+    max_items: int = MAX_DECODE_ITEMS,
+    max_depth: int = MAX_DECODE_DEPTH,
 ) -> RecoveredSchema:
+    _validate_descriptor_budget(raw, max_items, max_depth)
     evidence = Evidence(source, location, "serialized FileDescriptorProto")
     return RecoveredSchema(
         name=raw.name,

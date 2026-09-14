@@ -26,6 +26,24 @@ def _descriptor() -> FileDescriptorProto:
     return descriptor
 
 
+def test_decode_file_descriptor_rejects_oversized_descriptor_early() -> None:
+    # decode used to have no budget of its own, so a huge descriptor was
+    # fully decoded into Field/Message objects before emit_proto's own
+    # budget ever got a chance to reject it -- reject here, cheaply, first.
+    descriptor = FileDescriptorProto(name="huge.proto")
+    descriptor.syntax = "proto3"
+    message = descriptor.message_type.add(name="Huge")
+    for index in range(1, 5):
+        field = message.field.add(name=f"f{index}", number=index)
+        field.label = field.LABEL_OPTIONAL
+        field.type = field.TYPE_INT32
+
+    with pytest.raises(ValueError, match="descriptor decode exceeds"):
+        decode_file_descriptor(
+            descriptor, "fixture", "fixture@0x0", max_items=3, max_depth=100
+        )
+
+
 def test_scan_recovers_legacy_proto2_group_field() -> None:
     # TYPE_GROUP is dead wire format but still legal; a raw embedded
     # FileDescriptorProto using it must round-trip through scan/decode/emit
