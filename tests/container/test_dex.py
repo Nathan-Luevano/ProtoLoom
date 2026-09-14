@@ -1,4 +1,5 @@
 import struct
+from pathlib import Path
 
 import pytest
 
@@ -42,6 +43,12 @@ def _minimal_dex(strings: tuple[bytes, ...]) -> bytes:
     ]
     struct.pack_into("<20I", header, 32, *values)
     return bytes(header) + struct.pack(f"<{len(offsets)}I", *offsets) + bytes(data)
+
+
+def test_from_path_reads_dex_file(tmp_path: Path) -> None:
+    path = tmp_path / "classes.dex"
+    path.write_bytes(_minimal_dex((b"hello",)))
+    assert DexFile.from_path(path).strings == ("hello",)
 
 
 def test_reads_string_pool() -> None:
@@ -403,6 +410,21 @@ def test_reads_direct_method_and_code_item() -> None:
     assert dex.method_name(method) == "name"
 
 
+def test_class_methods_empty_when_no_class_data() -> None:
+    dex = DexFile(_dex_with_method_and_interface())
+    (owner,) = dex.classes
+    assert dex.class_methods(owner) == ()
+
+
+def test_rejects_out_of_range_encoded_method_index() -> None:
+    raw = bytearray(_dex_with_direct_method_code())
+    offset = DexFile(bytes(raw)).classes[0].class_data_offset
+    raw[offset + 4] = 50
+    dex = DexFile(bytes(raw))
+    with pytest.raises(DexError, match="encoded method index"):
+        dex.class_methods(dex.classes[0])
+
+
 def test_code_item_rejects_zero_offset() -> None:
     dex = DexFile(_dex_with_direct_method_code())
     with pytest.raises(DexError, match="no code item"):
@@ -645,6 +667,35 @@ def test_reads_static_field_number_constants() -> None:
     names = [dex.field_name(item) for item in static_fields]
     assert names == ["A_FIELD_NUMBER", "B_FIELD_NUMBER"]
     assert values == (1, 2)
+
+
+def test_rejects_out_of_range_static_field_index() -> None:
+    raw = bytearray(_dex_with_static_int_fields())
+    offset = DexFile(bytes(raw)).classes[0].class_data_offset
+    raw[offset + 4] = 99
+    dex = DexFile(bytes(raw))
+    with pytest.raises(DexError, match="encoded field index"):
+        dex.class_static_fields(dex.classes[0])
+
+
+def test_class_methods_runs_field_skip_loop_when_no_methods() -> None:
+    dex = DexFile(_dex_with_static_int_fields())
+    assert dex.class_methods(dex.classes[0]) == ()
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        (bytes((1, 0x3D, 0, 0)), "annotation has an invalid value"),
+        (bytes((1, 0x05)), "unsupported encoded_value type"),
+    ],
+)
+def test_rejects_invalid_annotation_arg_and_unsupported_type(
+    payload: bytes, match: str
+) -> None:
+    dex = DexFile(_dex_with_static_payload(payload))
+    with pytest.raises(DexError, match=match):
+        dex.static_field_values(dex.classes[0])
 
 
 def test_reads_negative_static_integer_constants() -> None:
