@@ -2,7 +2,7 @@ import struct
 
 import pytest
 
-from protoloom.container.dex import DexError, DexFile
+from protoloom.container.dex import AnnotationItem, DexError, DexFile
 
 
 def _minimal_dex(strings: tuple[bytes, ...]) -> bytes:
@@ -669,6 +669,61 @@ def test_reads_static_floating_point_constants(
 ) -> None:
     dex = DexFile(_dex_with_static_payload(payload))
     assert dex.static_field_values(dex.classes[0]) == (expected,)
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (bytes((1, 0x1F)), False),
+        (bytes((1, 0x3F)), True),
+        (bytes((1, 0x1E)), None),
+        (bytes((1, 0x1C, 2, 0x04, 5, 0x04, 7)), (5, 7)),
+    ],
+)
+def test_reads_boolean_null_and_array_encoded_values(
+    payload: bytes, expected: object
+) -> None:
+    dex = DexFile(_dex_with_static_payload(payload))
+    assert dex.static_field_values(dex.classes[0]) == (expected,)
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        (bytes((1, 0x5F)), "boolean"),
+        (bytes((1, 0x3E)), "null"),
+        (bytes((1, 0x3C)), "array"),
+    ],
+)
+def test_rejects_invalid_boolean_null_and_array_values(
+    payload: bytes, match: str
+) -> None:
+    dex = DexFile(_dex_with_static_payload(payload))
+    with pytest.raises(DexError, match=match):
+        dex.static_field_values(dex.classes[0])
+
+
+def test_reads_encoded_annotation_value() -> None:
+    payload = bytes((1, 0x1D, 0, 1, 2, 0x04, 9))
+    dex = DexFile(_dex_with_static_payload(payload))
+    (value,) = dex.static_field_values(dex.classes[0])
+    assert isinstance(value, AnnotationItem)
+    assert value.type_index == 0
+    assert value.elements == ((2, 9),)
+
+
+def test_rejects_encoded_annotation_type_out_of_range() -> None:
+    payload = bytes((1, 0x1D)) + bytes((99, 0))
+    dex = DexFile(_dex_with_static_payload(payload))
+    with pytest.raises(DexError, match="annotation type index"):
+        dex.static_field_values(dex.classes[0])
+
+
+def test_rejects_encoded_annotation_name_out_of_range() -> None:
+    payload = bytes((1, 0x1D, 0, 1, 99, 0x04, 9))
+    dex = DexFile(_dex_with_static_payload(payload))
+    with pytest.raises(DexError, match="annotation name index"):
+        dex.static_field_values(dex.classes[0])
 
 
 def test_rejects_invalid_encoded_value_width() -> None:
