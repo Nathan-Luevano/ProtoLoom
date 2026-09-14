@@ -176,8 +176,10 @@ def _enum(
     enum_name = name or _name(item.name, "RecoveredEnum")
     lines = [f"{indent}enum {enum_name} {{"]
     values = item.values or []
-    numbers = [value.number for value in values]
     needs_synthetic_zero = not values or (syntax == "proto3" and values[0].number != 0)
+    numbers = [value.number for value in values]
+    if needs_synthetic_zero:
+        numbers.append(0)
     if len(numbers) != len(set(numbers)):
         lines.append(f"{indent}  option allow_alias = true;")
     reserved = {*used, enum_name}

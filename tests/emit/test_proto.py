@@ -32,6 +32,22 @@ def test_synthetic_zero_does_not_imply_allow_alias() -> None:
     assert compile_proto(emitted).success
 
 
+def test_synthetic_zero_colliding_with_real_zero_sets_allow_alias() -> None:
+    # A recovered proto3 enum whose first value isn't 0 (declaration order
+    # not preserved, e.g. after a reconcile merge) but that DOES contain a
+    # real 0 value elsewhere collides with the synthesized zero member.
+    schema = RecoveredSchema(
+        name="fixture",
+        package="demo",
+        syntax="proto3",
+        enums=[EnumType("Mode", [EnumValue("A", 3), EnumValue("ZERO", 0)])],
+    )
+    emitted = emit_proto(schema)
+
+    assert "allow_alias" in emitted
+    assert compile_proto(emitted).success
+
+
 def test_proto2_enum_preserves_nonzero_first_value() -> None:
     schema = RecoveredSchema(
         name="fixture",
