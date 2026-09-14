@@ -829,6 +829,36 @@ benefit from process-level parallelism) is still correct — it needs a
 correctness root-cause first, not a smaller tweak to the same design, before
 it's attempted again.
 
+## Cross-corpus robustness check
+
+Beyond the 4 apps re-verified repeatedly during the performance and
+coverage work above, all 8 apps pinned in `benchmarks/corpus/
+tier-b-real-apps.json` were fetched (hash-verified) and extracted together
+in one pass: `bitwarden-authenticator`, `flipper`, `gadgetbridge`,
+`meshtastic`, `molly`, `mullvad`, `signal`, `smartspacer`. Every one
+reproduced its documented file count exactly with zero bail-outs
+(104/61/646/289/589/130/789/70), spanning 1 dex file (flipper, mullvad) to
+8 (signal), with gRPC service recovery correctly firing only on the two
+apps that actually declare gRPC services (mullvad, signal).
+
+Also run against two APKs with no relationship to this project's corpus or
+to protobuf at all — the Godot 4.3 Android export templates (a C++/
+GDExtension game engine, nothing like the Java/Kotlin toolchains this tool
+targets) — plus an empty file and 10KB of random bytes. All four exited
+cleanly with `no recoverable schema evidence found` (exit 2), no crash, no
+hang.
+
+One real gap surfaced: with no `protoc` binary on PATH (true for this
+environment, and for any real install that hasn't specifically added one),
+`protoloom extract` silently falls back to the bundled `grpc_tools.protoc`
+(v35.1) rather than this project's pinned v29.3. Confirmed this produces
+byte-identical output across the full 8-app corpus either way — not a
+correctness bug — but `protoloom doctor` reported this state as the bare,
+uninformative string `"python"`. Fixed to report
+`"python -m grpc_tools.protoc (not the pinned protoc binary)"` so the
+actual compiler in play is no longer hidden from anyone debugging a
+compile discrepancy.
+
 ## Test coverage hardening
 
 Following the four extraction-performance fixes above, a wide coverage pass
