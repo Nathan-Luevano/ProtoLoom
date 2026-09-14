@@ -81,6 +81,44 @@ def test_wide_schema_display_is_bounded() -> None:
     assert detail.count("Further items omitted") == 1
 
 
+def test_multiple_top_level_messages_are_bounded() -> None:
+    schema = SchemaRecord(
+        "many.proto",
+        "",
+        {"messages": [{"name": f"M{index}"} for index in range(5)]},
+    )
+
+    detail = _plain(render_schema(schema, width=200, max_items=2))
+
+    assert "M0" in detail
+    assert "M1" in detail
+    assert "M2" not in detail
+    assert "Further items omitted" in detail
+
+
+def test_multiple_enums_and_values_are_bounded() -> None:
+    schema = SchemaRecord(
+        "enums.proto",
+        "",
+        {
+            "enums": [
+                {
+                    "name": "First",
+                    "values": [{"name": "A", "number": 0}, {"name": "B", "number": 1}],
+                },
+                {"name": "Second", "values": [{"name": "C", "number": 0}]},
+            ]
+        },
+    )
+
+    detail = _plain(render_schema(schema, width=200, max_items=2))
+
+    assert "First" in detail
+    assert "A = 0" in detail
+    assert "B = 1" not in detail
+    assert "Second" not in detail
+
+
 def test_schema_display_rejects_nonpositive_limit() -> None:
     schema = SchemaRecord("empty.proto", "", {})
 

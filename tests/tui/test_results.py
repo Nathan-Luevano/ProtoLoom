@@ -125,6 +125,47 @@ def test_ignores_oversized_optional_report(
     assert load_output(tmp_path).bailouts is None
 
 
+def test_accepts_finite_numeric_values(tmp_path: Path) -> None:
+    (tmp_path / "recovery.json").write_text(
+        '{"schemas":[],"conflicts":[],"value":1.5}', encoding="utf-8"
+    )
+
+    output = load_output(tmp_path)
+
+    assert output.schemas == ()
+
+
+def test_rejects_oversized_recovery_output_during_read(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    (tmp_path / "recovery.json").write_text('{"schemas":[]}', encoding="utf-8")
+    real_fstat = os.fstat
+
+    class FakeStat:
+        def __init__(self, real: os.stat_result) -> None:
+            self._real = real
+            self.st_size = 3
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._real, name)
+
+    monkeypatch.setattr(
+        "protoloom.tui.results.os.fstat", lambda fd: FakeStat(real_fstat(fd))
+    )
+    monkeypatch.setattr("protoloom.tui.results.MAX_RECOVERY_OUTPUT_SIZE", 3)
+
+    with pytest.raises(OutputError, match=r"recovery\.json exceeds 3 bytes"):
+        load_output(tmp_path)
+
+
+def test_reports_excessive_nesting(tmp_path: Path) -> None:
+    payload = "[" * 100_000 + "]" * 100_000
+    (tmp_path / "recovery.json").write_text(payload, encoding="utf-8")
+
+    with pytest.raises(OutputError, match="nesting is too deep"):
+        load_output(tmp_path)
+
+
 def test_rejects_special_recovery_file(tmp_path: Path) -> None:
     (tmp_path / "recovery.json").symlink_to(Path(os.devnull))
 
