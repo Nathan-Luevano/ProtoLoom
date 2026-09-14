@@ -6,6 +6,7 @@ import tempfile
 import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import asdict
 from functools import wraps
@@ -292,6 +293,21 @@ def _compiled_descriptors(schema: RecoveredSchema) -> list[FileDescriptorProto]:
         raise ValueError(f"emitted schema did not compile: {result.stderr.strip()}")
     descriptor_set = FileDescriptorSet.FromString(result.descriptor_set)
     return list(descriptor_set.file)
+
+
+def _compiled_descriptors_many(
+    schemas: list[RecoveredSchema],
+) -> list[list[FileDescriptorProto]]:
+    # Each schema shells out to a real protoc subprocess purely to wait on
+    # its exit; that wait releases the GIL, so running them on a thread
+    # pool overlaps the waits instead of serializing them. Order is
+    # preserved (pool.map) so output and first-failure error messages stay
+    # identical to running them one at a time.
+    if not schemas:
+        return []
+    workers = min(32, len(schemas))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return list(pool.map(_compiled_descriptors, schemas))
 
 
 def _walk_messages(messages: list[Message]) -> list[Message]:
@@ -688,7 +704,7 @@ def _combined_lite_descriptors(
     for schema in schemas:
         if schema.name not in certain_names:
             groups[schema.package].append(schema)
-    descriptors: list[FileDescriptorProto] = []
+    combined_schemas: list[RecoveredSchema] = []
     for index, (package, items) in enumerate(sorted(groups.items())):
         syntax = Counter(item.syntax for item in items).most_common(1)[0][0]
         by_descriptor, enclosing_of = _lite_message_index(items, lineage)
@@ -697,21 +713,25 @@ def _combined_lite_descriptors(
             items, by_descriptor, enum_lineage
         )
         _apply_nested_renames(messages, enum_renames)
-        combined = RecoveredSchema(
-            name=f"recovered_{index}.proto",
-            package=package,
-            syntax=syntax,
-            messages=messages,
-            enums=top_level_enums,
-            services=[service for item in items for service in item.services],
-            dependencies=list(
-                dict.fromkeys(
-                    dependency for item in items for dependency in item.dependencies
-                )
-            ),
-            evidence=[evidence for item in items for evidence in item.evidence],
+        combined_schemas.append(
+            RecoveredSchema(
+                name=f"recovered_{index}.proto",
+                package=package,
+                syntax=syntax,
+                messages=messages,
+                enums=top_level_enums,
+                services=[service for item in items for service in item.services],
+                dependencies=list(
+                    dict.fromkeys(
+                        dependency for item in items for dependency in item.dependencies
+                    )
+                ),
+                evidence=[evidence for item in items for evidence in item.evidence],
+            )
         )
-        descriptors.extend(_compiled_descriptors(combined))
+    descriptors: list[FileDescriptorProto] = []
+    for result in _compiled_descriptors_many(combined_schemas):
+        descriptors.extend(result)
     return descriptors
 
 
@@ -851,15 +871,17 @@ def extract(
     descriptors = [finding.descriptor for finding in findings]
     certain_names = {finding.descriptor.name for finding in findings}
     prepared: list[tuple[RecoveredSchema, str]] = []
+    to_validate: list[RecoveredSchema] = []
     for schema in reconciled.schemas:
         source = emit_proto(schema)
         if schema.name not in certain_names:
-            try:
-                _compiled_descriptors(schema)
-            except ValueError as error:
-                typer.echo(f"recovery failed: {error}", err=True)
-                raise typer.Exit(2) from error
+            to_validate.append(schema)
         prepared.append((schema, source))
+    try:
+        _compiled_descriptors_many(to_validate)
+    except ValueError as error:
+        typer.echo(f"recovery failed: {error}", err=True)
+        raise typer.Exit(2) from error
     try:
         descriptors.extend(
             _combined_lite_descriptors(

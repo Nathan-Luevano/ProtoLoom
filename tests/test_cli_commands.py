@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from protoloom.cli import (
     _atomic_write,
+    _compiled_descriptors_many,
     _dex_inputs,
     _find,
     _output_names,
@@ -452,6 +453,38 @@ def test_extract_reports_uncompilable_recovery(
 
     assert result.exit_code == 2
     assert "recovery failed: protoc rejected schema" in result.output
+
+
+def test_compiled_descriptors_many_preserves_order(monkeypatch: MonkeyPatch) -> None:
+    schemas = [RecoveredSchema(name=f"s{i}.proto") for i in range(6)]
+    monkeypatch.setattr(
+        "protoloom.cli._compiled_descriptors",
+        lambda schema: [schema.name],
+    )
+
+    results = _compiled_descriptors_many(schemas)
+
+    assert results == [[schema.name] for schema in schemas]
+
+
+def test_compiled_descriptors_many_raises_first_failure_in_order(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    schemas = [RecoveredSchema(name=f"s{i}.proto") for i in range(4)]
+
+    def _fail(schema: RecoveredSchema) -> list[str]:
+        if schema.name == "s1.proto":
+            raise ValueError(f"broken: {schema.name}")
+        return [schema.name]
+
+    monkeypatch.setattr("protoloom.cli._compiled_descriptors", _fail)
+
+    with pytest.raises(ValueError, match=r"broken: s1\.proto"):
+        _compiled_descriptors_many(schemas)
+
+
+def test_compiled_descriptors_many_handles_empty_list() -> None:
+    assert _compiled_descriptors_many([]) == []
 
 
 def test_extract_reports_descriptor_assembly_failure(
