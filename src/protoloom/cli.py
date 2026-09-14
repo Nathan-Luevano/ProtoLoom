@@ -996,7 +996,8 @@ def extract(
 def doctor() -> None:
     import shutil
 
-    dependencies = {item.name: item for item in diagnose().dependencies}
+    report = diagnose()
+    dependencies = {item.name: item for item in report.dependencies}
     checks = {
         "protoc": dependencies["protoc"].location,
         "jadx (optional)": dependencies["jadx"].location,
@@ -1004,6 +1005,11 @@ def doctor() -> None:
     }
     result = {name: value or "missing" for name, value in checks.items()}
     typer.echo(json.dumps(result, indent=2))
+    # protoc is the only required dependency surfaced here; a caller
+    # scripting against this command needs the exit code to actually
+    # reflect that, not just the JSON body, to detect a broken install.
+    if not report.healthy:
+        raise typer.Exit(code=1)
 
 
 @app.command()
