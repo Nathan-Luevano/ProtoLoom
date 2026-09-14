@@ -24,7 +24,14 @@ from protoloom.cli import (
     app,
 )
 from protoloom.container.detect import ContainerKind, Detection
-from protoloom.container.dex import AnnotationItem, DexClass, DexField
+from protoloom.container.dex import (
+    AnnotationItem,
+    DexClass,
+    DexField,
+    DexMethod,
+    DexPrototype,
+    EncodedMethod,
+)
 from protoloom.extract.gotags import GoTagExtraction
 from protoloom.extract.jadx import JadxError, JadxResult
 from protoloom.model import Confidence, Field, Message, RecoveredSchema
@@ -357,6 +364,77 @@ def test_find_wire_decodes_annotated_message_end_to_end(tmp_path: Path) -> None:
     )
     assert lineage == {("example", "Record.proto"): ("Lexample/Record;", None)}
     assert enum_lineage == {}
+
+
+def test_find_wire_falls_back_to_adapter_writes_without_annotations(
+    tmp_path: Path,
+) -> None:
+    types = (
+        "Lexample/Record;",
+        "Ljava/lang/Object;",
+        "I",
+        "V",
+        "Lexample/BaseAdapter;",
+        "Lexample/RecordAdapter;",
+        "Lwire/Adapters;",
+        "Ljava/lang/String;",
+        "Lexample/Other;",
+    )
+    proto = DexPrototype(return_type_index=3, parameter_type_indexes=(2, 1))
+    bad_proto = DexPrototype(return_type_index=1, parameter_type_indexes=(2, 1))
+    methods = (
+        DexMethod(class_index=4, prototype_index=0, name_index=0),
+        DexMethod(class_index=5, prototype_index=0, name_index=1),
+        DexMethod(class_index=5, prototype_index=0, name_index=2),
+        DexMethod(class_index=9, prototype_index=0, name_index=3),
+        DexMethod(class_index=5, prototype_index=1, name_index=5),
+    )
+    model_field = DexField(0, 7, 4)
+    adapter_field = DexField(6, 6, 5)
+    code = (0x0054, 0, 0x0162, 1, 0x7212, 0x4071, 3, 0x0231)
+    owner_class = DexClass(5, 0, 4, 0, 0, 0, 0, 0)
+    other_class = DexClass(8, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    encode_method = EncodedMethod(method_index=1, access_flags=0, code_offset=1)
+    no_code_method = EncodedMethod(method_index=2, access_flags=0, code_offset=0)
+    bad_shape_method = EncodedMethod(method_index=4, access_flags=0, code_offset=2)
+    dex: object = SimpleNamespace(
+        NO_INDEX=0xFFFFFFFF,
+        types=types,
+        prototypes=(proto, bad_proto),
+        methods=methods,
+        classes=(owner_class, other_class),
+        fields=(model_field, adapter_field),
+        strings=(),
+        class_methods=(
+            lambda item: (
+                (encode_method, no_code_method, bad_shape_method)
+                if item is owner_class
+                else ()
+            )
+        ),
+        method_parameter_types=lambda m: ("I", "Ljava/lang/Object;"),
+        method_name=lambda m: "encodeWithTag",
+        code_item=lambda off: SimpleNamespace(instructions=code),
+        field_name=lambda f: "value" if f is model_field else "STRING",
+        class_by_type_index=lambda idx: next(
+            (c for c in (owner_class, other_class) if c.class_index == idx), None
+        ),
+    )
+
+    schemas, lineage, _ = _find_wire(
+        tmp_path / "input.bin",
+        dex_inputs=[("classes.dex", b"")],
+        dex_cache={"classes.dex": dex},  # type: ignore[dict-item]
+    )
+
+    assert (schemas[0].package, schemas[0].name) == ("example", "Record.proto")
+    field_out = schemas[0].messages[0].fields[0]
+    assert (field_out.name, field_out.number, field_out.type_name) == (
+        "value",
+        7,
+        "string",
+    )
+    assert lineage == {("example", "Record.proto"): ("Lexample/Record;", None)}
 
 
 def test_extract_reuses_loaded_dex_inputs(
