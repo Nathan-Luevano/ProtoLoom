@@ -425,6 +425,14 @@ def test_reads_direct_method_and_code_item() -> None:
     assert dex.method_name(method) == "name"
 
 
+def test_iter_code_items_is_cached_across_calls() -> None:
+    # enum/lite recovery calls this once per field lookup; re-parsing the
+    # whole class/code table each time is a real perf cliff on large dex files.
+    dex = DexFile(_dex_with_direct_method_code())
+    first = dex.iter_code_items()
+    assert dex.iter_code_items() is first
+
+
 def test_class_methods_empty_when_no_class_data() -> None:
     dex = DexFile(_dex_with_method_and_interface())
     (owner,) = dex.classes

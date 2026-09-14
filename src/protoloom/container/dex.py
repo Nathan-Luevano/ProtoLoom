@@ -172,6 +172,9 @@ class DexFile:
         self._classes_by_type_index = {item.class_index: item for item in self.classes}
         self._annotation_sets: dict[int, tuple[AnnotationItem, ...]] = {}
         self._annotation_items: dict[int, AnnotationItem] = {}
+        # callers (lite/enum recovery) re-derive this per field/finding lookup;
+        # cache it since class/code tables never change after construction.
+        self._code_items: tuple[tuple[EncodedMethod, CodeItem], ...] | None = None
 
     @classmethod
     def from_path(cls, path: str | Path) -> DexFile:
@@ -263,12 +266,15 @@ class DexFile:
         )
 
     def iter_code_items(self) -> tuple[tuple[EncodedMethod, CodeItem], ...]:
+        if self._code_items is not None:
+            return self._code_items
         result: list[tuple[EncodedMethod, CodeItem]] = []
         for item in self.classes:
             for method in self.class_methods(item):
                 if method.code_offset:
                     result.append((method, self.code_item(method.code_offset)))
-        return tuple(result)
+        self._code_items = tuple(result)
+        return self._code_items
 
     def method_name(self, method: DexMethod | EncodedMethod) -> str:
         item = (
