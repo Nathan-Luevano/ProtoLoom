@@ -29,6 +29,7 @@ def compile_proto(
     name: str = "recovered.proto",
     *,
     timeout_seconds: float = 30.0,
+    siblings: dict[str, str] | None = None,
 ) -> CompileResult:
     if timeout_seconds <= 0:
         raise ValueError("compiler timeout must be positive")
@@ -39,20 +40,31 @@ def compile_proto(
     command = (
         [protoc] if protoc is not None else [sys.executable, "-m", "grpc_tools.protoc"]
     )
-    safe_name = Path(name).name
-    if (
-        safe_name in {"", ".", ".."}
-        or len(os.fsencode(safe_name)) > MAX_PROTO_NAME_BYTES
-        or any(
-            unicodedata.category(character).startswith("C") for character in safe_name
-        )
-    ):
-        raise ValueError("unsafe proto file name")
+    safe_name = _safe_proto_name(name)
+    safe_siblings = {
+        sibling_name: sibling_source
+        for sibling_name, sibling_source in (siblings or {}).items()
+        if _safe_proto_name(sibling_name) != safe_name
+    }
+    total_size = len(encoded_source) + sum(
+        len(sibling_source.encode("utf-8")) for sibling_source in safe_siblings.values()
+    )
+    if total_size > MAX_PROTO_SOURCE_SIZE:
+        raise ValueError(f"proto source exceeds {MAX_PROTO_SOURCE_SIZE} bytes")
     with tempfile.TemporaryDirectory(prefix="protoloom-") as directory:
         root = Path(directory)
         proto = root / safe_name
         output = root / "compiled.desc"
         proto.write_bytes(encoded_source)
+        # Siblings are only placed on the import path, never passed to protoc
+        # as compile targets: two recovered files can legitimately declare
+        # the same nested type name when neither imports the other (each was
+        # recovered independently), so only files the target actually
+        # imports are pulled into its descriptor pool.
+        for sibling_name, sibling_source in safe_siblings.items():
+            (root / _safe_proto_name(sibling_name)).write_bytes(
+                sibling_source.encode("utf-8")
+            )
         with tempfile.TemporaryFile() as diagnostic:
             process = subprocess.Popen(
                 [
@@ -79,6 +91,19 @@ def compile_proto(
             stderr = _read_diagnostic(diagnostic)
         payload = _read_descriptor(output) if process.returncode == 0 else None
         return CompileResult(process.returncode == 0, stderr, payload)
+
+
+def _safe_proto_name(name: str) -> str:
+    safe_name = Path(name).name
+    if (
+        safe_name in {"", ".", ".."}
+        or len(os.fsencode(safe_name)) > MAX_PROTO_NAME_BYTES
+        or any(
+            unicodedata.category(character).startswith("C") for character in safe_name
+        )
+    ):
+        raise ValueError("unsafe proto file name")
+    return safe_name
 
 
 def _kill_process_group(process: subprocess.Popen[bytes]) -> None:

@@ -354,6 +354,40 @@ def test_extract_reconciles_conflicting_same_named_descriptors(
     assert recovery["conflicts"][0]["path"] == "shared.proto.M.1"
 
 
+def test_extract_rejects_whole_descriptor_referencing_missing_type(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    # A byte-scanned FileDescriptorProto is otherwise wire-valid but its
+    # field references a message type never found anywhere in this binary;
+    # writing that out as a "recovered" .proto with no diagnostic would
+    # hide a file that never actually compiles.
+    descriptor = FileDescriptorSet().file.add(
+        name="badref.proto", package="demo", syntax="proto3"
+    )
+    message = descriptor.message_type.add(name="M")
+    field = message.field.add(name="x", number=1)
+    field.label = field.LABEL_OPTIONAL
+    field.type = field.TYPE_MESSAGE
+    field.type_name = ".demo.NoSuchType"
+
+    binary = tmp_path / "badref.bin"
+    binary.write_bytes(b"noise")
+    monkeypatch.setattr(
+        "protoloom.cli._find",
+        lambda path, **kwargs: [
+            DescriptorFinding(descriptor, 0, len(descriptor.SerializeToString()), "a")
+        ],
+    )
+
+    result = runner.invoke(app, ["extract", str(binary), "-o", str(tmp_path / "out")])
+
+    assert result.exit_code == 2
+    assert "recovery failed:" in result.output
+    assert "NoSuchType" in result.output
+    assert not (tmp_path / "out" / "badref.proto").exists()
+
+
 def test_dex_inputs_ignore_non_android_container(tmp_path: Path) -> None:
     binary = tmp_path / "unknown.bin"
     binary.write_bytes(b"unknown")
@@ -799,7 +833,9 @@ def test_extract_reports_uncompilable_recovery(
     )
     monkeypatch.setattr(
         "protoloom.cli._compiled_descriptors",
-        lambda schema: (_ for _ in ()).throw(ValueError("protoc rejected schema")),
+        lambda schema, siblings=None: (_ for _ in ()).throw(
+            ValueError("protoc rejected schema")
+        ),
     )
 
     result = runner.invoke(app, ["extract", str(binary)])
@@ -812,7 +848,7 @@ def test_compiled_descriptors_many_preserves_order(monkeypatch: MonkeyPatch) -> 
     schemas = [RecoveredSchema(name=f"s{i}.proto") for i in range(6)]
     monkeypatch.setattr(
         "protoloom.cli._compiled_descriptors",
-        lambda schema: [schema.name],
+        lambda schema, siblings=None: [schema.name],
     )
 
     results = _compiled_descriptors_many(schemas)
@@ -825,7 +861,9 @@ def test_compiled_descriptors_many_raises_first_failure_in_order(
 ) -> None:
     schemas = [RecoveredSchema(name=f"s{i}.proto") for i in range(4)]
 
-    def _fail(schema: RecoveredSchema) -> list[str]:
+    def _fail(
+        schema: RecoveredSchema, siblings: dict[str, str] | None = None
+    ) -> list[str]:
         if schema.name == "s1.proto":
             raise ValueError(f"broken: {schema.name}")
         return [schema.name]

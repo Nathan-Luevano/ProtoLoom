@@ -325,8 +325,12 @@ def _find_lite(
     return schemas, bailouts, lineage, enum_lineage
 
 
-def _compiled_descriptors(schema: RecoveredSchema) -> list[FileDescriptorProto]:
-    result = compile_proto(emit_proto(schema), Path(schema.name).name)
+def _compiled_descriptors(
+    schema: RecoveredSchema, siblings: dict[str, str] | None = None
+) -> list[FileDescriptorProto]:
+    result = compile_proto(
+        emit_proto(schema), Path(schema.name).name, siblings=siblings
+    )
     if not result.success or result.descriptor_set is None:
         raise ValueError(f"emitted schema did not compile: {result.stderr.strip()}")
     descriptor_set = FileDescriptorSet.FromString(result.descriptor_set)
@@ -335,6 +339,7 @@ def _compiled_descriptors(schema: RecoveredSchema) -> list[FileDescriptorProto]:
 
 def _compiled_descriptors_many(
     schemas: list[RecoveredSchema],
+    siblings: dict[str, str] | None = None,
 ) -> list[list[FileDescriptorProto]]:
     # Each schema shells out to a real protoc subprocess purely to wait on
     # its exit; that wait releases the GIL, so running them on a thread
@@ -345,7 +350,9 @@ def _compiled_descriptors_many(
         return []
     workers = min(32, len(schemas))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        return list(pool.map(_compiled_descriptors, schemas))
+        return list(
+            pool.map(lambda schema: _compiled_descriptors(schema, siblings), schemas)
+        )
 
 
 def _walk_messages(messages: list[Message]) -> list[Message]:
@@ -943,15 +950,18 @@ def extract(
     certain_names = {
         finding.descriptor.name for finding in findings
     } - conflicting_names
-    prepared: list[tuple[RecoveredSchema, str]] = []
-    to_validate: list[RecoveredSchema] = []
-    for schema in reconciled.schemas:
-        source = emit_proto(schema)
-        if schema.name not in certain_names:
-            to_validate.append(schema)
-        prepared.append((schema, source))
+    prepared = [(schema, emit_proto(schema)) for schema in reconciled.schemas]
+    # Every recovered schema is compile-validated now, "certain" ones
+    # included: a descriptor recovered whole from the binary can still
+    # reference a type that was never actually found (corrupt data, or a
+    # dependency that got stripped), and writing that out as a "recovered"
+    # .proto with no diagnostic would hide a genuinely broken file. Sibling
+    # sources sit on the import path (not as compile targets) so a
+    # legitimate cross-file import still resolves without pulling in
+    # unrelated files that happen to declare same-named nested types.
+    siblings = dict(zip(output_names, (source for _, source in prepared), strict=True))
     try:
-        _compiled_descriptors_many(to_validate)
+        _compiled_descriptors_many(reconciled.schemas, siblings)
     except ValueError as error:
         typer.echo(f"recovery failed: {error}", err=True)
         raise typer.Exit(2) from error
