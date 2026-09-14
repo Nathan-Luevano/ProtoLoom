@@ -170,6 +170,61 @@ def test_varint_rejects_oversized_encoding() -> None:
         memory.varint(0x1000)
 
 
+def test_protobuf_type_rejects_repeated_field_with_wrong_kind() -> None:
+    data = bytearray(64)
+    data[23] = 5
+    memory = _Memory(FakeElf(bytes(data)))
+    tag = parse_protobuf_tag('protobuf:"varint,1,rep,name=x"')
+
+    assert tag is not None
+    assert _protobuf_type(memory, 0x1000, tag) is None
+
+
+def test_protobuf_type_resolves_enum_by_short_name() -> None:
+    memory = _Memory(FakeElf(bytes(64)))
+    tag = parse_protobuf_tag('protobuf:"varint,1,opt,name=x,enum=pkg.Color"')
+
+    assert tag is not None
+    assert _protobuf_type(memory, 0x1000, tag) == "Color"
+
+
+def test_protobuf_type_resolves_string_and_bytes() -> None:
+    string_data = bytearray(64)
+    string_data[23] = 24
+    string_memory = _Memory(FakeElf(bytes(string_data)))
+    string_tag = parse_protobuf_tag('protobuf:"bytes,1,opt,name=x"')
+    assert string_tag is not None
+    assert _protobuf_type(string_memory, 0x1000, string_tag) == "string"
+
+    bytes_data = bytearray(128)
+    bytes_data[23] = 23
+    bytes_data[48:56] = (0x1040).to_bytes(8, "little")
+    bytes_data[64 + 23] = 8
+    bytes_memory = _Memory(FakeElf(bytes(bytes_data)))
+    assert _protobuf_type(bytes_memory, 0x1000, string_tag) == "bytes"
+
+    non_byte_data = bytearray(bytes_data)
+    non_byte_data[64 + 23] = 99
+    non_byte_memory = _Memory(FakeElf(bytes(non_byte_data)))
+    assert _protobuf_type(non_byte_memory, 0x1000, string_tag) is None
+
+
+def test_protobuf_type_resolves_embedded_message_by_short_name() -> None:
+    data = bytearray(256)
+    data[23] = 22
+    data[48:56] = (0x1080).to_bytes(8, "little")
+    name = b"pkg.Msg"
+    data[0] = 1
+    data[1] = len(name)
+    data[2 : 2 + len(name)] = name
+    data[128 + 40 : 128 + 44] = (0).to_bytes(4, "little", signed=True)
+    memory = _Memory(FakeElf(bytes(data)))
+    tag = parse_protobuf_tag('protobuf:"bytes,1,opt,name=x"')
+
+    assert tag is not None
+    assert _protobuf_type(memory, 0x1000, tag) == "Msg"
+
+
 def test_rejects_malformed_go_type_links() -> None:
     elf = FakeElf(b"")
     elf.payloads.update({".typelink": b"x", ".go.buildinfo": b"go1.24.0"})
