@@ -4,13 +4,16 @@ from typing import Any
 from protoloom.container.dex import AnnotationItem, DexClass, DexField
 from protoloom.decode.wire import (
     decode_wire_adapter_fields,
+    decode_wire_adapters,
     decode_wire_annotations,
+    decode_wire_enums,
     decode_wire_messages,
     wire_dex_type,
 )
 from protoloom.extract.lite import _Instruction
 from protoloom.extract.wire import (
     WireAdapterFinding,
+    WireEnumFinding,
     WireFieldFinding,
     WireNameFinding,
     WireOneofFinding,
@@ -294,6 +297,61 @@ def test_decodes_adapter_write_evidence() -> None:
         True,
         "choice_0",
     )
+
+
+def test_decodes_wire_adapter_schema() -> None:
+    model = DexField(0, 1, 0)
+    adapter = DexField(2, 3, 1)
+    owner = "Lexample/Record;"
+    dex: Any = SimpleNamespace(
+        fields=(model, adapter),
+        types=(owner, "Ljava/lang/String;", "Lwire/Adapters;"),
+        field_name=lambda field: "title" if field is model else "STRING",
+    )
+    finding = WireAdapterFinding(owner, model, 4, adapter, 7, 12)
+
+    schemas = decode_wire_adapters(
+        dex, (finding,), (), (), "classes.dex", {owner: "proto3"}
+    )
+
+    assert (schemas[0].package, schemas[0].syntax) == ("example", "proto3")
+    assert schemas[0].messages[0].name == "Record"
+    assert schemas[0].messages[0].fields[0].name == "title"
+
+
+def test_decodes_wire_enum_with_uniform_package_syntax() -> None:
+    finding = WireEnumFinding("Lexample/Mode;", (("UNKNOWN", 0), ("ON", 1)), 3)
+
+    schemas, lineage = decode_wire_enums(
+        (finding,), "classes.dex", {"Lexample/Other;": "proto3"}
+    )
+
+    assert (schemas[0].package, schemas[0].syntax) == ("example", "proto3")
+    assert schemas[0].enums[0].name == "Mode"
+    assert lineage[("example", "Mode.proto")] == {"Mode": None}
+
+
+def test_decodes_wire_enum_falls_back_when_package_syntax_ambiguous() -> None:
+    finding = WireEnumFinding("Lexample/Mode;", (("UNKNOWN", 0),), 3)
+
+    schemas, _ = decode_wire_enums(
+        (finding,),
+        "classes.dex",
+        {"Lexample/A;": "proto3", "Lexample/B;": "proto2"},
+    )
+
+    assert schemas[0].syntax == "proto2"
+
+
+def test_decodes_nested_wire_enum_uses_parent_syntax() -> None:
+    finding = WireEnumFinding("Lexample/Outer$Mode;", (("UNKNOWN", 0),), 3)
+
+    schemas, lineage = decode_wire_enums(
+        (finding,), "classes.dex", {"Lexample/Outer;": "proto3"}
+    )
+
+    assert schemas[0].syntax == "proto3"
+    assert lineage[("example", "Outer_Mode.proto")] == {"Outer_Mode": "Lexample/Outer;"}
 
 
 def test_decodes_boxed_adapter_presence() -> None:
