@@ -384,3 +384,85 @@ def test_rejects_misaligned_fat_macho_architecture() -> None:
     header = struct.pack(">IIiiIII", 0xCAFEBABE, 1, 0, 0, offset, len(thin), 4)
     with pytest.raises(MachOError, match="architecture"):
         MachOFile(header + thin)
+
+
+def test_macho_from_path_reads_file(tmp_path: Path) -> None:
+    path = tmp_path / "lib.dylib"
+    path.write_bytes(_macho_with_const_section())
+    macho = MachOFile.from_path(path)
+    assert bytes(macho.section_data("__TEXT", "__const")) == b"data"
+
+
+def test_macho_section_data_rejects_missing_section() -> None:
+    macho = MachOFile(_macho_with_const_section())
+    with pytest.raises(KeyError):
+        macho.section_data("__TEXT", "__missing")
+
+
+def test_rejects_too_short_macho_file() -> None:
+    with pytest.raises(MachOError, match="truncated Mach-O file"):
+        MachOFile(b"ab")
+
+
+def test_rejects_macho_with_bad_magic() -> None:
+    with pytest.raises(MachOError, match="not a Mach-O file"):
+        MachOFile(b"NOTX" + b"\x00" * 20)
+
+
+def test_rejects_truncated_macho_header() -> None:
+    with pytest.raises(MachOError, match="truncated Mach-O structure"):
+        MachOFile(b"\xce\xfa\xed\xfe" + b"\x00" * 10)
+
+
+def test_rejects_truncated_macho_load_commands() -> None:
+    raw = bytearray(_macho_with_const_section())
+    struct.pack_into("<I", raw, 20, len(raw) * 10)
+    with pytest.raises(MachOError, match="truncated Mach-O load commands"):
+        MachOFile(bytes(raw))
+
+
+def test_rejects_macho_command_count_exceeding_byte_region() -> None:
+    raw = bytearray(_macho_with_const_section())
+    struct.pack_into("<I", raw, 16, 1000)
+    with pytest.raises(MachOError, match="exceeds its byte region"):
+        MachOFile(bytes(raw))
+
+
+def test_rejects_invalid_macho_load_command_size() -> None:
+    raw = bytearray(_macho_with_const_section())
+    header_size = struct.calcsize("<IiiIIIII")
+    struct.pack_into("<I", raw, header_size + 4, 4)
+    with pytest.raises(MachOError, match="invalid Mach-O load command"):
+        MachOFile(bytes(raw))
+
+
+def test_rejects_macho_sections_exceeding_load_command() -> None:
+    raw = bytearray(_macho_with_const_section())
+    header_size = struct.calcsize("<IiiIIIII")
+    segment_size = struct.calcsize("<II16sQQQQiiII")
+    nsects_offset = header_size + segment_size - 8
+    struct.pack_into("<I", raw, nsects_offset, 100)
+    with pytest.raises(MachOError, match="sections exceed their load command"):
+        MachOFile(bytes(raw))
+
+
+def test_rejects_macho_section_data_range_outside_file() -> None:
+    raw = bytearray(_macho_with_const_section())
+    header_size = struct.calcsize("<IiiIIIII")
+    segment_size = struct.calcsize("<II16sQQQQiiII")
+    section_offset_field = header_size + segment_size + 48
+    struct.pack_into("<I", raw, section_offset_field, len(raw) + 1000)
+    with pytest.raises(MachOError, match="Mach-O range lies outside the file"):
+        MachOFile(bytes(raw))
+
+
+def test_rejects_fat_macho_with_no_architectures() -> None:
+    header = struct.pack(">II", 0xCAFEBABE, 0)
+    with pytest.raises(MachOError, match="no architectures"):
+        MachOFile(header + b"\x00" * 20)
+
+
+def test_rejects_truncated_fat_macho_table() -> None:
+    header = struct.pack(">II", 0xCAFEBABE, 5)
+    with pytest.raises(MachOError, match="truncated fat Mach-O table"):
+        MachOFile(header + b"\x00" * 4)
