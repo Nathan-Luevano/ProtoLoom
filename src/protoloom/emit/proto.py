@@ -118,23 +118,30 @@ def _declaration_names(
 def _symbol_renames(
     messages: list[Message],
     enums: list[EnumType],
-    raw_prefix: str = "",
+    raw_prefix: tuple[str, ...] = (),
     emitted_prefix: str = "",
-) -> dict[str, str]:
+) -> dict[tuple[str, ...], str]:
+    # Keyed by the raw name *components* (not a "."-joined string): a raw
+    # name can itself contain a literal "." (an adversarial or otherwise
+    # unsanitized decoded name), and joining with "." would let a one-level
+    # name collide with an unrelated multi-level nested path, silently
+    # aliasing one declared symbol's rename onto another.
     message_names, enum_names = _declaration_names(messages, enums)
-    result: dict[str, str] = {}
+    result: dict[tuple[str, ...], str] = {}
     for item, name in zip(messages, message_names, strict=True):
-        raw = f"{raw_prefix}.{item.name}" if raw_prefix else item.name
+        raw = (*raw_prefix, item.name)
         emitted = f"{emitted_prefix}.{name}" if emitted_prefix else name
         result[raw] = emitted
         result.update(_symbol_renames(item.messages, item.enums, raw, emitted))
     for enum, name in zip(enums, enum_names, strict=True):
-        raw = f"{raw_prefix}.{enum.name}" if raw_prefix else enum.name
+        raw = (*raw_prefix, enum.name)
         result[raw] = f"{emitted_prefix}.{name}" if emitted_prefix else name
     return result
 
 
-def _resolved_type(value: str, renames: dict[str, str], package: str) -> str:
+def _resolved_type(
+    value: str, renames: dict[tuple[str, ...], str], package: str
+) -> str:
     if value in _SCALARS:
         return value
     if value.startswith("map<") and value.endswith(">"):
@@ -146,7 +153,7 @@ def _resolved_type(value: str, renames: dict[str, str], package: str) -> str:
     absolute = value.startswith(".")
     raw = value.removeprefix(".")
     local = raw.removeprefix(f"{package}.") if package else raw
-    if (renamed := renames.get(local)) is None:
+    if (renamed := renames.get(tuple(local.split(".")))) is None:
         return _type_name(value)
     if absolute and package:
         return f".{_qualified_name(package)}.{renamed}"
@@ -203,7 +210,7 @@ def _field(
     syntax: str,
     indent: str,
     name: str,
-    renames: dict[str, str],
+    renames: dict[tuple[str, ...], str],
     package: str,
 ) -> str:
     label = item.label
@@ -243,7 +250,7 @@ def _group_field(
     syntax: str,
     indent: str,
     name: str,
-    renames: dict[str, str],
+    renames: dict[tuple[str, ...], str],
     package: str,
 ) -> list[str]:
     label = "" if syntax == "proto3" and field.label != "repeated" else field.label
@@ -258,7 +265,7 @@ def _group_field(
 def _message_body(
     item: Message,
     syntax: str,
-    renames: dict[str, str],
+    renames: dict[tuple[str, ...], str],
     package: str,
     child_indent: str,
 ) -> list[str]:
@@ -336,7 +343,7 @@ def _message_body(
 def _message(
     item: Message,
     syntax: str,
-    renames: dict[str, str],
+    renames: dict[tuple[str, ...], str],
     package: str,
     indent: str = "",
     name: str | None = None,
@@ -351,7 +358,7 @@ def _message(
 
 def _service(
     item: Service,
-    renames: dict[str, str],
+    renames: dict[tuple[str, ...], str],
     package: str,
     name: str,
 ) -> list[str]:

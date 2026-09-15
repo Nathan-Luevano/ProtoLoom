@@ -668,3 +668,46 @@ def test_group_field_emits_inline_group_syntax() -> None:
     assert "message ResultGroup {" not in emitted
     result = compile_proto(emitted)
     assert result.success, result.stderr
+
+
+def test_dotted_raw_name_does_not_alias_an_unrelated_nested_path() -> None:
+    # A decoded message name containing a literal "." (unsanitized/adversarial
+    # input) used to be joined with "." into the same lookup key as an
+    # unrelated multi-level nested path, so a field meant to reference the
+    # real nested message silently resolved to the wrong sibling instead --
+    # still compiling, just to the wrong type.
+    schema = RecoveredSchema(
+        name="fixture",
+        package="",
+        syntax="proto2",
+        messages=[
+            Message(
+                "Top",
+                fields=[
+                    Field("ref", 1, "Top.a.b", Confidence.CERTAIN),
+                ],
+                messages=[
+                    Message(
+                        "a",
+                        messages=[
+                            Message(
+                                "b",
+                                fields=[
+                                    Field("real_marker", 1, "int32", Confidence.CERTAIN)
+                                ],
+                            )
+                        ],
+                    ),
+                    Message(
+                        "a.b",
+                        fields=[Field("decoy_marker", 1, "string", Confidence.CERTAIN)],
+                    ),
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+
+    assert "optional Top.a.b ref = 1;" in emitted
+    result = compile_proto(emitted)
+    assert result.success, result.stderr
