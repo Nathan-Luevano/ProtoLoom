@@ -20,28 +20,40 @@ from protoloom.extract.lite import LiteFinding, LiteObject
 from protoloom.model import Confidence
 
 
-def _field(*, oneof_index: int | None, raw_type: int) -> InfoField:
-    return InfoField(number=1, type_id=9, raw_type=raw_type, oneof_index=oneof_index)
+def _field(*, oneof_index: int | None, raw_type: int, type_id: int = 4) -> InfoField:
+    return InfoField(
+        number=1, type_id=type_id, raw_type=raw_type, oneof_index=oneof_index
+    )
 
 
 def test_real_oneof_index_wins_over_hasbit() -> None:
     field = _field(oneof_index=2, raw_type=HAS_HAS_BIT)
-    assert _field_oneof(field, is_proto2=False) == "choice_2"
+    assert _field_oneof(field, is_proto2=False, proto_type="int32") == "choice_2"
 
 
 def test_proto3_hasbit_without_oneof_synthesizes_one() -> None:
     field = _field(oneof_index=None, raw_type=HAS_HAS_BIT)
-    assert _field_oneof(field, is_proto2=False) == "synthetic_1"
+    assert _field_oneof(field, is_proto2=False, proto_type="int32") == "synthetic_1"
 
 
 def test_proto2_hasbit_does_not_synthesize_a_oneof() -> None:
     field = _field(oneof_index=None, raw_type=HAS_HAS_BIT)
-    assert _field_oneof(field, is_proto2=True) is None
+    assert _field_oneof(field, is_proto2=True, proto_type="int32") is None
 
 
 def test_no_presence_and_no_oneof_is_plain() -> None:
     field = _field(oneof_index=None, raw_type=0)
-    assert _field_oneof(field, is_proto2=False) is None
+    assert _field_oneof(field, is_proto2=False, proto_type="int32") is None
+
+
+def test_proto3_message_hasbit_has_implicit_presence_not_a_oneof() -> None:
+    # Regression: gadgetbridge's WorkoutSummary (huami.proto) wrapped every
+    # singular message field in a spurious "synthetic_N" oneof. protoc only
+    # synthesizes oneofs for explicit "optional" scalars/enums in proto3 --
+    # singular message fields always have implicit presence and are never
+    # wrapped, so their hasbit must not trigger the synthetic-oneof path.
+    field = _field(oneof_index=None, raw_type=HAS_HAS_BIT, type_id=9)
+    assert _field_oneof(field, is_proto2=False, proto_type="message") is None
 
 
 def _encode_int(value: int) -> str:

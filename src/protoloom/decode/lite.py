@@ -186,12 +186,16 @@ def _enclosing_descriptor(dex: DexFile, descriptor: str) -> str | None:
     return enclosing
 
 
-def _field_oneof(item: InfoField, is_proto2: bool) -> str | None:
+def _field_oneof(item: InfoField, is_proto2: bool, proto_type: str) -> str | None:
     if item.oneof_index is not None:
         return f"choice_{item.oneof_index}"
-    # proto3 gives every "optional" scalar its own synthetic one-member oneof
-    # so HasField works; the hasbit is the only surviving signal for it.
-    if not is_proto2 and item.has_presence:
+    # proto3 gives every "optional" scalar/enum its own synthetic one-member
+    # oneof so HasField works; the hasbit is the only surviving signal for
+    # it. Singular message/group fields get implicit presence tracking (a
+    # hasbit too) without ever being wrapped in a synthetic oneof at the
+    # .proto level -- protoc only synthesizes oneofs for explicit "optional"
+    # scalars/enums, since message presence is already unambiguous.
+    if not is_proto2 and item.has_presence and proto_type not in {"message", "group"}:
         return f"synthetic_{item.number}"
     return None
 
@@ -423,7 +427,7 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                 number=item.number,
                 type_name=type_name,
                 label="required" if item.required else kind.label,
-                oneof=_field_oneof(item, info.header.is_proto2),
+                oneof=_field_oneof(item, info.header.is_proto2, kind.proto_type),
                 packed=kind.packed or None,
                 confidence=confidence,
                 evidence=[evidence],
