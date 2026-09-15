@@ -456,6 +456,13 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                 packed=kind.packed or None,
                 confidence=confidence,
                 evidence=[evidence],
+                # newMessageInfo's own field kind, not the possibly-rewritten
+                # type_name above (a resolved enum's class name, or the
+                # lossy int32 fallback when it couldn't be resolved at all) -
+                # emit_proto's cross-schema stub path needs this to avoid
+                # stubbing a still-unresolved reference as a wire-
+                # incompatible empty message instead of an enum.
+                type_is_enum=kind.proto_type == "enum",
             )
         )
     message = Message(
