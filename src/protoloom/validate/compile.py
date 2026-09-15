@@ -126,7 +126,12 @@ def _read_descriptor(path: Path) -> bytes:
             raise ValueError("compiler descriptor set is not a regular file")
         if status.st_size > MAX_DESCRIPTOR_SET_SIZE:
             raise ValueError(f"descriptor set exceeds {MAX_DESCRIPTOR_SET_SIZE} bytes")
-        payload = stream.read(MAX_DESCRIPTOR_SET_SIZE + 1)
+        # Read only the already-known real size, not a MAX_DESCRIPTOR_SET_SIZE
+        # (256 MiB) request: `read(n)` allocates for n regardless of how much
+        # data actually exists, so every single-schema compile-check would
+        # otherwise reach for a 256 MiB buffer and could OOM a memory-capped
+        # host even when the real descriptor is a few KB.
+        payload = stream.read(status.st_size + 1)
     if len(payload) > MAX_DESCRIPTOR_SET_SIZE:
         raise ValueError(f"descriptor set exceeds {MAX_DESCRIPTOR_SET_SIZE} bytes")
     return payload

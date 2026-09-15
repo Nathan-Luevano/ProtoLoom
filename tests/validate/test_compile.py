@@ -163,6 +163,47 @@ def test_compile_rejects_descriptor_that_grows_past_the_fstat_check(
         compile_proto('syntax = "proto3";')
 
 
+def test_compile_reads_descriptor_by_its_real_size_not_the_max(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    # A memory-capped host can refuse a read() sized to the 256 MiB ceiling
+    # even for a descriptor that is a few bytes long, since read(n)
+    # allocates for n up front. The actual read must be bounded by the
+    # file's real (already fstat'd) size instead.
+    start = _compiler(monkeypatch)
+    requested_sizes: list[int] = []
+
+    def compile_output(args: list[str], **kwargs: object) -> object:
+        output_arg = next(
+            item for item in args if item.startswith("--descriptor_set_out=")
+        )
+        Path(output_arg.partition("=")[2]).write_bytes(b"tiny")
+        return start(args, **kwargs)
+
+    real_open = Path.open
+
+    def spying_open(self: Path, mode: str = "r") -> BinaryIO:
+        stream = cast(BinaryIO, real_open(self, mode))
+        if self.name != "compiled.desc":
+            return stream
+        real_read = stream.read
+
+        def spying_read(size: int = -1) -> bytes:
+            requested_sizes.append(size)
+            result: bytes = real_read(size)
+            return result
+
+        stream.read = spying_read  # type: ignore[method-assign]
+        return stream
+
+    monkeypatch.setattr("protoloom.validate.compile.subprocess.Popen", compile_output)
+    monkeypatch.setattr(Path, "open", spying_open)
+
+    compile_proto('syntax = "proto3";')
+
+    assert requested_sizes == [5]
+
+
 def test_compile_rejects_special_descriptor(monkeypatch: MonkeyPatch) -> None:
     start = _compiler(monkeypatch)
 
