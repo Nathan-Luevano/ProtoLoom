@@ -761,3 +761,32 @@ def test_field_type_matching_a_statement_keyword_is_qualified(keyword: str) -> N
     assert f".demo.{keyword} f = 1;" in emitted
     result = compile_proto(emitted)
     assert result.success, result.stderr
+
+
+def test_nested_keyword_named_type_reference_is_qualified() -> None:
+    # A relative reference into a NESTED keyword-named type (not just a
+    # file-root one) must still get the leading "." -- the rename table is
+    # keyed by full raw path components (see 9b45ed2), so resolution isn't
+    # limited to root-level lookups.
+    schema = RecoveredSchema(
+        name="fixture",
+        package="demo",
+        syntax="proto3",
+        messages=[
+            Message(
+                "message",
+                messages=[
+                    Message("Foo", fields=[Field("x", 1, "int32", Confidence.CERTAIN)])
+                ],
+            ),
+            Message(
+                "Top",
+                fields=[Field("f", 1, "demo.message.Foo", Confidence.CERTAIN)],
+            ),
+        ],
+    )
+    emitted = emit_proto(schema)
+
+    assert ".demo.message.Foo f = 1;" in emitted
+    result = compile_proto(emitted)
+    assert result.success, result.stderr
