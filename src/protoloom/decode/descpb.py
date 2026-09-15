@@ -79,6 +79,13 @@ def _field(raw: FieldDescriptorProto, oneofs: list[str], evidence: Evidence) -> 
         # recompile (start/end-group markers vs length-delimited); keep the
         # distinction so emit can round-trip the group syntax.
         is_group=raw.type == FieldDescriptorProto.TYPE_GROUP,
+        # real protoc output always fully-qualifies type_name (leading '.'),
+        # which emit_proto never stubs -- but the format allows a relative
+        # name too, and a malformed/adversarial descriptor with an
+        # unresolved relative enum reference would otherwise get stubbed as
+        # an empty message, the same wire-incompatible category error fixed
+        # for the Wire decoder.
+        type_is_enum=raw.type == FieldDescriptorProto.TYPE_ENUM,
         confidence=Confidence.CERTAIN,
         evidence=[evidence],
     )
