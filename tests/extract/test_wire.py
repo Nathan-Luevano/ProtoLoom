@@ -512,6 +512,37 @@ def test_field_flags_type_is_enum_from_candidate_set_when_superclass_unavailable
     assert schema.messages[0].fields[0].type_is_enum
 
 
+def test_field_flags_type_is_enum_from_cross_dex_descriptor_set() -> None:
+    # regression for a real multi-dex Signal bug: a field can reference an
+    # enum class that is *defined* in a different classesN.dex than the one
+    # the referencing field lives in (real APKs commonly split into several
+    # dex files). known_enum_types (dex-local type indexes) can never match
+    # in that case since the enum class isn't in this dex's own class list
+    # at all - only a descriptor-string set pooled across every dex in the
+    # container (known_enum_descriptors) can recognize it, and this must
+    # still flip the emitted stub from `message X {}` to `enum X {}`.
+    dex = _wire_dex()
+    finding = extract_wire_annotations(dex)[0]
+    enum_type_index = len(dex.types)
+    dex.types = (*dex.types, "Lexample/Mode;")
+    dex.class_by_type_index = lambda _: None
+    enum_field = DexField(
+        finding.field.class_index, enum_type_index, finding.field.name_index
+    )
+    enum_finding = WireFieldFinding(
+        finding.owner, enum_field, 7, "Mode#ADAPTER", "optional", None, 0
+    )
+
+    schema = decode_wire_annotations(
+        dex,
+        (enum_finding,),
+        "classes.dex",
+        known_enum_descriptors=frozenset({"Lexample/Mode;"}),
+    )[0]
+
+    assert schema.messages[0].fields[0].type_is_enum
+
+
 def test_wire_presence_type_confirms_enum_adapter_field() -> None:
     dex = _wire_dex()
     finding = extract_wire_annotations(dex)[0]

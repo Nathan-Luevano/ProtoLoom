@@ -27,6 +27,7 @@ def _field(
     proto3: bool,
     null_defaults: frozenset[int] = frozenset(),
     known_enum_types: frozenset[int] = frozenset(),
+    known_enum_descriptors: frozenset[str] = frozenset(),
 ) -> Field | None:
     type_name = wire_adapter_type(item.adapter)
     if type_name is None:
@@ -35,7 +36,9 @@ def _field(
         type_name = type_name.rsplit(".", 1)[-1].replace("$", "_")
     is_reference_type = item.adapter.endswith("#ADAPTER")
     type_is_enum = is_reference_type and (
-        item.field.type_index in known_enum_types or _dex_class_is_enum(dex, item.field)
+        item.field.type_index in known_enum_types
+        or dex.types[item.field.type_index] in known_enum_descriptors
+        or _dex_class_is_enum(dex, item.field)
     )
     boxed_presence = _boxed_presence(dex, item.field, proto3, item.label, item.oneof)
     default_presence = (
@@ -111,6 +114,7 @@ def wire_dex_type_kind(
     field_index: int,
     adapter_index: int,
     known_enum_types: frozenset[int] = frozenset(),
+    known_enum_descriptors: frozenset[str] = frozenset(),
 ) -> tuple[str | None, bool]:
     if not 0 <= field_index < len(dex.fields):
         return None, False
@@ -137,8 +141,10 @@ def wire_dex_type_kind(
         adapter_name == "ADAPTER" or adapter.class_index == field.type_index
     ) and adapter_owner.startswith("L"):
         name = adapter_owner[1:-1].rsplit("/", 1)[-1].replace("$", "_")
-        type_is_enum = field.type_index in known_enum_types or _dex_class_is_enum(
-            dex, field
+        type_is_enum = (
+            field.type_index in known_enum_types
+            or raw_type in known_enum_descriptors
+            or _dex_class_is_enum(dex, field)
         )
         return name, type_is_enum
     scalar = wire_adapter_type(f"adapter#{adapter_name}")
@@ -155,6 +161,7 @@ def decode_wire_adapter_fields(
     source: str,
     syntaxes: dict[str, str] | None = None,
     known_enum_types: frozenset[int] = frozenset(),
+    known_enum_descriptors: frozenset[str] = frozenset(),
 ) -> dict[str, list[Field]]:
     recovered_names = {(item.owner, item.field.name_index): item.name for item in names}
     indexes = {field: index for index, field in enumerate(dex.fields)}
@@ -170,7 +177,7 @@ def decode_wire_adapter_fields(
         if field_index is None or adapter_index is None:
             continue
         type_name, type_is_enum = wire_dex_type_kind(
-            dex, field_index, adapter_index, known_enum_types
+            dex, field_index, adapter_index, known_enum_types, known_enum_descriptors
         )
         if type_name is None:
             continue
@@ -211,9 +218,17 @@ def decode_wire_adapters(
     source: str,
     syntaxes: dict[str, str] | None = None,
     known_enum_types: frozenset[int] = frozenset(),
+    known_enum_descriptors: frozenset[str] = frozenset(),
 ) -> list[RecoveredSchema]:
     fields = decode_wire_adapter_fields(
-        dex, findings, names, oneofs, source, syntaxes, known_enum_types
+        dex,
+        findings,
+        names,
+        oneofs,
+        source,
+        syntaxes,
+        known_enum_types,
+        known_enum_descriptors,
     )
     names_by_owner = {item.owner: item.message_name for item in names}
     schemas = []
@@ -308,6 +323,7 @@ def decode_wire_annotations(
     syntaxes: dict[str, str] | None = None,
     null_defaults: dict[str, frozenset[int]] | None = None,
     known_enum_types: frozenset[int] = frozenset(),
+    known_enum_descriptors: frozenset[str] = frozenset(),
 ) -> list[RecoveredSchema]:
     grouped: dict[str, list[WireFieldFinding]] = defaultdict(list)
     for item in findings:
@@ -328,6 +344,7 @@ def decode_wire_annotations(
                     syntax == "proto3",
                     (null_defaults or {}).get(owner, frozenset()),
                     known_enum_types,
+                    known_enum_descriptors,
                 )
             )
         ]

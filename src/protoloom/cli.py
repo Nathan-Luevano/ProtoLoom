@@ -291,7 +291,22 @@ def _find_wire(
     enum_lineage = {}
     raw_inputs = dex_inputs if dex_inputs is not None else _dex_inputs(path)
     cache = dex_cache if dex_cache is not None else {}
-    for source, dex in _cached_dex(raw_inputs, cache):
+    dexes = _cached_dex(raw_inputs, cache)
+    # A multi-dex APK (real ones commonly split into several classesN.dex
+    # files) can define a Wire enum in one dex while a field referencing it
+    # by type only lives in another - wire_enum_candidate_types only sees
+    # classes actually *defined* in the dex it's given, so that reference
+    # would otherwise never match and get stubbed as a message instead of
+    # an enum. Pool candidate descriptors from every dex first so a field's
+    # enum-ness is recognized regardless of which dex defines the enum.
+    known_enum_descriptors_set: set[str] = set()
+    for _, dex in dexes:
+        pass_annotations = extract_wire_annotations(dex)
+        pass_writes = () if pass_annotations else extract_wire_adapter_writes(dex)
+        candidates = wire_enum_candidate_types(dex, pass_writes, pass_annotations)
+        known_enum_descriptors_set.update(dex.types[index] for index in candidates)
+    known_enum_descriptors = frozenset(known_enum_descriptors_set)
+    for source, dex in dexes:
         message_types = set(extract_wire_messages(dex))
         annotations = extract_wire_annotations(dex)
         writes: tuple[WireAdapterFinding, ...] = ()
@@ -315,7 +330,13 @@ def _find_wire(
         decoded = decode_wire_messages(message_owners, source, syntaxes)
         decoded.extend(
             decode_wire_annotations(
-                dex, annotations, source, syntaxes, null_defaults, known_enum_types
+                dex,
+                annotations,
+                source,
+                syntaxes,
+                null_defaults,
+                known_enum_types,
+                known_enum_descriptors,
             )
         )
         if writes:
@@ -323,7 +344,14 @@ def _find_wire(
             oneofs = extract_wire_oneofs(dex, owners)
             decoded.extend(
                 decode_wire_adapters(
-                    dex, writes, names, oneofs, source, syntaxes, known_enum_types
+                    dex,
+                    writes,
+                    names,
+                    oneofs,
+                    source,
+                    syntaxes,
+                    known_enum_types,
+                    known_enum_descriptors,
                 )
             )
         enum_schemas, decoded_enum_lineage = decode_wire_enums(
