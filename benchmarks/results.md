@@ -1030,3 +1030,115 @@ JVM-bytecode decoder would be a new capability, not a bugfix); Flutter
 toolchain available in this environment and no sample obtained — untested,
 not claimed to work); real jadx decompilation quality (jadx itself isn't
 installed here; only protoloom's side of the integration was verified).
+
+## Extended adversarial campaign ("perfect foundation" pass)
+
+A follow-up campaign (12 more rounds beyond the first 7) went deeper into
+packaging/install, multidex/R8/Kotlin realism, APK signing blocks, memory
+pressure, and — most significantly — byte-level accuracy verification
+against every pinned app's real upstream `.proto` source at its pinned
+commit, plus property-based (hypothesis) fuzzing of both the emit/compile
+round-trip and the decode boundary. 18 more real bugs found and fixed
+(36 total across the full campaign), taking the suite from 1087 to 1120
+tests. Every production-code fix was verified with a full `make check` and
+a byte-for-byte `diff -rq` (with an explicit field-number-preservation
+check once fixes started concentrating in this area) against the pinned
+8-app real corpus before merging.
+
+**Most significant finding**: a category-confusion bug where an unresolved
+type reference (in Wire-decoded, protobuf-lite-decoded, and — dormant but
+present — descriptor-decoded schemas) was stubbed as an empty `message X {}`
+placeholder even when X was actually an enum, which is a wire-format
+category error (enum is varint-encoded, message is length-delimited) — the
+recovered schema would be wire-incompatible with the real data. Discovered
+via the upstream byte-level accuracy audit (Signal's real `AccessControl.
+AccessRequired`), root-caused, and fixed in stages as its real scope kept
+turning out broader than first measured:
+1. First fix, scoped to Wire's stub synthesis: ~40 stub types across ~30
+   files in the pinned corpus.
+2. That fix's own enum-candidate heuristic was too broad (any class ever
+   referenced as an ADAPTER owner, not just enum-shaped classes) and
+   wrongly reclassified genuine message types (Meshtastic's
+   `ChannelSettings`, several Gadgetbridge nested types) as enums — a real
+   regression, caught by continuing the same verification discipline
+   rather than assuming a fix that passed `make check` was correct, and
+   fixed by splitting the reliable `getValue()->int` shape signal from the
+   broader post-verified candidate set.
+3. Extended to protobuf-lite decoding (`decode/lite.py` never set the
+   enum/message hint at all) and to a dormant descpb.py gap (real protoc
+   output is always fully-qualified so it never fires today, but a
+   malformed/adversarial descriptor could have hit it).
+4. Extended again to cross-dex references: a real multi-dex APK (Signal
+   splits into 8 `classesN.dex` files) can define an enum in one dex while
+   a field referencing it lives in another; the heuristic only scanned the
+   one dex it was given.
+5. A field referencing its own message's nested type by bare (non-absolute)
+   name was incorrectly treated as an unresolved cross-file reference,
+   producing a spurious duplicate top-level stub alongside the correct
+   nested declaration — fixed by implementing real enclosing-scope
+   resolution (searching the referencing message's own scope outward, the
+   way protoc's own symbol resolution works) instead of a flat file-level
+   lookup.
+
+An **exhaustive audit** (not a sample) of every empty `message X {}` stub
+across the full corpus was run twice — once mid-fix (2504 stubs, 3 real
+bugs found) and once on the fully-fixed result (2426 stubs remaining, all
+16 automated "possible category confusion" flags manually verified as
+false positives — coincidental bare-name collisions between genuinely
+unrelated types, e.g. Gadgetbridge's own `Label` message vs. protobuf's
+well-known `FieldDescriptorProto.Label` enum). Zero remaining category-
+confusion bugs found in the final pass.
+
+**Other real bugs found and fixed this pass:**
+- Two serious bugs surfaced by property-based fuzzing of `emit_proto`:
+  a dotted raw name silently colliding with an unrelated nested type path
+  (a field could end up referencing the wrong sibling type, still
+  compiling — a silent-wrong-output bug, the most serious class this
+  entire campaign found); and a keyword-named type reference (`message`,
+  `enum`, etc. are legal declaration names but parse-fail as a bare field
+  type) needing forced absolute qualification.
+- A camelCase field-naming loss (`avgcadence` instead of `avg_cadence`)
+  fixed by recovering the real accessor method name (`getAvgCadence`)
+  R8 leaves unobfuscated even when it strips the objects-array name string
+  the primary recovery path relies on.
+- An enum value case-fold collision (protoc's C++ codegen rejects two enum
+  values that collide after case-folding and prefix-stripping, a rule
+  `_unique_names`'s exact-string dedup didn't model) — verified reachable
+  on real data, not just synthetic.
+- Two crashes/hangs under real memory pressure (`ulimit -v`): an
+  over-large read buffer sized to the 256MiB max rather than the actual
+  file size, and an unhandled thread-pool-refusal/`MemoryError` producing a
+  raw traceback instead of a clean bail-out.
+- A `.aar` (Android library archive, distinct from `.aab`) silently
+  recovering nothing at all — container detection had no AAR case, so a
+  descriptor sitting in a nested, compressed `classes.jar` (a real,
+  common AGP output shape) was invisible to the raw byte scanner, which
+  only ever scanned the outer file as one blob.
+
+**Confirmed clean, checked with real evidence, no fix needed**: fresh-venv
+install without dev extras, Python 3.11/3.12/3.13 compatibility, using
+protoloom as a library (not just a CLI) — the import-linter contracts make
+this a real, enforced boundary, not an accident; subprocess/shell-injection
+hygiene (argument lists throughout, verified with maliciously-named real
+files); CLI help-text accuracy; real multidex (up to 8 dex files) cross-dex
+attribution and nesting; R8 full-mode obfuscated recovery; Kotlin-coroutine
+gRPC stubs (structurally immune, since coroutine wrapping lives in a
+different generated class the extractor never touches); real APK Signing
+Block v2/v3 layout (already handled by the earlier zip-behind-stub fix);
+`ulimit -n`/disk-full/locale/`PYTHONHASHSEED` sensitivity; the `bench`
+subcommand's own input robustness; non-ELF (PE/Mach-O) Go cross-compiles
+correctly declining rather than crashing; CI running the identical
+`make check` a contributor runs locally, gated correctly before release.
+
+**Left intentionally unsupported / genuinely untestable here**: Flutter and
+React Native artifacts (no toolchain available in this environment, no
+sample obtained — not claimed to work); a full JVM-bytecode (non-dex)
+protobuf-lite/Wire/gRPC decoder for `.jar`/`.aar` contents (only the raw
+descriptor-bytes path recovers anything there; a full decoder is a new
+capability, not a bugfix); real jadx decompilation quality (jadx isn't
+installed in this environment; only protoloom's side of the subprocess
+integration was verified); a small number of narrow, already-safely-failing
+edge cases (map fields in oneofs, a nested-scope keyword-qualification
+corner) that were investigated and found to fail cleanly rather than
+silently, and are documented rather than fixed given their inability to
+produce wrong output.
