@@ -898,6 +898,58 @@ def test_wire_enum_candidate_types_finds_r8_stripped_enum_with_no_package() -> N
     assert 0 in wire_enum_candidate_types(dex, (finding,))
 
 
+def test_wire_enum_candidate_types_buckets_packaged_and_flat_classes_separately() -> (
+    None
+):
+    # A mixed dex (a partially-obfuscated real app can have some classes
+    # flattened to the top level by R8 and others still carrying their real
+    # package) must not let a flattened class's package-less bucket (keyed
+    # by "") swallow or be swallowed by a genuinely packaged class's real
+    # package bucket - each write's model_packages entry is keyed by its
+    # own owner's real _package_of() value, so a flat-top-level record and
+    # a packaged one never share a bucket unless they're genuinely both
+    # flat or genuinely in the same package.
+    packaged_owner = "Lexample/Record;"
+    flat_owner = "LFlatRecord;"
+    packaged_enum = "Lexample/Mode;"
+    flat_enum = "LFlatMode;"
+    packaged_class = DexClass(0, 0, 3, 0, 0, 0, 0, 0)
+    flat_class = DexClass(1, 0, 3, 0, 0, 0, 0, 0)
+    get_value_method = object()
+    findings = (
+        WireAdapterFinding(
+            packaged_owner, DexField(0, 2, 0), 1, DexField(2, 4, 1), 7, 12
+        ),
+        WireAdapterFinding(flat_owner, DexField(1, 3, 0), 1, DexField(3, 5, 1), 8, 13),
+    )
+    dex: Any = SimpleNamespace(
+        NO_INDEX=0xFFFFFFFF,
+        classes=(packaged_class, flat_class),
+        types=(
+            packaged_enum,
+            flat_enum,
+            "Ljava/lang/Object;",
+            packaged_owner,
+            "unused4",
+            flat_owner,
+        ),
+        fields=(),
+        methods=(),
+        strings=(),
+        class_by_type_index=lambda index: {0: packaged_class, 1: flat_class}.get(index),
+        class_methods=lambda cls: (get_value_method,),
+        method_name=lambda m: "getValue",
+        method_parameter_types=lambda m: (),
+        method_return_type=lambda m: "I",
+        field_name=lambda f: "UNUSED",
+    )
+
+    candidates = wire_enum_candidate_types(dex, findings)
+
+    assert 0 in candidates
+    assert 1 in candidates
+
+
 def test_extract_wire_enums_skips_non_enum_superclass_and_missing_initializer() -> None:
     record_owner = "Lexample/Record;"
     other_class = DexClass(1, 0, 2, 0, 0, 0, 0, 0)
