@@ -217,9 +217,30 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
     # protobuf-lite emits a `NAME_FIELD_NUMBER` static int constant per field,
     # including oneof members that otherwise never get a name string in the
     # objects array. Its own name is generated directly from the original
-    # proto field name uppercased, so lowercasing it the true name losslessly
-    # -- unlike reversing the getter's camelCase, which can't tell whether a
-    # digit-letter transition in the original name had an underscore or not.
+    # proto field name uppercased, which loses any camelCase boundary (e.g.
+    # "avgCadence" and "AVGCADENCE_FIELD_NUMBER" both lower to "avgcadence").
+    # getX()/setX()/hasX()/clearX() accessors are named after the same real
+    # field and often survive even when the objects array's name strings are
+    # stripped (proguard/R8 can drop those independently of method names,
+    # which stay for reflection/API compatibility) -- verified against a real
+    # gadgetbridge 0.93.0 release APK, where `Steps.avgCadence` keeps
+    # `getAvgCadence`/`setAvgCadence`/`clearAvgCadence` as unobfuscated method
+    # names despite the objects array carrying no name string for it. Prefer
+    # that camelCase over the constant's case-free one when they agree on
+    # which field they name.
+    accessor_names: dict[str, str] = {}
+    if own_class is not None:
+        for accessor in dex.class_methods(own_class):
+            accessor_name = dex.method_name(accessor)
+            for prefix in ("get", "set", "has", "clear"):
+                if (
+                    accessor_name.startswith(prefix)
+                    and len(accessor_name) > len(prefix)
+                    and accessor_name[len(prefix)].isupper()
+                ):
+                    core = accessor_name[len(prefix) :]
+                    accessor_names.setdefault(core.lower(), core)
+                    break
     field_number_names: dict[int, str] = {}
     if own_class is not None:
         static_fields = dex.class_static_fields(own_class)
@@ -229,9 +250,13 @@ def decode_lite_finding(dex: DexFile, finding: LiteFinding, source: str) -> Deco
                 continue
             static_name = dex.field_name(static_field)
             if static_name.endswith("_FIELD_NUMBER"):
-                field_number_names[value] = static_name.removesuffix(
-                    "_FIELD_NUMBER"
-                ).lower()
+                key = static_name.removesuffix("_FIELD_NUMBER").lower()
+                accessor_core = accessor_names.get(key)
+                field_number_names[value] = (
+                    java_to_proto_name(accessor_core)
+                    if accessor_core is not None
+                    else key
+                )
     java_names, auxiliary_classes, map_fields, enum_verifiers = _field_objects(
         dex, finding
     )

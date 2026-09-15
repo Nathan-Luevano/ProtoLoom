@@ -82,6 +82,12 @@ class _FakeDex:
     def class_by_type_index(self, type_index: int) -> DexClass | None:
         return None
 
+    def class_methods(self, item: DexClass) -> tuple[EncodedMethod, ...]:
+        return ()
+
+    def method_name(self, method: DexMethod | EncodedMethod) -> str:
+        return ""
+
 
 def test_message_field_type_comes_from_the_declared_field_type() -> None:
     # header: flags, field_count, oneof_count, hasbits_count, min, max,
@@ -252,6 +258,58 @@ def test_field_number_constant_wins_over_flat_oneof_guess() -> None:
     decoded = decode_lite_finding(_FakeFieldNumberConstantDex(), finding, "test.dex")  # type: ignore[arg-type]
     field = decoded.schema.messages[0].fields[0]
     assert field.name == "custom"
+    assert field.confidence.value == "high"
+
+
+class _FakeAccessorNamedDex(_FakeFieldNumberConstantDex):
+    def __init__(self) -> None:
+        super().__init__()
+        # AVGCADENCE_FIELD_NUMBER has no case boundary of its own; the real
+        # camelCase field name only survives on the getter/setter accessors.
+        self.strings = (
+            "newMessageInfo",
+            "nested_",
+            "AVGCADENCE_FIELD_NUMBER",
+            "getAvgCadence",
+            "setAvgCadence",
+        )
+        self._accessors = (
+            EncodedMethod(method_index=1, access_flags=0, code_offset=0),
+            EncodedMethod(method_index=2, access_flags=0, code_offset=0),
+        )
+        self.methods = (
+            DexMethod(0, 0, 0),
+            DexMethod(0, 0, 3),
+            DexMethod(0, 0, 4),
+        )
+
+    def class_methods(self, item: DexClass) -> tuple[EncodedMethod, ...]:
+        return self._accessors
+
+    def method_name(self, method: DexMethod | EncodedMethod) -> str:
+        assert isinstance(method, EncodedMethod)
+        return self.strings[self.methods[method.method_index].name_index]
+
+
+def test_getter_accessor_recovers_camel_case_over_field_number_constant() -> None:
+    # A FIELD_NUMBER constant alone can't tell "avgcadence" from "avgCadence"
+    # -- when a matching getX()/setX() accessor survives, its camelCase is
+    # the more faithful name, converted the same way a visible java_name is.
+    info = _info_string(0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 60, 0)
+    finding = LiteFinding(
+        containing_method=0,
+        code_offset=0,
+        instruction_offset=0,
+        info_string=info,
+        objects=(
+            LiteObject("string", "group_"),
+            LiteObject("string", "groupCase_"),
+            LiteObject("class", "LOwner$FlatVariant;"),
+        ),
+    )
+    decoded = decode_lite_finding(_FakeAccessorNamedDex(), finding, "test.dex")  # type: ignore[arg-type]
+    field = decoded.schema.messages[0].fields[0]
+    assert field.name == "avg_cadence"
     assert field.confidence.value == "high"
 
 
