@@ -429,6 +429,29 @@ def test_duplicate_enum_numbers_require_allow_alias() -> None:
     assert compile_proto(emitted).success
 
 
+def test_case_fold_prefix_stripped_enum_values_are_disambiguated() -> None:
+    # protoc 29.3 rejects `FOO_BAR` and `FOO_bar` in the same enum: both fold
+    # to `BAR` once upper-cased, underscore-stripped, and the enum name is
+    # removed as a common prefix. Exact-string dedup alone doesn't catch this.
+    schema = RecoveredSchema(
+        name="fixture",
+        enums=[
+            EnumType(
+                "Foo",
+                [
+                    EnumValue("FOO_UNSPECIFIED", 0),
+                    EnumValue("FOO_BAR", 1),
+                    EnumValue("FOO_bar", 2),
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "FOO_BAR = 1;" in emitted
+    assert "FOO_bar = 2;" not in emitted
+    assert compile_proto(emitted).success
+
+
 def test_proto3_plain_optional_without_presence_is_dropped() -> None:
     schema = RecoveredSchema(
         name="fixture",

@@ -199,6 +199,42 @@ def _deduplicated_fields(fields: list[Field]) -> list[Field]:
     return list(result.values())
 
 
+def _fold_key(enum_name: str, value_name: str) -> str:
+    # protoc rejects two enum values that collide once both are upper-cased,
+    # stripped of underscores, and the (likewise folded) enum name is removed
+    # as a common prefix -- verified against protoc 29.3/libprotoc 3.13:
+    # `FOO_BAR` and `FOO_bar` in `enum Foo` both fold to `BAR` and fail to
+    # compile even though they're distinct strings today's exact-match dedup
+    # would let through.
+    folded_enum = re.sub(r"_", "", enum_name.upper())
+    folded_value = re.sub(r"_", "", value_name.upper())
+    return folded_value.removeprefix(folded_enum)
+
+
+def _defold_enum_values(
+    enum_name: str, names: list[str], numbers: list[int], reserved: set[str]
+) -> list[str]:
+    seen: dict[str, int] = {}
+    result = list(names)
+    for index, (name, number) in enumerate(zip(names, numbers, strict=True)):
+        key = _fold_key(enum_name, name)
+        prior = seen.get(key)
+        if prior is None:
+            seen[key] = number
+            continue
+        if prior == number:
+            continue  # same numeric value: protoc allows this as an alias
+        suffix = 2
+        candidate = f"{name}_{suffix}"
+        while candidate in reserved or _fold_key(enum_name, candidate) in seen:
+            suffix += 1
+            candidate = f"{name}_{suffix}"
+        reserved.add(candidate)
+        result[index] = candidate
+        seen[_fold_key(enum_name, candidate)] = number
+    return result
+
+
 def _enum(
     item: EnumType,
     syntax: str,
@@ -224,6 +260,9 @@ def _enum(
         lines.append(f"{indent}  {synthetic} = 0;")
         reserved.add(synthetic)
     value_names = _unique_names([value.name for value in values], "VALUE", reserved)
+    value_names = _defold_enum_values(
+        enum_name, value_names, [value.number for value in values], set(reserved)
+    )
     for value, value_name in zip(values, value_names, strict=True):
         lines.append(f"{indent}  {value_name} = {value.number};")
     used.update(value_names)
