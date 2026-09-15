@@ -801,6 +801,72 @@ def test_wire_enum_candidate_types_includes_r8_stripped_enum() -> None:
     assert extract_wire_enums(dex, (finding,)) == ()
 
 
+def test_wire_enum_candidate_types_excludes_referenced_message_class() -> None:
+    # Wire generates a message's own ADAPTER as a static field *inside* the
+    # message class itself, so a plain message-typed field's adapter always
+    # has adapter.class_index == the message's own type_index - the same
+    # shape a genuine enum reference has. wire_enum_candidate_types must not
+    # mistake "referenced via an ADAPTER at all" for "is an enum": only the
+    # real getValue()->int shape (or a confirmed java.lang.Enum superclass)
+    # may say so, or a plain message field gets wrongly stubbed as an enum
+    # when its own type can't otherwise be resolved.
+    record_owner = "Lexample/Record;"
+    message_descriptor = "Lexample/Envelope;"
+    message_class = DexClass(0, 0, 2, 0, 0, 0, 0, 0)
+    plain_method = object()
+    finding = WireAdapterFinding(
+        record_owner, DexField(0, 1, 0), 1, DexField(0, 3, 1), 7, 12
+    )
+    dex: Any = SimpleNamespace(
+        NO_INDEX=0xFFFFFFFF,
+        classes=(message_class,),
+        types=(message_descriptor, record_owner, "Lcom/squareup/wire/Message;"),
+        fields=(),
+        methods=(),
+        strings=(),
+        class_by_type_index=lambda index: message_class if index == 0 else None,
+        class_methods=lambda cls: (plain_method,),
+        method_name=lambda m: "equals",
+        method_parameter_types=lambda m: ("Ljava/lang/Object;",),
+        method_return_type=lambda m: "Z",
+        field_name=lambda f: "UNUSED",
+    )
+
+    assert 0 not in wire_enum_candidate_types(dex, (finding,))
+
+
+def test_wire_enum_candidate_types_finds_r8_stripped_enum_with_no_package() -> None:
+    # A heavily-flattened/obfuscated app (real R8 output) can put every
+    # class at the top level with no "/" in its descriptor at all; bucketing
+    # "package" by rsplit("/", 1)[0] then returns the whole descriptor for
+    # such a class instead of a shared package key, so an enum that (unlike
+    # the r8-stripped-enum case above) is never itself a write's "owner"
+    # would otherwise never share a bucket with anything and be missed.
+    record_owner = "LRecord;"
+    enum_descriptor = "LMode;"
+    stripped_class = DexClass(0, 0, 2, 0, 0, 0, 0, 0)
+    get_value_method = object()
+    finding = WireAdapterFinding(
+        record_owner, DexField(0, 1, 0), 1, DexField(2, 3, 1), 7, 12
+    )
+    dex: Any = SimpleNamespace(
+        NO_INDEX=0xFFFFFFFF,
+        classes=(stripped_class,),
+        types=(enum_descriptor, record_owner, "Ljava/lang/Object;"),
+        fields=(),
+        methods=(),
+        strings=(),
+        class_by_type_index=lambda index: stripped_class if index == 0 else None,
+        class_methods=lambda cls: (get_value_method,),
+        method_name=lambda m: "getValue",
+        method_parameter_types=lambda m: (),
+        method_return_type=lambda m: "I",
+        field_name=lambda f: "UNUSED",
+    )
+
+    assert 0 in wire_enum_candidate_types(dex, (finding,))
+
+
 def test_extract_wire_enums_skips_non_enum_superclass_and_missing_initializer() -> None:
     record_owner = "Lexample/Record;"
     other_class = DexClass(1, 0, 2, 0, 0, 0, 0, 0)

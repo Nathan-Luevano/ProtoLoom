@@ -588,30 +588,38 @@ def extract_wire_adapter_writes(dex: DexFile) -> tuple[WireAdapterFinding, ...]:
     return tuple(unique[key] for key in sorted(unique))
 
 
+def _package_of(descriptor: str) -> str:
+    return descriptor.rsplit("/", 1)[0] if "/" in descriptor else ""
+
+
 def wire_enum_candidate_types(
     dex: DexFile,
     findings: tuple[WireAdapterFinding, ...],
     annotations: tuple[WireFieldFinding, ...] = (),
 ) -> frozenset[int]:
     # classes shaped like Wire's generated enum (a single no-arg
-    # getValue()->int accessor) even when R8 has stripped their
-    # java.lang.Enum superclass down to plain Object - this is a broader,
-    # more reliable enum signal than the superclass check alone, since it
-    # also catches enums whose values couldn't be recovered.
-    descriptors = {
-        f"L{item.adapter.partition('#')[0].replace('.', '/')};"
-        for item in annotations
-        if item.adapter.endswith("#ADAPTER")
-    }
-    type_indexes = {item.adapter.class_index for item in findings}
-    type_indexes.update(
-        index for index, descriptor in enumerate(dex.types) if descriptor in descriptors
-    )
-    model_packages = {item.owner.rsplit("/", 1)[0] for item in findings}
-    model_packages.update(item.owner.rsplit("/", 1)[0] for item in annotations)
+    # getValue()->int accessor, mandated by Wire's own WireEnum interface)
+    # even when R8 has stripped their java.lang.Enum superclass down to
+    # plain Object. Unlike _enum_recovery_candidates below, this signal is
+    # precise enough to trust directly as "definitely not a message" -- a
+    # plain message's ADAPTER-typed field write or annotation also names
+    # the message's own class, which getValue() never does, so scanning
+    # only for the real method shape avoids mistaking a referenced message
+    # class for an enum (see decode.wire's type_is_enum, which callers use
+    # to decide message-vs-enum stub synthesis for a field whose own type
+    # couldn't otherwise be resolved).
+    # a class with no "/" (an obfuscator's flattened top-level package) must
+    # bucket together with every other such class, not against its own full
+    # descriptor -- rsplit("/", 1)[0] on a slash-less descriptor returns the
+    # whole descriptor, which real fields never do, so a heavily-flattened
+    # app (e.g. real R8 output with single-letter top-level class names)
+    # would otherwise never match anything and silently lose this signal.
+    model_packages = {_package_of(item.owner) for item in findings}
+    model_packages.update(_package_of(item.owner) for item in annotations)
+    type_indexes = set()
     for item in dex.classes:
         descriptor = dex.types[item.class_index]
-        if descriptor.rsplit("/", 1)[0] not in model_packages:
+        if _package_of(descriptor) not in model_packages:
             continue
         if any(
             dex.method_name(method) == "getValue"
@@ -623,13 +631,37 @@ def wire_enum_candidate_types(
     return frozenset(type_indexes)
 
 
+def _enum_recovery_candidates(
+    dex: DexFile,
+    findings: tuple[WireAdapterFinding, ...],
+    annotations: tuple[WireFieldFinding, ...] = (),
+) -> frozenset[int]:
+    # A broader, noisier candidate set than wire_enum_candidate_types: any
+    # class referenced as an ADAPTER owner at all, message or enum alike.
+    # Safe here only because extract_wire_enums immediately below re-checks
+    # each candidate's real java.lang.Enum superclass before trusting it --
+    # unlike wire_enum_candidate_types, this set must never be used as a
+    # standalone "is an enum" signal.
+    descriptors = {
+        f"L{item.adapter.partition('#')[0].replace('.', '/')};"
+        for item in annotations
+        if item.adapter.endswith("#ADAPTER")
+    }
+    type_indexes = {item.adapter.class_index for item in findings}
+    type_indexes.update(
+        index for index, descriptor in enumerate(dex.types) if descriptor in descriptors
+    )
+    type_indexes.update(wire_enum_candidate_types(dex, findings, annotations))
+    return frozenset(type_indexes)
+
+
 def extract_wire_enums(
     dex: DexFile,
     findings: tuple[WireAdapterFinding, ...],
     annotations: tuple[WireFieldFinding, ...] = (),
 ) -> tuple[WireEnumFinding, ...]:
     result = []
-    for type_index in sorted(wire_enum_candidate_types(dex, findings, annotations)):
+    for type_index in sorted(_enum_recovery_candidates(dex, findings, annotations)):
         enum_class = dex.class_by_type_index(type_index)
         if enum_class is None or enum_class.superclass_index == dex.NO_INDEX:
             continue
