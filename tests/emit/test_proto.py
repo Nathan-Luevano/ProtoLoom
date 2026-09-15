@@ -680,6 +680,31 @@ def test_unresolved_enum_typed_field_gets_an_enum_placeholder() -> None:
     assert compile_proto(emitted).success
 
 
+def test_field_referencing_own_nested_enum_by_bare_name_is_not_stubbed() -> None:
+    # decode/lite.py stores a message-local enum's field type as the enum's
+    # bare (relative) name, since that's what protoc's own scoping rules
+    # allow to reference a sibling nested inside the same message. The
+    # cross-reference "missing type" pass used to compare that bare name
+    # only against a flat set of fully-qualified declared names, so it
+    # never matched and got a second, orphan, unused top-level stub with
+    # the same bare name - a real bug found auditing Gadgetbridge's
+    # recovered CoreService_SyncResponse (garmin) schema.
+    schema = RecoveredSchema(
+        name="fixture",
+        syntax="proto2",
+        messages=[
+            Message(
+                "Holder",
+                fields=[Field("status", 1, "Status", Confidence.HIGH)],
+                enums=[EnumType("Status", [EnumValue("OK", 0)], Confidence.HIGH)],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "message Status {}" not in emitted
+    assert compile_proto(emitted).success
+
+
 def test_group_field_emits_inline_group_syntax() -> None:
     # TYPE_GROUP is wire-incompatible with a plain message field: emitting it
     # as `repeated .Outer.ResultGroup result = 2;` would silently change the

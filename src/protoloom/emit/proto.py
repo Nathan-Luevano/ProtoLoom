@@ -443,6 +443,21 @@ def _service(
     return lines
 
 
+def _resolves_locally(name: str, ancestors: list[str], declared: set[str]) -> bool:
+    # protoc looks up a bare (non-absolute) type name starting at the
+    # referencing message's own scope, then each enclosing scope out to the
+    # file scope - not just the flat file-level declaration set. A field
+    # referencing a type nested in its own message (or an ancestor message)
+    # by its bare name is legitimately resolved without ever needing to be
+    # emitted as a cross-file "missing" stub.
+    for depth in range(len(ancestors), -1, -1):
+        prefix = ".".join(ancestors[:depth])
+        candidate = f"{prefix}.{name}" if prefix else name
+        if candidate in declared:
+            return True
+    return False
+
+
 def _declared_types(
     message: Message, prefix: str = "", name: str | None = None
 ) -> set[str]:
@@ -501,18 +516,28 @@ def emit_proto(
         declared.update(_declared_types(message, name=message_name))
     referenced: set[str] = set()
     referenced_enums: set[str] = set()
-    pending = list(schema.messages)
+    pending = [
+        (message, [message_name])
+        for message, message_name in zip(schema.messages, message_names, strict=True)
+    ]
     while pending:
-        message = pending.pop()
-        pending.extend(message.messages)
+        message, ancestors = pending.pop()
+        nested_message_names, _ = _declaration_names(message.messages, message.enums)
+        pending.extend(
+            (nested, [*ancestors, nested_name])
+            for nested, nested_name in zip(
+                message.messages, nested_message_names, strict=True
+            )
+        )
         for field in _deduplicated_fields(message.fields):
             emitted_type = _resolved_type(field.type_name, renames, schema.package)
-            if emitted_type not in _SCALARS and not emitted_type.startswith(
-                (".", "map<")
-            ):
-                referenced.add(emitted_type)
-                if field.type_is_enum:
-                    referenced_enums.add(emitted_type)
+            if emitted_type in _SCALARS or emitted_type.startswith((".", "map<")):
+                continue
+            if _resolves_locally(emitted_type, ancestors, declared):
+                continue
+            referenced.add(emitted_type)
+            if field.type_is_enum:
+                referenced_enums.add(emitted_type)
     for service in schema.services:
         for method in service.methods:
             for raw_type in (method.input_type, method.output_type):
