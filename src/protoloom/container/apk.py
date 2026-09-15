@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from collections.abc import Collection, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -69,30 +70,9 @@ class AndroidArchive:
             raise ValueError("archive inventory limits must be positive")
         try:
             with open_limited(self.path) as source, ZipFile(source) as archive:
-                infos = archive.infolist()
-                if len(infos) > max_entries:
-                    raise ArchiveError(
-                        f"archive contains more than {max_entries} entries"
-                    )
-                entries: list[ArchiveEntry] = []
-                names: set[str] = set()
-                name_bytes = 0
-                for info in infos:
-                    name_bytes += len(info.filename.encode("utf-8"))
-                    if name_bytes > max_name_bytes:
-                        raise ArchiveError(
-                            f"archive names exceed {max_name_bytes} bytes"
-                        )
-                    if info.is_dir():
-                        continue
-                    _validate_name(info.filename)
-                    if info.filename in names:
-                        raise ArchiveError(f"duplicate archive member: {info.filename}")
-                    names.add(info.filename)
-                    entries.append(_entry(info))
+                return _inventory_from_zip(archive, max_entries, max_name_bytes)
         except (BadZipFile, OSError) as error:
             raise ArchiveError(f"invalid archive: {self.path}") from error
-        return ArchiveInventory(tuple(entries))
 
     def read(self, name: str, *, max_size: int = MAX_ARCHIVE_MEMBER_SIZE) -> bytes:
         _validate_member_limit(max_size)
@@ -138,6 +118,66 @@ class AndroidArchive:
 
 def inventory(path: str | Path) -> ArchiveInventory:
     return AndroidArchive(path).inventory()
+
+
+def _inventory_from_zip(
+    archive: ZipFile, max_entries: int, max_name_bytes: int
+) -> ArchiveInventory:
+    if max_entries <= 0 or max_name_bytes <= 0:
+        raise ValueError("archive inventory limits must be positive")
+    infos = archive.infolist()
+    if len(infos) > max_entries:
+        raise ArchiveError(f"archive contains more than {max_entries} entries")
+    entries: list[ArchiveEntry] = []
+    names: set[str] = set()
+    name_bytes = 0
+    for info in infos:
+        name_bytes += len(info.filename.encode("utf-8"))
+        if name_bytes > max_name_bytes:
+            raise ArchiveError(f"archive names exceed {max_name_bytes} bytes")
+        if info.is_dir():
+            continue
+        _validate_name(info.filename)
+        if info.filename in names:
+            raise ArchiveError(f"duplicate archive member: {info.filename}")
+        names.add(info.filename)
+        entries.append(_entry(info))
+    return ArchiveInventory(tuple(entries))
+
+
+class NestedArchive:
+    # A .jar embedded inside another archive (an AAR's classes.jar is the
+    # motivating case): same read/inventory shape as AndroidArchive, but
+    # backed by already-read bytes instead of re-opening a path, since the
+    # outer archive's own size and entry budgets already bounded this data.
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    def inventory(
+        self,
+        *,
+        max_entries: int = MAX_ARCHIVE_ENTRIES,
+        max_name_bytes: int = MAX_ARCHIVE_NAME_BYTES,
+    ) -> ArchiveInventory:
+        try:
+            with ZipFile(io.BytesIO(self._data)) as archive:
+                return _inventory_from_zip(archive, max_entries, max_name_bytes)
+        except (BadZipFile, OSError) as error:
+            raise ArchiveError("invalid nested archive") from error
+
+    def iter_read(
+        self,
+        entries: Collection[ArchiveEntry],
+        *,
+        max_size: int = MAX_ARCHIVE_MEMBER_SIZE,
+    ) -> Iterator[tuple[ArchiveEntry, bytes]]:
+        _validate_member_limit(max_size)
+        try:
+            with ZipFile(io.BytesIO(self._data)) as archive:
+                for entry in entries:
+                    yield entry, _read_member(archive, entry.name, max_size)
+        except (BadZipFile, NotImplementedError, OSError, RuntimeError) as error:
+            raise ArchiveError("cannot read nested archive") from error
 
 
 def _cached_member(values: Mapping[str, bytes], name: str, max_size: int) -> bytes:

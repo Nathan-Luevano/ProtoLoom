@@ -14,6 +14,7 @@ from protoloom.container.read import MAX_CONTAINER_SIZE, open_limited
 class ContainerKind(StrEnum):
     APK = "apk"
     AAB = "aab"
+    AAR = "aar"
     DEX = "dex"
     ELF = "elf"
     MACHO = "mach-o"
@@ -99,6 +100,7 @@ def _classify_zip(archive: ZipFile) -> Detection:
     root_dex = False
     bundle = False
     jar = False
+    classes_jar = False
     name_bytes = 0
     for index, info in enumerate(archive.infolist(), 1):
         name = info.filename
@@ -114,10 +116,17 @@ def _classify_zip(archive: ZipFile) -> Detection:
             "/manifest/AndroidManifest.xml"
         )
         jar |= name == "META-INF/MANIFEST.MF" or name.endswith(".class")
+        classes_jar |= name == "classes.jar"
     if android_manifest and root_dex:
         return Detection(ContainerKind.APK)
     if bundle:
         return Detection(ContainerKind.AAB)
+    # An .aar (Android library archive) never carries a root classes.dex --
+    # it ships a plain classes.jar of compiled .class files instead, dexed
+    # only later when consumed by an app build. Distinguish it from a bare
+    # JAR/ZIP so its (and its nested classes.jar's) members get scanned.
+    if android_manifest and classes_jar:
+        return Detection(ContainerKind.AAR)
     if jar:
         return Detection(ContainerKind.JAR)
     return Detection(ContainerKind.ZIP)

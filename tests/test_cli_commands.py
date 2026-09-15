@@ -1,10 +1,11 @@
+import io
 import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
-from zipfile import ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 from click import unstyle
@@ -500,6 +501,35 @@ def test_dex_inputs_reads_dex_bundled_inside_a_plain_jar(tmp_path: Path) -> None
         archive.writestr("classes.dex", dex)
 
     assert _dex_inputs(jar) == [("classes.dex", dex)]
+
+
+def test_find_scans_raw_descriptor_bytes_inside_an_aar_classes_jar(
+    tmp_path: Path,
+) -> None:
+    # A real .aar (Android library archive) carries its compiled classes one
+    # zip layer deeper than an APK/JAR -- inside classes.jar, not loose at
+    # the archive root -- since it isn't dexed until a consuming app build
+    # does that. The raw-descriptor-bytes scan must reach that nested member.
+    descriptor = FileDescriptorSet().file.add(
+        name="aar.proto", package="aar.demo", syntax="proto3"
+    )
+    message = descriptor.message_type.add(name="Thing")
+    field = message.field.add(name="value", number=1)
+    field.label = field.LABEL_OPTIONAL
+    field.type = field.TYPE_STRING
+    blob = b"\xca\xfe\x00\x00" + descriptor.SerializeToString() + b"\x00\x00"
+
+    jar_bytes_io = io.BytesIO()
+    with ZipFile(jar_bytes_io, "w", ZIP_DEFLATED) as jar:
+        jar.writestr("com/example/Thing.class", blob)
+
+    aar = tmp_path / "library.aar"
+    with ZipFile(aar, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+        archive.writestr("classes.jar", jar_bytes_io.getvalue())
+
+    findings = _find(aar)
+    assert [finding.descriptor.name for finding in findings] == ["aar.proto"]
 
 
 def test_find_wire_decodes_annotated_message_end_to_end(tmp_path: Path) -> None:

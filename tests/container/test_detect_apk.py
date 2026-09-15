@@ -1,4 +1,5 @@
 import importlib
+import io
 import os
 import struct
 from pathlib import Path
@@ -13,6 +14,7 @@ from protoloom.container.apk import (
     ArchiveEntry,
     ArchiveError,
     ArchiveInventory,
+    NestedArchive,
 )
 from protoloom.container.detect import ContainerKind, detect, detect_bytes
 
@@ -125,6 +127,19 @@ def test_classify_zip_detects_bundle_and_jar_and_plain_zip(tmp_path: Path) -> No
     with ZipFile(plain, "w") as archive:
         archive.writestr("readme.txt", b"hi")
     assert detect(plain).kind is ContainerKind.ZIP
+
+
+def test_classify_zip_detects_aar_over_bare_jar_or_zip(tmp_path: Path) -> None:
+    # A real .aar (Android library archive) ships an AndroidManifest.xml plus
+    # a plain classes.jar of compiled .class files, dexed only later by a
+    # consuming app build -- distinct from both an APK (has a root dex) and
+    # a bare JAR (no manifest).
+    aar = tmp_path / "library.aar"
+    with ZipFile(aar, "w") as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+        archive.writestr("classes.jar", b"PK\x05\x06" + b"\x00" * 18)
+        archive.writestr("R.txt", b"")
+    assert detect(aar).kind is ContainerKind.AAR
 
 
 def test_bundle_shaped_aab_finds_dex_across_every_split_module(tmp_path: Path) -> None:
@@ -464,3 +479,24 @@ def test_module_level_inventory_delegates_to_android_archive(tmp_path: Path) -> 
     assert (
         apk_module.inventory(path).entries == AndroidArchive(path).inventory().entries
     )
+
+
+def test_nested_archive_reads_members_from_in_memory_bytes() -> None:
+    buffer = io.BytesIO()
+    with ZipFile(buffer, "w") as jar:
+        jar.writestr("com/example/Foo.class", b"payload")
+
+    nested = NestedArchive(buffer.getvalue())
+    inventory = nested.inventory()
+
+    assert [entry.name for entry in inventory.entries] == ["com/example/Foo.class"]
+    assert list(nested.iter_read(inventory.entries)) == [
+        (inventory.entries[0], b"payload")
+    ]
+
+
+def test_nested_archive_rejects_bad_zip_bytes() -> None:
+    nested = NestedArchive(b"not a zip")
+
+    with pytest.raises(ArchiveError, match="invalid nested archive"):
+        nested.inventory()

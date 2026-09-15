@@ -21,7 +21,12 @@ from google.protobuf.descriptor_pb2 import FileDescriptorProto, FileDescriptorSe
 from protoloom import __version__
 from protoloom.bench.corpus import CorpusError, load_manifest
 from protoloom.bench.runner import render_report, run_corpus
-from protoloom.container.apk import AndroidArchive, ArchiveError, ArchiveInventory
+from protoloom.container.apk import (
+    AndroidArchive,
+    ArchiveError,
+    ArchiveInventory,
+    NestedArchive,
+)
 from protoloom.container.detect import ContainerKind, Detection, detect
 from protoloom.container.dex import DexError, DexFile
 from protoloom.container.elf import ElfError, ElfFile
@@ -73,6 +78,14 @@ P = ParamSpec("P")
 MAX_OUTPUT_NAME_BYTES = 255
 MAX_ARTIFACT_MANIFEST_SIZE = 16 * 1024 * 1024
 MAX_PREVIOUS_ARTIFACTS = 10_000
+# Every zip-shaped container whose members are scanned as an archive
+# (top-level dex/native/asset/class entries), rather than as one raw blob.
+ARCHIVE_KINDS = {
+    ContainerKind.APK,
+    ContainerKind.AAB,
+    ContainerKind.JAR,
+    ContainerKind.AAR,
+}
 
 
 def _handle_command_errors(
@@ -127,12 +140,14 @@ def _find(
     detection = detection if detection is not None else detect(path)
     findings: list[DescriptorFinding] = []
     cached = dict(dex_inputs or ())
-    if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
+    if detection.kind in ARCHIVE_KINDS:
         archive = AndroidArchive(path)
         inv = inventory if inventory is not None else archive.inventory()
         entries = inv.select({"dex", "native", "asset", "class"})
         for entry, payload in archive.iter_read(entries, cached=cached):
             findings.extend(_scan_blob(payload, entry.name))
+        if detection.kind is ContainerKind.AAR:
+            findings.extend(_find_nested_jar(archive, inv, "classes.jar"))
     elif detection.kind is ContainerKind.ELF:
         elf = ElfFile.from_path(path)
         for section in elf.sections:
@@ -166,6 +181,24 @@ def _find(
     return sorted(deduped.values(), key=lambda item: item.descriptor.name)
 
 
+def _find_nested_jar(
+    archive: AndroidArchive, inv: ArchiveInventory, jar_name: str
+) -> list[DescriptorFinding]:
+    # An .aar ships its compiled classes inside classes.jar, one zip layer
+    # deeper than an APK's top-level dex/class members; that jar isn't dexed
+    # until a consuming app build does it, so this is the only place its
+    # raw-descriptor-bytes evidence (if any) can be scanned from.
+    if not any(entry.name == jar_name for entry in inv.entries):
+        return []
+    nested = NestedArchive(archive.read(jar_name))
+    nested_inv = nested.inventory()
+    entries = nested_inv.select({"dex", "native", "asset", "class"})
+    findings: list[DescriptorFinding] = []
+    for entry, payload in nested.iter_read(entries):
+        findings.extend(_scan_blob(payload, f"{jar_name}!/{entry.name}"))
+    return findings
+
+
 def _dex_inputs(
     path: Path,
     *,
@@ -175,7 +208,7 @@ def _dex_inputs(
     detection = detection if detection is not None else detect(path)
     if detection.kind is ContainerKind.DEX:
         return [(path.name, read_limited(path))]
-    if detection.kind not in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
+    if detection.kind not in ARCHIVE_KINDS:
         return []
     archive = AndroidArchive(path)
     inv = inventory if inventory is not None else archive.inventory()
@@ -196,7 +229,7 @@ def _find_go_tags(
         if not elf.is_go_binary:
             return GoTagExtraction((), ())
         return scan_go_struct_tags(elf, path.name)
-    if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
+    if detection.kind in ARCHIVE_KINDS:
         # Real APKs bundle Go-compiled .so libraries (VPN/analytics SDKs)
         # alongside dex bytecode; each native library is its own ELF and
         # needs its own reflection scan, not just the archive's dex members.
@@ -836,7 +869,7 @@ def inspect(path: Path) -> None:
     typer.echo(f"kind: {detection.kind.value}")
     if detection.detail:
         typer.echo(f"detail: {detection.detail}")
-    if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}:
+    if detection.kind in ARCHIVE_KINDS:
         inventory = AndroidArchive(path).inventory()
         typer.echo(f"entries: {len(inventory.entries)}")
         typer.echo(f"dex: {len(inventory.dex_files)}")
@@ -896,9 +929,7 @@ def extract(
     # central directory; computed once here instead of once per finder.
     detection = detect(path)
     inventory = (
-        AndroidArchive(path).inventory()
-        if detection.kind in {ContainerKind.APK, ContainerKind.AAB, ContainerKind.JAR}
-        else None
+        AndroidArchive(path).inventory() if detection.kind in ARCHIVE_KINDS else None
     )
     dex_inputs = _dex_inputs(path, detection=detection, inventory=inventory)
     findings = _find(
