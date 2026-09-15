@@ -87,10 +87,14 @@ def _handle_command_errors(
                 DexError,
                 ElfError,
                 MachOError,
+                MemoryError,
                 OSError,
                 UnicodeError,
             ) as error:
-                typer.echo(f"{label} failed: {error}", err=True)
+                # MemoryError carries no message of its own; say what actually
+                # happened instead of printing "failed: " with nothing after it.
+                detail = str(error) or "out of memory"
+                typer.echo(f"{label} failed: {detail}", err=True)
                 raise typer.Exit(2) from error
 
         return wrapped
@@ -376,10 +380,20 @@ def _compiled_descriptors_many(
     if not schemas:
         return []
     workers = min(32, len(schemas))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        return list(
-            pool.map(lambda schema: _compiled_descriptors(schema, siblings), schemas)
-        )
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(
+                pool.map(
+                    lambda schema: _compiled_descriptors(schema, siblings), schemas
+                )
+            )
+    except RuntimeError:
+        # A memory- or thread-constrained host (tight ulimit -v, a
+        # container cgroup) can refuse the pool's worker threads outright;
+        # each unit of work still only waits on its own protoc subprocess,
+        # so running them one at a time recovers the same result instead
+        # of surfacing a raw "can't start new thread" traceback.
+        return [_compiled_descriptors(schema, siblings) for schema in schemas]
 
 
 def _walk_messages(messages: list[Message]) -> list[Message]:

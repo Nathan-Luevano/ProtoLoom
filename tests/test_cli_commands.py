@@ -1005,6 +1005,25 @@ def test_extract_reports_uncompilable_recovery(
     assert "recovery failed: protoc rejected schema" in result.output
 
 
+def test_extract_reports_memory_error_with_a_readable_message(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    # MemoryError carries no text of its own (str(MemoryError()) == ""); a
+    # memory-constrained host hitting one during extraction must still see
+    # an actionable line, not "extraction failed: " with nothing after it.
+    binary = tmp_path / "sample.bin"
+    binary.write_bytes(b"noise")
+    monkeypatch.setattr(
+        "protoloom.cli._find",
+        lambda path, **kwargs: (_ for _ in ()).throw(MemoryError()),
+    )
+
+    result = runner.invoke(app, ["extract", str(binary), "-o", str(tmp_path / "out")])
+
+    assert result.exit_code == 2
+    assert "extraction failed: out of memory" in result.output
+
+
 def test_compiled_descriptors_many_preserves_order(monkeypatch: MonkeyPatch) -> None:
     schemas = [RecoveredSchema(name=f"s{i}.proto") for i in range(6)]
     monkeypatch.setattr(
@@ -1037,6 +1056,39 @@ def test_compiled_descriptors_many_raises_first_failure_in_order(
 
 def test_compiled_descriptors_many_handles_empty_list() -> None:
     assert _compiled_descriptors_many([]) == []
+
+
+def test_compiled_descriptors_many_falls_back_when_pool_cannot_start_threads(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    # A tight ulimit -v (or an out-of-threads container) makes
+    # ThreadPoolExecutor's own worker-thread startup raise RuntimeError before
+    # any work runs; that must degrade to sequential execution rather than
+    # surface a raw "can't start new thread" traceback to the user.
+    schemas = [RecoveredSchema(name=f"s{i}.proto") for i in range(3)]
+    monkeypatch.setattr(
+        "protoloom.cli._compiled_descriptors",
+        lambda schema, siblings=None: [schema.name],
+    )
+
+    class _RefusingPool:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> "_RefusingPool":
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def map(self, fn: object, items: object) -> object:
+            raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr("protoloom.cli.ThreadPoolExecutor", _RefusingPool)
+
+    results = _compiled_descriptors_many(schemas)
+
+    assert results == [[schema.name] for schema in schemas]
 
 
 def test_extract_reports_descriptor_assembly_failure(
