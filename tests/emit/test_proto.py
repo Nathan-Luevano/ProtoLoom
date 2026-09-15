@@ -711,3 +711,30 @@ def test_dotted_raw_name_does_not_alias_an_unrelated_nested_path() -> None:
     assert "optional Top.a.b ref = 1;" in emitted
     result = compile_proto(emitted)
     assert result.success, result.stderr
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    ["message", "enum", "oneof", "group", "option", "extend", "extensions", "reserved"],
+)
+def test_field_type_matching_a_statement_keyword_is_qualified(keyword: str) -> None:
+    # A field typed after a message/enum literally named e.g. "message" reads,
+    # unqualified, as protoc's own "message X {" statement grammar and fails
+    # to parse -- only a leading "." disambiguates it as a type reference.
+    schema = RecoveredSchema(
+        name="fixture",
+        package="demo",
+        syntax="proto3",
+        messages=[
+            Message(keyword),
+            Message(
+                "Top",
+                fields=[Field("f", 1, keyword, Confidence.CERTAIN)],
+            ),
+        ],
+    )
+    emitted = emit_proto(schema)
+
+    assert f".demo.{keyword} f = 1;" in emitted
+    result = compile_proto(emitted)
+    assert result.success, result.stderr

@@ -139,6 +139,33 @@ def _symbol_renames(
     return result
 
 
+# protoc's field grammar reads a bare, non-absolute type reference whose
+# first segment is one of these words as the start of that keyword's own
+# statement (e.g. "message f = 1;" is parsed as an attempt to declare a
+# nested message, not a field of type "message"), and fails with a parse
+# error even though "message" is a perfectly legal message/enum name to
+# declare. A leading "." always parses as an unambiguous absolute reference.
+_STATEMENT_KEYWORDS = {
+    "extend",
+    "extensions",
+    "group",
+    "enum",
+    "message",
+    "oneof",
+    "option",
+    "reserved",
+}
+
+
+def _disambiguated(reference: str, package: str) -> str:
+    if reference.startswith((".", "map<")):
+        return reference
+    head = reference.split(".", 1)[0]
+    if head not in _STATEMENT_KEYWORDS:
+        return reference
+    return f".{_qualified_name(package)}.{reference}" if package else f".{reference}"
+
+
 def _resolved_type(
     value: str, renames: dict[tuple[str, ...], str], package: str
 ) -> str:
@@ -154,10 +181,10 @@ def _resolved_type(
     raw = value.removeprefix(".")
     local = raw.removeprefix(f"{package}.") if package else raw
     if (renamed := renames.get(tuple(local.split(".")))) is None:
-        return _type_name(value)
+        return _disambiguated(_type_name(value), package)
     if absolute and package:
         return f".{_qualified_name(package)}.{renamed}"
-    return f".{renamed}" if absolute else renamed
+    return _disambiguated(f".{renamed}" if absolute else renamed, package)
 
 
 def _deduplicated_fields(fields: list[Field]) -> list[Field]:
