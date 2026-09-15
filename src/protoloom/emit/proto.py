@@ -500,6 +500,7 @@ def emit_proto(
     for message, message_name in zip(schema.messages, message_names, strict=True):
         declared.update(_declared_types(message, name=message_name))
     referenced: set[str] = set()
+    referenced_enums: set[str] = set()
     pending = list(schema.messages)
     while pending:
         message = pending.pop()
@@ -510,6 +511,8 @@ def emit_proto(
                 (".", "map<")
             ):
                 referenced.add(emitted_type)
+                if field.type_is_enum:
+                    referenced_enums.add(emitted_type)
     for service in schema.services:
         for method in service.methods:
             for raw_type in (method.input_type, method.output_type):
@@ -519,7 +522,22 @@ def emit_proto(
                 ):
                     referenced.add(emitted_type)
     for missing in sorted(referenced - declared):
-        lines.extend((f"message {_name(missing, 'RecoveredType')} {{}}", ""))
+        # a field's Wire adapter can tell us it references an enum even
+        # when the enum's own values couldn't be recovered - stub it as a
+        # minimal enum, not a message, so the wire type (varint) still
+        # matches the original data instead of silently flipping to
+        # length-delimited.
+        if missing in referenced_enums:
+            lines.extend(
+                (
+                    *_enum(
+                        EnumType(_name(missing, "RecoveredType")), schema.syntax, ""
+                    ),
+                    "",
+                )
+            )
+        else:
+            lines.extend((f"message {_name(missing, 'RecoveredType')} {{}}", ""))
     result = "\n".join(lines).rstrip() + "\n"
     if len(result.encode("utf-8")) > max_bytes:
         raise ValueError(f"proto output exceeds {max_bytes} bytes")

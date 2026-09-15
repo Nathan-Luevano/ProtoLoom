@@ -26,12 +26,17 @@ def _field(
     source: str,
     proto3: bool,
     null_defaults: frozenset[int] = frozenset(),
+    known_enum_types: frozenset[int] = frozenset(),
 ) -> Field | None:
     type_name = wire_adapter_type(item.adapter)
     if type_name is None:
         return None
     if type_name.startswith("."):
         type_name = type_name.rsplit(".", 1)[-1].replace("$", "_")
+    is_reference_type = item.adapter.endswith("#ADAPTER")
+    type_is_enum = is_reference_type and (
+        item.field.type_index in known_enum_types or _dex_class_is_enum(dex, item.field)
+    )
     boxed_presence = _boxed_presence(dex, item.field, proto3, item.label, item.oneof)
     default_presence = (
         proto3
@@ -52,6 +57,7 @@ def _field(
         oneof=item.oneof or (f"_field_{item.number}" if presence else None),
         packed="PACKED" in item.adapter or None,
         proto3_optional=presence,
+        type_is_enum=type_is_enum,
     )
 
 
@@ -73,10 +79,12 @@ def _boxed_presence(
     )
 
 
-def _wire_presence_type(dex: DexFile, item: WireFieldFinding) -> bool:
-    if not item.adapter.endswith("#ADAPTER"):
-        return True
-    raw_type = dex.types[item.field.type_index]
+def _dex_class_is_enum(dex: DexFile, field: DexField) -> bool:
+    # a reference-typed field whose declared dex class subclasses
+    # java.lang.Enum is an enum regardless of whether the enum's values
+    # could themselves be recovered (see decode_wire_enums) - this is
+    # the only signal Wire's own #ADAPTER annotation doesn't carry.
+    raw_type = dex.types[field.type_index]
     if raw_type not in dex.types:
         return False
     item_class = dex.class_by_type_index(dex.types.index(raw_type))
@@ -87,11 +95,27 @@ def _wire_presence_type(dex: DexFile, item: WireFieldFinding) -> bool:
     )
 
 
+def _wire_presence_type(dex: DexFile, item: WireFieldFinding) -> bool:
+    if not item.adapter.endswith("#ADAPTER"):
+        return True
+    return _dex_class_is_enum(dex, item.field)
+
+
 def wire_dex_type(dex: DexFile, field_index: int, adapter_index: int) -> str | None:
+    type_name, _ = wire_dex_type_kind(dex, field_index, adapter_index)
+    return type_name
+
+
+def wire_dex_type_kind(
+    dex: DexFile,
+    field_index: int,
+    adapter_index: int,
+    known_enum_types: frozenset[int] = frozenset(),
+) -> tuple[str | None, bool]:
     if not 0 <= field_index < len(dex.fields):
-        return None
+        return None, False
     if not 0 <= adapter_index < len(dex.fields):
-        return None
+        return None, False
     field = dex.fields[field_index]
     adapter = dex.fields[adapter_index]
     raw_type = dex.types[field.type_index]
@@ -106,17 +130,21 @@ def wire_dex_type(dex: DexFile, field_index: int, adapter_index: int) -> str | N
         "Lokio/ByteString;": "bytes",
     }
     if raw_type in obvious:
-        return obvious[raw_type]
+        return obvious[raw_type], False
     adapter_name = dex.field_name(adapter)
     adapter_owner = dex.types[adapter.class_index]
     if (
         adapter_name == "ADAPTER" or adapter.class_index == field.type_index
     ) and adapter_owner.startswith("L"):
-        return adapter_owner[1:-1].rsplit("/", 1)[-1].replace("$", "_")
+        name = adapter_owner[1:-1].rsplit("/", 1)[-1].replace("$", "_")
+        type_is_enum = field.type_index in known_enum_types or _dex_class_is_enum(
+            dex, field
+        )
+        return name, type_is_enum
     scalar = wire_adapter_type(f"adapter#{adapter_name}")
     if scalar is not None:
-        return scalar
-    return None
+        return scalar, False
+    return None, False
 
 
 def decode_wire_adapter_fields(
@@ -126,6 +154,7 @@ def decode_wire_adapter_fields(
     oneofs: tuple[WireOneofFinding, ...],
     source: str,
     syntaxes: dict[str, str] | None = None,
+    known_enum_types: frozenset[int] = frozenset(),
 ) -> dict[str, list[Field]]:
     recovered_names = {(item.owner, item.field.name_index): item.name for item in names}
     indexes = {field: index for index, field in enumerate(dex.fields)}
@@ -140,7 +169,9 @@ def decode_wire_adapter_fields(
         adapter_index = indexes.get(item.adapter)
         if field_index is None or adapter_index is None:
             continue
-        type_name = wire_dex_type(dex, field_index, adapter_index)
+        type_name, type_is_enum = wire_dex_type_kind(
+            dex, field_index, adapter_index, known_enum_types
+        )
         if type_name is None:
             continue
         name = recovered_names.get(
@@ -166,6 +197,7 @@ def decode_wire_adapter_fields(
                 oneof=oneof or (f"_field_{item.number}" if presence else None),
                 packed=item.packed or None,
                 proto3_optional=presence,
+                type_is_enum=type_is_enum,
             )
         )
     return fields
@@ -178,8 +210,11 @@ def decode_wire_adapters(
     oneofs: tuple[WireOneofFinding, ...],
     source: str,
     syntaxes: dict[str, str] | None = None,
+    known_enum_types: frozenset[int] = frozenset(),
 ) -> list[RecoveredSchema]:
-    fields = decode_wire_adapter_fields(dex, findings, names, oneofs, source, syntaxes)
+    fields = decode_wire_adapter_fields(
+        dex, findings, names, oneofs, source, syntaxes, known_enum_types
+    )
     names_by_owner = {item.owner: item.message_name for item in names}
     schemas = []
     for owner, items in fields.items():
@@ -272,6 +307,7 @@ def decode_wire_annotations(
     source: str,
     syntaxes: dict[str, str] | None = None,
     null_defaults: dict[str, frozenset[int]] | None = None,
+    known_enum_types: frozenset[int] = frozenset(),
 ) -> list[RecoveredSchema]:
     grouped: dict[str, list[WireFieldFinding]] = defaultdict(list)
     for item in findings:
@@ -291,6 +327,7 @@ def decode_wire_annotations(
                     source,
                     syntax == "proto3",
                     (null_defaults or {}).get(owner, frozenset()),
+                    known_enum_types,
                 )
             )
         ]

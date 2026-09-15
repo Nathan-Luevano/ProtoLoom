@@ -46,6 +46,7 @@ from protoloom.extract.wire import (
     extract_wire_oneofs,
     extract_wire_syntaxes,
     wire_adapter_type,
+    wire_enum_candidate_types,
 )
 
 _DEFAULT_MARKER = "Lkotlin/jvm/internal/DefaultConstructorMarker;"
@@ -91,6 +92,7 @@ def _wire_dex() -> Any:
         ),
         field_annotations=lambda _: ((field, (annotation,)),),
         field_name=lambda item: "REPEATED" if item is label else "title",
+        class_by_type_index=lambda _: None,
     )
 
 
@@ -387,6 +389,7 @@ def test_wire_dex_type_resolves_nested_message_from_adapter_owner() -> None:
             "Ladapter/Owner;",
         ),
         field_name=lambda f: "ADAPTER" if f is adapter else "value",
+        class_by_type_index=lambda _: None,
     )
 
     assert wire_dex_type(dex, 0, 1) == "Outer_Nested"
@@ -477,6 +480,36 @@ def test_field_strips_qualified_adapter_owner_name() -> None:
     schema = decode_wire_annotations(dex, (nested,), "classes.dex")[0]
 
     assert schema.messages[0].fields[0].type_name == "Bar"
+
+
+def test_field_flags_type_is_enum_from_candidate_set_when_superclass_unavailable() -> (
+    None
+):
+    # regression for the flipper-android Settings.proto bug: an R8-stripped
+    # enum (superclass Object, not Enum) whose values couldn't be recovered
+    # must still be recognized as enum-shaped via the getValue() heuristic
+    # candidate set, so emit-time stubs it as `enum X {}` and not `message
+    # X {}` (wire-incompatible: varint vs length-delimited).
+    dex = _wire_dex()
+    finding = extract_wire_annotations(dex)[0]
+    enum_type_index = len(dex.types)
+    dex.types = (*dex.types, "Lexample/Mode;")
+    dex.class_by_type_index = lambda _: None
+    enum_field = DexField(
+        finding.field.class_index, enum_type_index, finding.field.name_index
+    )
+    enum_finding = WireFieldFinding(
+        finding.owner, enum_field, 7, "Mode#ADAPTER", "optional", None, 0
+    )
+
+    schema = decode_wire_annotations(
+        dex,
+        (enum_finding,),
+        "classes.dex",
+        known_enum_types=frozenset({enum_type_index}),
+    )[0]
+
+    assert schema.messages[0].fields[0].type_is_enum
 
 
 def test_wire_presence_type_confirms_enum_adapter_field() -> None:
@@ -732,6 +765,40 @@ def test_extract_wire_enums_discovers_via_getvalue_accessor() -> None:
     assert len(findings) == 1
     assert findings[0].descriptor == enum_descriptor
     assert findings[0].values == (("UNUSED", 0),)
+
+
+def test_wire_enum_candidate_types_includes_r8_stripped_enum() -> None:
+    # R8 can strip a Wire enum's java.lang.Enum superclass down to plain
+    # Object and shrink its constructor to a single int (losing the
+    # name/ordinal args _wire_enum_method needs), while keeping the
+    # getValue()->int accessor - real shape seen in flipper-android's
+    # Settings.proto. extract_wire_enums can't recover values from this,
+    # but the class must still be flagged as enum-shaped so emit-time stub
+    # synthesis doesn't mis-stub it as a message.
+    record_owner = "Lexample/Record;"
+    enum_descriptor = "Lexample/Mode;"
+    stripped_class = DexClass(0, 0, 2, 0, 0, 0, 0, 0)
+    get_value_method = object()
+    finding = WireAdapterFinding(
+        record_owner, DexField(0, 1, 0), 1, DexField(2, 3, 1), 7, 12
+    )
+    dex: Any = SimpleNamespace(
+        NO_INDEX=0xFFFFFFFF,
+        classes=(stripped_class,),
+        types=(enum_descriptor, record_owner, "Ljava/lang/Object;"),
+        fields=(),
+        methods=(),
+        strings=(),
+        class_by_type_index=lambda index: stripped_class if index == 0 else None,
+        class_methods=lambda cls: (get_value_method,),
+        method_name=lambda m: "getValue",
+        method_parameter_types=lambda m: (),
+        method_return_type=lambda m: "I",
+        field_name=lambda f: "UNUSED",
+    )
+
+    assert 0 in wire_enum_candidate_types(dex, (finding,))
+    assert extract_wire_enums(dex, (finding,)) == ()
 
 
 def test_extract_wire_enums_skips_non_enum_superclass_and_missing_initializer() -> None:

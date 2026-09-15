@@ -653,6 +653,33 @@ def test_service_reference_to_missing_type_gets_a_placeholder() -> None:
     assert compile_proto(emitted).success
 
 
+def test_unresolved_enum_typed_field_gets_an_enum_placeholder() -> None:
+    # an enum uses varint wire format; stubbing it as a message (length-
+    # delimited) would make the recovered schema wire-incompatible with the
+    # original data even though it "compiles".
+    schema = RecoveredSchema(
+        name="fixture",
+        messages=[
+            Message(
+                "Holder",
+                fields=[
+                    Field(
+                        "mode",
+                        1,
+                        "Missing",
+                        Confidence.CERTAIN,
+                        type_is_enum=True,
+                    )
+                ],
+            )
+        ],
+    )
+    emitted = emit_proto(schema)
+    assert "enum Missing {" in emitted
+    assert "message Missing" not in emitted
+    assert compile_proto(emitted).success
+
+
 def test_group_field_emits_inline_group_syntax() -> None:
     # TYPE_GROUP is wire-incompatible with a plain message field: emitting it
     # as `repeated .Outer.ResultGroup result = 2;` would silently change the

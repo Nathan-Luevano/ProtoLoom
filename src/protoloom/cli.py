@@ -58,6 +58,7 @@ from protoloom.extract.wire import (
     extract_wire_null_defaults,
     extract_wire_oneofs,
     extract_wire_syntaxes,
+    wire_enum_candidate_types,
 )
 from protoloom.model import EnumType, Message, RecoveredSchema
 from protoloom.reconcile import reconcile
@@ -277,15 +278,20 @@ def _find_wire(
         owners.update(item.owner for item in writes)
         syntaxes = extract_wire_syntaxes(dex, owners)
         null_defaults = extract_wire_null_defaults(dex, owners)
+        known_enum_types = wire_enum_candidate_types(dex, writes, annotations)
         decoded = decode_wire_messages(message_owners, source, syntaxes)
         decoded.extend(
-            decode_wire_annotations(dex, annotations, source, syntaxes, null_defaults)
+            decode_wire_annotations(
+                dex, annotations, source, syntaxes, null_defaults, known_enum_types
+            )
         )
         if writes:
             names = extract_wire_names(dex)
             oneofs = extract_wire_oneofs(dex, owners)
             decoded.extend(
-                decode_wire_adapters(dex, writes, names, oneofs, source, syntaxes)
+                decode_wire_adapters(
+                    dex, writes, names, oneofs, source, syntaxes, known_enum_types
+                )
             )
         enum_schemas, decoded_enum_lineage = decode_wire_enums(
             extract_wire_enums(dex, writes, annotations), source, syntaxes

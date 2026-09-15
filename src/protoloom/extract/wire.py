@@ -588,12 +588,16 @@ def extract_wire_adapter_writes(dex: DexFile) -> tuple[WireAdapterFinding, ...]:
     return tuple(unique[key] for key in sorted(unique))
 
 
-def extract_wire_enums(
+def wire_enum_candidate_types(
     dex: DexFile,
     findings: tuple[WireAdapterFinding, ...],
     annotations: tuple[WireFieldFinding, ...] = (),
-) -> tuple[WireEnumFinding, ...]:
-    result = []
+) -> frozenset[int]:
+    # classes shaped like Wire's generated enum (a single no-arg
+    # getValue()->int accessor) even when R8 has stripped their
+    # java.lang.Enum superclass down to plain Object - this is a broader,
+    # more reliable enum signal than the superclass check alone, since it
+    # also catches enums whose values couldn't be recovered.
     descriptors = {
         f"L{item.adapter.partition('#')[0].replace('.', '/')};"
         for item in annotations
@@ -616,7 +620,16 @@ def extract_wire_enums(
             for method in dex.class_methods(item)
         ):
             type_indexes.add(item.class_index)
-    for type_index in sorted(type_indexes):
+    return frozenset(type_indexes)
+
+
+def extract_wire_enums(
+    dex: DexFile,
+    findings: tuple[WireAdapterFinding, ...],
+    annotations: tuple[WireFieldFinding, ...] = (),
+) -> tuple[WireEnumFinding, ...]:
+    result = []
+    for type_index in sorted(wire_enum_candidate_types(dex, findings, annotations)):
         enum_class = dex.class_by_type_index(type_index)
         if enum_class is None or enum_class.superclass_index == dex.NO_INDEX:
             continue
